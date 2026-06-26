@@ -409,7 +409,8 @@ import Foundation
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
         try store.upsert(thread("t", date: 100, labels: ["INBOX"])) // snippet "t" again
-        #expect(try store.inboxThreads().count == 1)
+        let count = try store.inboxThreads().count
+        #expect(count == 1)
     }
 
     @Test func messagesInThreadSortedOldestFirst() throws {
@@ -421,14 +422,16 @@ import Foundation
         try store.upsert(Message(id: "m1", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 10),
                                  bodyHTML: nil, bodyText: nil, isUnread: false))
-        #expect(try store.messages(inThread: "t").map(\.id) == ["m1", "m2"])
+        let ids = try store.messages(inThread: "t").map(\.id)
+        #expect(ids == ["m1", "m2"])
     }
 
     @Test func setLabelsArchivesThreadOutOfInbox() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
         try store.setLabels([], onThread: "t")
-        #expect(try store.inboxThreads().isEmpty)
+        let isEmpty = try store.inboxThreads().isEmpty
+        #expect(isEmpty)
     }
 }
 ```
