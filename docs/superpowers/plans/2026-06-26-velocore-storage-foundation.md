@@ -544,7 +544,10 @@ import GRDB
         Issue.record("condition not met within timeout")
     }
 
-    @Test func observationEmitsInitialThenUpdatesOnInsert() async throws {
+    // @MainActor required: GRDB `.immediate` scheduling must start the
+    // observation on the main thread; Swift Testing async tests otherwise run
+    // off-main and trip a GRDB precondition.
+    @Test @MainActor func observationEmitsInitialThenUpdatesOnInsert() async throws {
         let store = MailStore(try AppDatabase.makeInMemory())
         let collector = Collector()
 
