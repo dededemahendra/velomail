@@ -6,7 +6,9 @@
 
 **Architecture:** A standalone Swift Package with one library target (`VeloCore`) and a test target. Storage uses a GRDB `DatabaseQueue` with a versioned `DatabaseMigrator`. Domain models (`MailThread`, `Message`, `Label`) are GRDB records. `MailStore` is the public read/write API; reactive reads use GRDB `ValueObservation`. The UI (future) and sync engine (future) both depend only on `MailStore`.
 
-**Tech Stack:** Swift 6.1 (Swift 5 language mode), Swift Package Manager, GRDB.swift, XCTest. Builds/tests with Command Line Tools only — no Xcode app required.
+**Tech Stack:** Swift 6.1 (Swift 5 language mode), Swift Package Manager, GRDB.swift, Swift Testing (`import Testing`). Builds/tests with Command Line Tools only — no Xcode app required.
+
+> **Note (added during execution):** Command Line Tools (no Xcode.app) does **not** ship `XCTest`, but **does** ship Swift Testing. All tests use Swift Testing (`@Suite` / `@Test` / `#expect`), not `XCTest`. If Xcode.app is installed later, XCTest becomes available but there is no need to migrate.
 
 ## Global Constraints
 
@@ -14,6 +16,7 @@
 - Platform floor: macOS 14 (`.macOS(.v14)` in `Package.swift`).
 - Dependency: GRDB.swift, `from: "6.29.0"`. No other third-party deps in this plan.
 - The model type for an email thread is named **`MailThread`** (NOT `Thread` — that collides with `Foundation.Thread`).
+- Tests use **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect`, `Issue.record`) — NOT XCTest (unavailable under Command Line Tools).
 - Tests use in-memory databases (`DatabaseQueue()` with no path). No file I/O or network in tests.
 - All code lives under `/Users/dedemahendra/Developer/Projects/VeloMail`.
 - Commit after every task with the `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` trailer.
@@ -74,13 +77,11 @@ public enum VeloCore {
 
 `Tests/VeloCoreTests/VeloCoreTests.swift`:
 ```swift
-import XCTest
+import Testing
 @testable import VeloCore
 
-final class VeloCoreTests: XCTestCase {
-    func testVersionIsSet() {
-        XCTAssertEqual(VeloCore.version, "0.1.0")
-    }
+@Test func testVersionIsSet() {
+    #expect(VeloCore.version == "0.1.0")
 }
 ```
 
@@ -127,16 +128,16 @@ git commit -m "feat: scaffold VeloCore package with GRDB"
 
 `Tests/VeloCoreTests/AppDatabaseTests.swift`:
 ```swift
-import XCTest
+import Testing
 import GRDB
 @testable import VeloCore
 
-final class AppDatabaseTests: XCTestCase {
-    func testMigrationsCreateTables() throws {
+@Suite struct AppDatabaseTests {
+    @Test func migrationsCreateTables() throws {
         let db = try AppDatabase.makeInMemory()
         try db.dbQueue.read { db in
-            XCTAssertTrue(try db.tableExists("thread"))
-            XCTAssertTrue(try db.tableExists("message"))
+            #expect(try db.tableExists("thread"))
+            #expect(try db.tableExists("message"))
         }
     }
 }
@@ -238,12 +239,13 @@ git commit -m "feat: add AppDatabase with thread/message migrations"
 
 `Tests/VeloCoreTests/ModelCodingTests.swift`:
 ```swift
-import XCTest
+import Testing
+import Foundation
 import GRDB
 @testable import VeloCore
 
-final class ModelCodingTests: XCTestCase {
-    func testThreadRoundTripsWithLabelArray() throws {
+@Suite struct ModelCodingTests {
+    @Test func threadRoundTripsWithLabelArray() throws {
         let db = try AppDatabase.makeInMemory()
         let thread = MailThread(
             id: "t1", snippet: "hello",
@@ -253,11 +255,11 @@ final class ModelCodingTests: XCTestCase {
         )
         try db.dbQueue.write { try thread.insert($0) }
         let fetched = try db.dbQueue.read { try MailThread.fetchOne($0, key: "t1") }
-        XCTAssertEqual(fetched, thread)
-        XCTAssertEqual(fetched?.labelIDs, ["INBOX", "Label_5"])
+        #expect(fetched == thread)
+        #expect(fetched?.labelIDs == ["INBOX", "Label_5"])
     }
 
-    func testMessageRoundTrips() throws {
+    @Test func messageRoundTrips() throws {
         let db = try AppDatabase.makeInMemory()
         let thread = MailThread(id: "t1", snippet: "", lastMessageDate: Date(timeIntervalSince1970: 0),
                                 isUnread: false, hasAttachments: false, labelIDs: [])
@@ -270,7 +272,7 @@ final class ModelCodingTests: XCTestCase {
         )
         try db.dbQueue.write { try msg.insert($0) }
         let fetched = try db.dbQueue.read { try Message.fetchOne($0, key: "m1") }
-        XCTAssertEqual(fetched, msg)
+        #expect(fetched == msg)
     }
 }
 ```
@@ -379,10 +381,11 @@ git commit -m "feat: add MailThread and Message GRDB models"
 
 `Tests/VeloCoreTests/MailStoreTests.swift`:
 ```swift
-import XCTest
+import Testing
+import Foundation
 @testable import VeloCore
 
-final class MailStoreTests: XCTestCase {
+@Suite struct MailStoreTests {
     private func makeStore() throws -> MailStore {
         MailStore(try AppDatabase.makeInMemory())
     }
@@ -392,24 +395,24 @@ final class MailStoreTests: XCTestCase {
                    isUnread: false, hasAttachments: false, labelIDs: labels)
     }
 
-    func testInboxThreadsAreFilteredAndSortedNewestFirst() throws {
+    @Test func inboxThreadsAreFilteredAndSortedNewestFirst() throws {
         let store = try makeStore()
         try store.upsert(thread("old", date: 100, labels: ["INBOX"]))
         try store.upsert(thread("new", date: 200, labels: ["INBOX"]))
         try store.upsert(thread("archived", date: 300, labels: ["Label_1"]))
 
         let inbox = try store.inboxThreads()
-        XCTAssertEqual(inbox.map(\.id), ["new", "old"])
+        #expect(inbox.map(\.id) == ["new", "old"])
     }
 
-    func testUpsertReplacesExistingThread() throws {
+    @Test func upsertReplacesExistingThread() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
         try store.upsert(thread("t", date: 100, labels: ["INBOX"])) // snippet "t" again
-        XCTAssertEqual(try store.inboxThreads().count, 1)
+        #expect(try store.inboxThreads().count == 1)
     }
 
-    func testMessagesInThreadSortedOldestFirst() throws {
+    @Test func messagesInThreadSortedOldestFirst() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 0, labels: ["INBOX"]))
         try store.upsert(Message(id: "m2", threadID: "t", sender: "x", recipients: [],
@@ -418,14 +421,14 @@ final class MailStoreTests: XCTestCase {
         try store.upsert(Message(id: "m1", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 10),
                                  bodyHTML: nil, bodyText: nil, isUnread: false))
-        XCTAssertEqual(try store.messages(inThread: "t").map(\.id), ["m1", "m2"])
+        #expect(try store.messages(inThread: "t").map(\.id) == ["m1", "m2"])
     }
 
-    func testSetLabelsArchivesThreadOutOfInbox() throws {
+    @Test func setLabelsArchivesThreadOutOfInbox() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
         try store.setLabels([], onThread: "t")
-        XCTAssertTrue(try store.inboxThreads().isEmpty)
+        #expect(try store.inboxThreads().isEmpty)
     }
 }
 ```
@@ -515,33 +518,47 @@ git commit -m "feat: add MailStore read/write API"
 
 `Tests/VeloCoreTests/MailStoreObservationTests.swift`:
 ```swift
-import XCTest
+import Testing
+import Foundation
 import GRDB
 @testable import VeloCore
 
-final class MailStoreObservationTests: XCTestCase {
-    func testObservationEmitsInitialThenUpdatesOnInsert() throws {
-        let store = MailStore(try AppDatabase.makeInMemory())
+@Suite struct MailStoreObservationTests {
+    /// Thread-safe collector for emissions delivered from GRDB's scheduler.
+    private final class Collector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [[String]] = []
+        func append(_ value: [String]) { lock.lock(); stored.append(value); lock.unlock() }
+        var values: [[String]] { lock.lock(); defer { lock.unlock() }; return stored }
+    }
 
-        let initial = expectation(description: "initial emit")
-        let afterInsert = expectation(description: "emit after insert")
-        var emissions: [[String]] = []
-
-        let cancellable = store.observeInboxThreads { threads in
-            emissions.append(threads.map(\.id))
-            if emissions.count == 1 { initial.fulfill() }
-            if emissions.count == 2 { afterInsert.fulfill() }
+    /// Polls `condition` up to ~2s (100 × 20ms), failing the test if never true.
+    private func pollUntil(_ condition: () -> Bool) async {
+        for _ in 0..<100 {
+            if condition() { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
+        Issue.record("condition not met within timeout")
+    }
+
+    @Test func observationEmitsInitialThenUpdatesOnInsert() async throws {
+        let store = MailStore(try AppDatabase.makeInMemory())
+        let collector = Collector()
+
+        let cancellable = store.observeInboxThreads { collector.append($0.map(\.id)) }
         defer { cancellable.cancel() }
 
-        wait(for: [initial], timeout: 2)
-        XCTAssertEqual(emissions.first, [])
+        // `.immediate` scheduling delivers the initial value synchronously.
+        await pollUntil { !collector.values.isEmpty }
+        #expect(collector.values.first == [])
 
-        try store.upsert(MailThread(id: "t", snippet: "", lastMessageDate: Date(timeIntervalSince1970: 1),
+        try store.upsert(MailThread(id: "t", snippet: "",
+                                    lastMessageDate: Date(timeIntervalSince1970: 1),
                                     isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
 
-        wait(for: [afterInsert], timeout: 2)
-        XCTAssertEqual(emissions.last, ["t"])
+        // The post-write emission is delivered asynchronously on the main queue.
+        await pollUntil { collector.values.count >= 2 }
+        #expect(collector.values.last == ["t"])
     }
 }
 ```
