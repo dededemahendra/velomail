@@ -44,6 +44,12 @@ public final class MailStore {
         }
     }
 
+    /// Observes the inbox and calls `onChange` with the current threads immediately,
+    /// then again on every relevant database change.
+    ///
+    /// - Important: Uses GRDB `.immediate` scheduling, which **must be started on the
+    ///   main thread** — calling this off the main thread traps. The returned
+    ///   cancellable must be retained by the caller to keep the observation alive.
     public func observeInboxThreads(
         onChange: @escaping ([MailThread]) -> Void
     ) -> AnyDatabaseCancellable {

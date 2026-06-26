@@ -3,7 +3,7 @@ import GRDB
 
 /// Owns the SQLite connection and applies schema migrations.
 public final class AppDatabase {
-    public let dbQueue: DatabaseQueue
+    let dbQueue: DatabaseQueue
 
     public init(_ dbQueue: DatabaseQueue) throws {
         self.dbQueue = dbQueue

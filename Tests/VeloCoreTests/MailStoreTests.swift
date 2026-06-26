@@ -25,9 +25,11 @@ import Foundation
     @Test func upsertReplacesExistingThread() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
-        try store.upsert(thread("t", date: 100, labels: ["INBOX"])) // snippet "t" again
-        let count = try store.inboxThreads().count
-        #expect(count == 1)
+        // Second upsert of the same id with a changed field must overwrite, not duplicate.
+        try store.upsert(thread("t", date: 100, labels: ["INBOX", "SENT"]))
+        let inbox = try store.inboxThreads()
+        #expect(inbox.count == 1)
+        #expect(inbox.first?.labelIDs == ["INBOX", "SENT"])
     }
 
     @Test func messagesInThreadSortedOldestFirst() throws {
