@@ -16,13 +16,15 @@ public final class MailStore {
         try database.dbQueue.write { try message.save($0) }
     }
 
+    /// The canonical inbox query: threads labeled INBOX, newest first.
+    private static func inboxRequest() -> QueryInterfaceRequest<MailThread> {
+        MailThread
+            .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
+            .order(sql: "lastMessageDate DESC")
+    }
+
     public func inboxThreads() throws -> [MailThread] {
-        try database.dbQueue.read { db in
-            try MailThread
-                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
-                .order(sql: "lastMessageDate DESC")
-                .fetchAll(db)
-        }
+        try database.dbQueue.read { try Self.inboxRequest().fetchAll($0) }
     }
 
     public func messages(inThread threadID: String) throws -> [Message] {
@@ -45,16 +47,14 @@ public final class MailStore {
     public func observeInboxThreads(
         onChange: @escaping ([MailThread]) -> Void
     ) -> AnyDatabaseCancellable {
-        let observation = ValueObservation.tracking { db in
-            try MailThread
-                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
-                .order(sql: "lastMessageDate DESC")
-                .fetchAll(db)
-        }
+        let observation = ValueObservation.tracking { try Self.inboxRequest().fetchAll($0) }
         return observation.start(
             in: database.dbQueue,
             scheduling: .immediate,
-            onError: { _ in },
+            onError: { error in
+                // Surfacing-only for now; a future API revision should propagate this to callers.
+                print("[VeloCore] inbox observation error: \(error)")
+            },
             onChange: onChange
         )
     }
