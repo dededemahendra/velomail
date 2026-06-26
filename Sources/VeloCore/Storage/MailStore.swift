@@ -41,4 +41,21 @@ public final class MailStore {
             try thread.update(db)
         }
     }
+
+    public func observeInboxThreads(
+        onChange: @escaping ([MailThread]) -> Void
+    ) -> AnyDatabaseCancellable {
+        let observation = ValueObservation.tracking { db in
+            try MailThread
+                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
+                .order(sql: "lastMessageDate DESC")
+                .fetchAll(db)
+        }
+        return observation.start(
+            in: database.dbQueue,
+            scheduling: .immediate,
+            onError: { _ in },
+            onChange: onChange
+        )
+    }
 }
