@@ -19,5 +19,8 @@ import Foundation
         #expect(AuthError.server(code: "x", description: nil) == AuthError.server(code: "x", description: nil))
         #expect(AuthError.server(code: "x", description: nil) != AuthError.server(code: "y", description: nil))
         #expect(AuthError.missingRefreshToken != AuthError.invalidResponse)
+        #expect(AuthError.decoding(E()) == AuthError.decoding(E()))
+        #expect(AuthError.network(E()) != AuthError.decoding(E()))
+        #expect(AuthError.keychain(status: 1) != AuthError.keychain(status: 2))
     }
 }

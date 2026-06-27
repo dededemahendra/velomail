@@ -33,6 +33,7 @@ public final class KeychainTokenStore: TokenStore {
         if updateStatus == errSecItemNotFound {
             var addQuery = baseQuery()
             addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw AuthError.keychain(status: addStatus) }
         } else {
