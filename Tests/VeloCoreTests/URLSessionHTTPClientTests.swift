@@ -4,6 +4,7 @@ import Foundation
 
 // Intercepts requests so the real URLSessionHTTPClient can be tested offline.
 final class StubURLProtocol: URLProtocol {
+    // Shared mutable stub state — the test suite is @Suite(.serialized) so these are accessed by one test at a time. Keep that annotation if you add tests here.
     static var stubData = Data()
     static var stubStatus = 200
     static var lastBody: Data?
@@ -34,7 +35,7 @@ final class StubURLProtocol: URLProtocol {
     }
 }
 
-@Suite struct URLSessionHTTPClientTests {
+@Suite(.serialized) struct URLSessionHTTPClientTests {
     private func makeClient() -> URLSessionHTTPClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubURLProtocol.self]
