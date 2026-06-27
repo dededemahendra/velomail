@@ -79,7 +79,7 @@ public struct TokenService {
 
     private func formBody(_ params: [String: String]) -> Data {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-        let pairs = params.map { key, value -> String in
+        let pairs = params.sorted { $0.key < $1.key }.map { key, value -> String in
             let k = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
             let v = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
             return "\(k)=\(v)"

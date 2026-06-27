@@ -46,6 +46,8 @@ private func makeService(_ result: Result<(Data, HTTPURLResponse), Error>) -> (T
         #expect(sentBody.contains("grant_type=authorization_code"))
         #expect(sentBody.contains("code=auth-code"))
         #expect(sentBody.contains("code_verifier=ver"))
+        #expect(sentBody.contains("client_id=cid"))
+        #expect(sentBody.contains("redirect_uri="))
     }
 
     @Test func refreshReusesSuppliedRefreshTokenWhenResponseOmitsIt() async throws {
@@ -83,6 +85,13 @@ private func makeService(_ result: Result<(Data, HTTPURLResponse), Error>) -> (T
 
         await #expect(throws: AuthError.network(NSError(domain: "", code: 0))) {
             _ = try await service.refresh(refreshToken: "rt")
+        }
+    }
+
+    @Test func nonJSONErrorBodyMapsToInvalidResponse() async throws {
+        let (service, _) = makeService(.success((Data("not json".utf8), http(500))))
+        await #expect(throws: AuthError.invalidResponse) {
+            _ = try await service.exchange(code: "c", verifier: "v")
         }
     }
 
