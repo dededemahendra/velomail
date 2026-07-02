@@ -36,7 +36,7 @@ store or no refresh token → `.missingRefreshToken`. Tested with `InMemoryToken
 
 ---
 
-### Task 2: HTTPClient.get extension
+### Task 2: HTTPClient.get extension  ✅ DONE (commit 0ef9cc9)
 
 **Decision needed (design §7 Q1):** Gmail read calls are GET; the Auth
 `HTTPClient` only has `post`. Recommended: add `get(url:headers:) async throws -> (Data, HTTPURLResponse)`
@@ -54,7 +54,7 @@ implementation that traps, so only clients that need it override it.
 
 ---
 
-### Task 3: GmailMessageDTO + GmailMessageMapper
+### Task 3: GmailMessageDTO + GmailMessageMapper  ✅ DONE (commit fbcc416)
 
 Decode Gmail `users.messages.get` (format=full) JSON and map to VeloCore
 `Message`, deriving `MailThread` fields.
@@ -79,7 +79,7 @@ Decode Gmail `users.messages.get` (format=full) JSON and map to VeloCore
 
 ---
 
-### Task 4: GmailAPIClient (list + get)
+### Task 4: GmailAPIClient (list + get)  ✅ DONE (commit 90da3ae)
 
 Thin read client over `HTTPClient` + `AccessTokenProvider`.
 
@@ -96,17 +96,19 @@ Thin read client over `HTTPClient` + `AccessTokenProvider`.
 
 ---
 
-### Task 5: BackfillService (reconciliation + idempotence)
+### Task 5: BackfillService (reconciliation + idempotence)  ✅ DONE (commit pending)
 
-Pull the most-recent N INBOX threads and reconcile into `MailStore`.
+Pull the most-recent N INBOX messages and reconcile into `MailStore`.
 
-**Files:** create `Sources/VeloCore/Sync/BackfillService.swift`; test `Tests/VeloCoreTests/BackfillServiceTests.swift`.
+**Files:** create `Sources/VeloCore/Sync/BackfillService.swift` (+ `GmailReading` protocol on `GmailAPIClient.swift`); test `Tests/VeloCoreTests/BackfillServiceTests.swift`.
 
-**Interface:** `backfillInbox(maxThreads: Int) async throws` — page ids (follow `nextPageToken` until `maxThreads` message ids collected or pages exhausted), hydrate each via `getMessage`, group by `threadID`, derive threads, `MailStore.upsert(thread)` then `upsert(message)`.
+**Interface:** `backfillInbox(maxMessages: Int) async throws` — page ids (follow `nextPageToken` until `maxMessages` ids collected or pages exhausted), hydrate each via `getMessage`, group by `threadID`, derive threads, `MailStore.upsert(thread)` then `upsert(message)`.
 
-- [ ] Failing end-to-end test against a scripted mock `GmailAPIClient` (or mock `HTTPClient`) over an in-memory `AppDatabase`: N messages across M threads produce expected inbox rows; **running twice yields identical rows** (idempotence); paging is followed; `maxThreads` cap respected.
-- [ ] Implement service.
-- [ ] Verify green + full suite. Commit.
+**Deviation from original interface:** the cap is `maxMessages`, not `maxThreads`. `users.messages.list` returns messages, so a message cap is the honest primitive at this layer; a distinct-thread policy is deferred to the sync-actor increment (list refs carry `threadId`, so it can cap by thread later without an API change). A `GmailReading` protocol (conformed by `GmailAPIClient`) was introduced as the injection seam for deterministic scripting.
+
+- [x] Failing end-to-end test against a scripted `GmailReading` over an in-memory `AppDatabase`: messages across threads produce expected inbox rows; **running twice yields identical rows** (idempotence); paging is followed; `maxMessages` cap respected.
+- [x] Implement service.
+- [x] Verify green + full suite. Commit.
 
 ---
 

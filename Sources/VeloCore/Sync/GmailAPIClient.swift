@@ -1,9 +1,16 @@
 import Foundation
 
+/// The Gmail read operations `BackfillService` needs. Abstracted so backfill can
+/// be driven by a scripted source in tests; `GmailAPIClient` is the live impl.
+public protocol GmailReading {
+    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
+    func getMessage(id: String) async throws -> GmailMessageDTO
+}
+
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
 /// individual messages. Every request carries a bearer token obtained from
 /// `AccessTokenProvider` (refreshed on demand).
-public struct GmailAPIClient {
+public struct GmailAPIClient: GmailReading {
     private let httpClient: HTTPClient
     private let tokenProvider: AccessTokenProvider
     private let baseURL: URL
