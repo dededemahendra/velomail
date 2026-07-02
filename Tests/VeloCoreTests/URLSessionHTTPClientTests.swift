@@ -8,10 +8,14 @@ final class StubURLProtocol: URLProtocol {
     static var stubData = Data()
     static var stubStatus = 200
     static var lastBody: Data?
+    static var lastMethod: String?
+    static var lastHeaders: [String: String]?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        Self.lastMethod = request.httpMethod
+        Self.lastHeaders = request.allHTTPHeaderFields
         Self.lastBody = request.httpBody ?? request.httpBodyStream.map(Self.readStream)
         let response = HTTPURLResponse(url: request.url!, statusCode: Self.stubStatus,
                                        httpVersion: nil, headerFields: nil)!
@@ -55,5 +59,20 @@ final class StubURLProtocol: URLProtocol {
         #expect(response.statusCode == 201)
         let sent = StubURLProtocol.lastBody.map { String(decoding: $0, as: UTF8.self) }
         #expect(sent == "sent-body")
+    }
+
+    @Test func getReturnsBodyAndStatusAndAttachesHeaders() async throws {
+        StubURLProtocol.stubData = Data("get-body".utf8)
+        StubURLProtocol.stubStatus = 200
+        let client = makeClient()
+        let url = URL(string: "https://example.com/messages")!
+
+        let (data, response) = try await client.get(
+            url: url, headers: ["Authorization": "Bearer tok"])
+
+        #expect(String(decoding: data, as: UTF8.self) == "get-body")
+        #expect(response.statusCode == 200)
+        #expect(StubURLProtocol.lastMethod == "GET")
+        #expect(StubURLProtocol.lastHeaders?["Authorization"] == "Bearer tok")
     }
 }

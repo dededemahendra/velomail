@@ -14,6 +14,10 @@ private final class MockHTTPClient: HTTPClient {
         lastBody = body
         return try result.get()
     }
+
+    func get(url: URL, headers: [String: String]) async throws -> (Data, HTTPURLResponse) {
+        fatalError("get not used by TokenService")
+    }
 }
 
 private func http(_ status: Int) -> HTTPURLResponse {

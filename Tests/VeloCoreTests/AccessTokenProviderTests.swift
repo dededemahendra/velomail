@@ -12,6 +12,10 @@ private final class MockHTTPClient: HTTPClient {
         callCount += 1
         return try result.get()
     }
+
+    func get(url: URL, headers: [String: String]) async throws -> (Data, HTTPURLResponse) {
+        fatalError("get not used by AccessTokenProvider")
+    }
 }
 
 private func http(_ status: Int) -> HTTPURLResponse {
