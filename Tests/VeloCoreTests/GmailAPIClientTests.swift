@@ -77,6 +77,29 @@ private func makeClient(_ getResult: Result<(Data, HTTPURLResponse), Error>) thr
         #expect((client.lastGetURL?.query ?? "").contains("format=full"))
     }
 
+    @Test func fetchHistoryParsesResponseAndSendsCursorAndBearer() async throws {
+        let json = Data(#"{"history":[{"id":"1","messagesAdded":[{"message":{"id":"m9","threadId":"t9"}}]}],"historyId":"2100"}"#.utf8)
+        let (api, client) = try makeClient(.success((json, http(200))))
+
+        let response = try await api.fetchHistory(startHistoryId: "2000", pageToken: nil)
+
+        #expect(response.addedMessageIDs == ["m9"])
+        #expect(response.historyId == "2100")
+        #expect(client.lastGetHeaders?["Authorization"] == "Bearer tok")
+        let query = client.lastGetURL?.query ?? ""
+        #expect(query.contains("startHistoryId=2000"))
+        #expect(query.contains("historyTypes=messageAdded"))
+    }
+
+    @Test func fetchHistoryPassesPageToken() async throws {
+        let json = Data(#"{"history":[],"historyId":"2100"}"#.utf8)
+        let (api, client) = try makeClient(.success((json, http(200))))
+
+        _ = try await api.fetchHistory(startHistoryId: "2000", pageToken: "hp-2")
+
+        #expect((client.lastGetURL?.query ?? "").contains("pageToken=hp-2"))
+    }
+
     @Test func nonSuccessMapsToServerError() async throws {
         let json = Data(#"{"error":{"code":401,"message":"Invalid Credentials","status":"UNAUTHENTICATED"}}"#.utf8)
         let (api, _) = try makeClient(.success((json, http(401))))

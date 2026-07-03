@@ -5,6 +5,7 @@ import Foundation
 public protocol GmailReading {
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
     func getMessage(id: String) async throws -> GmailMessageDTO
+    func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
 }
 
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
@@ -44,6 +45,23 @@ public struct GmailAPIClient: GmailReading {
             url: baseURL.appendingPathComponent("users/me/messages/\(id)"),
             resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "format", value: "full")]
+
+        let (data, response) = try await authorizedGET(components.url!)
+        return try checkedDecode(data, response)
+    }
+
+    /// Fetches one page of history since `startHistoryId`, restricted to added
+    /// messages. Pass the response `nextPageToken` back in to page.
+    public func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("users/me/history"),
+            resolvingAgainstBaseURL: false)!
+        var items = [
+            URLQueryItem(name: "startHistoryId", value: startHistoryId),
+            URLQueryItem(name: "historyTypes", value: "messageAdded"),
+        ]
+        if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+        components.queryItems = items
 
         let (data, response) = try await authorizedGET(components.url!)
         return try checkedDecode(data, response)

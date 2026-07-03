@@ -40,6 +40,10 @@ private final class ScriptedSource: GmailReading {
         getCallCount += 1
         return messages[id]!
     }
+
+    func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
+        fatalError("fetchHistory not used by backfill")
+    }
 }
 
 @Suite struct BackfillServiceTests {
