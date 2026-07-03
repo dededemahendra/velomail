@@ -54,6 +54,17 @@ public final class AppDatabase {
             }
         }
 
+        migrator.registerMigration("v3_create_pending_mutation") { db in
+            try db.create(table: "pendingMutation") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("payload", .blob).notNull()
+                t.column("createdAt", .datetime).notNull()
+                t.column("status", .text).notNull().defaults(to: "pending")
+            }
+            try db.create(index: "pendingMutation_on_status", on: "pendingMutation", columns: ["status"])
+        }
+
         return migrator
     }
 }
