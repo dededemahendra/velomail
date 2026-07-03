@@ -27,6 +27,10 @@ public final class MailStore {
         try database.dbQueue.read { try Self.inboxRequest().fetchAll($0) }
     }
 
+    public func thread(id: String) throws -> MailThread? {
+        try database.dbQueue.read { try MailThread.fetchOne($0, key: id) }
+    }
+
     public func messages(inThread threadID: String) throws -> [Message] {
         try database.dbQueue.read { db in
             try Message

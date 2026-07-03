@@ -52,4 +52,11 @@ import Foundation
         let isEmpty = try store.inboxThreads().isEmpty
         #expect(isEmpty)
     }
+
+    @Test func threadByIDReturnsStoredOrNil() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
+        #expect(try store.thread(id: "t")?.id == "t")
+        #expect(try store.thread(id: "missing") == nil)
+    }
 }
