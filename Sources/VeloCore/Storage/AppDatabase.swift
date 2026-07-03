@@ -46,6 +46,14 @@ public final class AppDatabase {
             try db.create(index: "message_on_threadID", on: "message", columns: ["threadID"])
         }
 
+        migrator.registerMigration("v2_create_sync_state") { db in
+            try db.create(table: "syncState") { t in
+                t.primaryKey("accountID", .text)
+                t.column("historyId", .text)
+                t.column("backfillComplete", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 }

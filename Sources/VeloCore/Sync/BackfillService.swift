@@ -30,13 +30,6 @@ public struct BackfillService {
             dtos.append(try await source.getMessage(id: id))
         }
 
-        for (_, threadDTOs) in Dictionary(grouping: dtos, by: { $0.threadId }) {
-            if let thread = GmailMessageMapper.thread(from: threadDTOs) {
-                try store.upsert(thread)
-            }
-            for dto in threadDTOs {
-                try store.upsert(GmailMessageMapper.message(from: dto))
-            }
-        }
+        try InboxReconciler.reconcile(dtos, into: store)
     }
 }
