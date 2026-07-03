@@ -55,6 +55,10 @@ private final class HistorySource: GmailReading {
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         fatalError("list not used by incremental sync")
     }
+
+    func getProfile() async throws -> GmailProfile {
+        fatalError("getProfile not used by incremental sync")
+    }
 }
 
 @Suite struct IncrementalSyncServiceTests {

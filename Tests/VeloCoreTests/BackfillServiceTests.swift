@@ -44,6 +44,10 @@ private final class ScriptedSource: GmailReading {
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
         fatalError("fetchHistory not used by backfill")
     }
+
+    func getProfile() async throws -> GmailProfile {
+        GmailProfile(emailAddress: "u@x.com", historyId: "5000")
+    }
 }
 
 @Suite struct BackfillServiceTests {

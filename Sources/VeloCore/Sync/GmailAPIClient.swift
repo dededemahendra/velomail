@@ -3,6 +3,7 @@ import Foundation
 /// The Gmail read operations `BackfillService` needs. Abstracted so backfill can
 /// be driven by a scripted source in tests; `GmailAPIClient` is the live impl.
 public protocol GmailReading {
+    func getProfile() async throws -> GmailProfile
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
     func getMessage(id: String) async throws -> GmailMessageDTO
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
@@ -22,6 +23,14 @@ public struct GmailAPIClient: GmailReading {
         self.httpClient = httpClient
         self.tokenProvider = tokenProvider
         self.baseURL = baseURL
+    }
+
+    /// Fetches the mailbox profile, whose `historyId` is the canonical baseline
+    /// for incremental sync.
+    public func getProfile() async throws -> GmailProfile {
+        let url = baseURL.appendingPathComponent("users/me/profile")
+        let (data, response) = try await authorizedGET(url)
+        return try checkedDecode(data, response)
     }
 
     /// Lists INBOX message ids for one page. Pass the returned `nextPageToken`
