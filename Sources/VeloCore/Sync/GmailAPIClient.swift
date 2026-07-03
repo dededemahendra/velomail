@@ -9,10 +9,16 @@ public protocol GmailReading {
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
 }
 
+/// The Gmail write operations `OutboundService` needs. Abstracted so the outbound
+/// drain can be driven by a scripted writer in tests; `GmailAPIClient` is the live impl.
+public protocol GmailWriting {
+    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO
+}
+
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
 /// individual messages. Every request carries a bearer token obtained from
 /// `AccessTokenProvider` (refreshed on demand).
-public struct GmailAPIClient: GmailReading {
+public struct GmailAPIClient: GmailReading, GmailWriting {
     private let httpClient: HTTPClient
     private let tokenProvider: AccessTokenProvider
     private let baseURL: URL
@@ -76,7 +82,21 @@ public struct GmailAPIClient: GmailReading {
         return try checkedDecode(data, response)
     }
 
+    /// Adds/removes labels on a message via `users.messages.modify`. Returns the
+    /// updated message resource. Idempotent (removing a label twice is a no-op).
+    public func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
+        let url = baseURL.appendingPathComponent("users/me/messages/\(id)/modify")
+        let body = try JSONEncoder().encode(ModifyRequest(addLabelIds: addLabelIDs, removeLabelIds: removeLabelIDs))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        return try checkedDecode(data, response)
+    }
+
     // MARK: - Internals
+
+    private struct ModifyRequest: Encodable {
+        let addLabelIds: [String]
+        let removeLabelIds: [String]
+    }
 
     private struct ListResponse: Decodable {
         struct Ref: Decodable { let id: String }
@@ -97,6 +117,18 @@ public struct GmailAPIClient: GmailReading {
         let token = try await tokenProvider.validAccessToken()
         do {
             return try await httpClient.get(url: url, headers: ["Authorization": "Bearer \(token)"])
+        } catch {
+            throw AuthError.network(error)
+        }
+    }
+
+    private func authorizedPOST(_ url: URL, body: Data) async throws -> (Data, HTTPURLResponse) {
+        let token = try await tokenProvider.validAccessToken()
+        do {
+            return try await httpClient.post(
+                url: url,
+                headers: ["Authorization": "Bearer \(token)", "Content-Type": "application/json"],
+                body: body)
         } catch {
             throw AuthError.network(error)
         }
