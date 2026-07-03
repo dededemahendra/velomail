@@ -24,6 +24,7 @@ public struct IncrementalSyncService {
         }
 
         var addedIDs: [String] = []
+        var labelDeltas: [GmailHistoryResponse.LabelDelta] = []
         var latestHistoryId = startHistoryId
         var pageToken: String?
         repeat {
@@ -35,6 +36,7 @@ public struct IncrementalSyncService {
                 throw SyncError.historyExpired
             }
             addedIDs.append(contentsOf: page.addedMessageIDs)
+            labelDeltas.append(contentsOf: page.labelDeltas)
             if let historyId = page.historyId { latestHistoryId = historyId }
             pageToken = page.nextPageToken
         } while pageToken != nil
@@ -46,7 +48,9 @@ public struct IncrementalSyncService {
         for id in uniqueIDs {
             dtos.append(try await source.getMessage(id: id))
         }
+        // Reconcile newly-arrived messages first, so deltas targeting them find them present.
         try InboxReconciler.reconcile(dtos, into: store)
+        try LabelDeltaApplier.apply(labelDeltas, into: store)
 
         state.historyId = latestHistoryId
         try syncState.save(state)

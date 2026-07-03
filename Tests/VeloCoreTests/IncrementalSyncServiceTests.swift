@@ -26,6 +26,27 @@ private func historyPage(added: [(id: String, thread: String)],
     return try! JSONDecoder().decode(GmailHistoryResponse.self, from: Data(json.utf8))
 }
 
+private func labelHistoryPage(added: [(id: String, thread: String)] = [],
+                              labelsRemoved: [(id: String, labels: [String])] = [],
+                              labelsAdded: [(id: String, labels: [String])] = [],
+                              historyId: String, nextPageToken: String? = nil) -> GmailHistoryResponse {
+    func changesJSON(_ items: [(id: String, labels: [String])]) -> String {
+        items.map { item in
+            let labels = item.labels.map { "\"\($0)\"" }.joined(separator: ",")
+            return "{\"message\":{\"id\":\"\(item.id)\"},\"labelIds\":[\(labels)]}"
+        }.joined(separator: ",")
+    }
+    let addedJSON = added.map { "{\"message\":{\"id\":\"\($0.id)\",\"threadId\":\"\($0.thread)\"}}" }
+        .joined(separator: ",")
+    var parts = ["\"id\":\"1\""]
+    if !added.isEmpty { parts.append("\"messagesAdded\":[\(addedJSON)]") }
+    if !labelsRemoved.isEmpty { parts.append("\"labelsRemoved\":[\(changesJSON(labelsRemoved))]") }
+    if !labelsAdded.isEmpty { parts.append("\"labelsAdded\":[\(changesJSON(labelsAdded))]") }
+    let nextJSON = nextPageToken.map { ",\"nextPageToken\":\"\($0)\"" } ?? ""
+    let json = "{\"history\":[{\(parts.joined(separator: ","))}],\"historyId\":\"\(historyId)\"\(nextJSON)}"
+    return try! JSONDecoder().decode(GmailHistoryResponse.self, from: Data(json.utf8))
+}
+
 /// Scripted history source. Paging restarts on a fresh sync (`pageToken == nil`).
 private final class HistorySource: GmailReading {
     let pages: [GmailHistoryResponse]
@@ -195,5 +216,77 @@ private final class ThrowingFetchHistorySource: GmailReading {
             try await service.sync(accountID: account)
         }
         #expect(source.getCallCount == 0)
+    }
+
+    // MARK: - Label deltas end-to-end (C5)
+
+    private func seedMessage(_ store: MailStore, threadID: String, messageID: String, labels: [String]) throws {
+        let unread = labels.contains("UNREAD")
+        try store.upsert(MailThread(id: threadID, snippet: "s", lastMessageDate: Date(timeIntervalSince1970: 0),
+                                    isUnread: unread, hasAttachments: false, labelIDs: labels))
+        try store.upsert(Message(id: messageID, threadID: threadID, sender: "", recipients: [], subject: "",
+                                 date: Date(timeIntervalSince1970: 0), bodyHTML: nil, bodyText: nil,
+                                 isUnread: unread, labelIDs: labels))
+    }
+
+    @Test func appliesLabelRemovedToStoredMessage() async throws {
+        let (service, mailStore, syncStore, _) = try makeContext(
+            pages: [labelHistoryPage(labelsRemoved: [("m1", ["UNREAD"])], historyId: "1100")],
+            messages: [], seedHistoryId: "1000")
+        try seedMessage(mailStore, threadID: "t1", messageID: "m1", labels: ["INBOX", "UNREAD"])
+
+        try await service.sync(accountID: account)
+
+        #expect(try mailStore.message(id: "m1")?.isUnread == false)
+        #expect(try mailStore.thread(id: "t1")?.isUnread == false)
+        #expect(try syncStore.load(accountID: account)?.historyId == "1100")
+    }
+
+    @Test func labelRemovedInboxArchivesStoredThread() async throws {
+        let (service, mailStore, syncStore, _) = try makeContext(
+            pages: [labelHistoryPage(labelsRemoved: [("m1", ["INBOX"])], historyId: "1100")],
+            messages: [], seedHistoryId: "1000")
+        try seedMessage(mailStore, threadID: "t1", messageID: "m1", labels: ["INBOX"])
+
+        try await service.sync(accountID: account)
+
+        #expect(try mailStore.inboxThreads().isEmpty)
+        #expect(try syncStore.load(accountID: account)?.historyId == "1100")
+    }
+
+    @Test func deltaOnlyPageAdvancesCursorWithoutHydrating() async throws {
+        let (service, mailStore, syncStore, source) = try makeContext(
+            pages: [labelHistoryPage(labelsRemoved: [("m1", ["UNREAD"])], historyId: "1100")],
+            messages: [], seedHistoryId: "1000")
+        try seedMessage(mailStore, threadID: "t1", messageID: "m1", labels: ["INBOX", "UNREAD"])
+
+        try await service.sync(accountID: account)
+
+        #expect(source.getCallCount == 0)
+        #expect(try syncStore.load(accountID: account)?.historyId == "1100")
+    }
+
+    @Test func addedAndLabelDeltaTogetherAreIdempotent() async throws {
+        let (service, mailStore, _, _) = try makeContext(
+            pages: [labelHistoryPage(added: [("m2", "t2")], labelsAdded: [("m1", ["STARRED"])], historyId: "1100")],
+            messages: [makeDTO(id: "m2", thread: "t2", internalDate: "5", snippet: "new")],
+            seedHistoryId: "1000")
+        try seedMessage(mailStore, threadID: "t1", messageID: "m1", labels: ["INBOX"])
+
+        try await service.sync(accountID: account)
+        try await service.sync(accountID: account)   // replay: still stable
+
+        #expect(try mailStore.message(id: "m1")?.labelIDs == ["INBOX", "STARRED"])
+        #expect(try mailStore.messages(inThread: "t2").count == 1)
+    }
+
+    @Test func labelDeltaForUnknownMessageIsIgnored() async throws {
+        let (service, _, syncStore, _) = try makeContext(
+            pages: [labelHistoryPage(labelsAdded: [("ghost", ["X"])], historyId: "1100")],
+            messages: [], seedHistoryId: "1000")
+
+        try await service.sync(accountID: account)
+
+        #expect(try syncStore.load(accountID: account)?.historyId == "1100")
     }
 }
