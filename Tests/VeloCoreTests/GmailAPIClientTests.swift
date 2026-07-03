@@ -91,6 +91,19 @@ private func makeClient(_ getResult: Result<(Data, HTTPURLResponse), Error>) thr
         #expect(query.contains("historyTypes=messageAdded"))
     }
 
+    @Test func fetchHistoryRequestsLabelHistoryTypes() async throws {
+        let json = Data(#"{"history":[],"historyId":"2100"}"#.utf8)
+        let (api, client) = try makeClient(.success((json, http(200))))
+
+        _ = try await api.fetchHistory(startHistoryId: "2000", pageToken: nil)
+
+        let query = client.lastGetURL?.query ?? ""
+        #expect(query.contains("historyTypes=messageAdded"))
+        #expect(query.contains("historyTypes=labelAdded"))
+        #expect(query.contains("historyTypes=labelRemoved"))
+        #expect(client.lastGetHeaders?["Authorization"] == "Bearer tok")
+    }
+
     @Test func fetchHistoryPassesPageToken() async throws {
         let json = Data(#"{"history":[],"historyId":"2100"}"#.utf8)
         let (api, client) = try makeClient(.success((json, http(200))))

@@ -74,6 +74,8 @@ public struct GmailAPIClient: GmailReading, GmailWriting {
         var items = [
             URLQueryItem(name: "startHistoryId", value: startHistoryId),
             URLQueryItem(name: "historyTypes", value: "messageAdded"),
+            URLQueryItem(name: "historyTypes", value: "labelAdded"),
+            URLQueryItem(name: "historyTypes", value: "labelRemoved"),
         ]
         if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
         components.queryItems = items
