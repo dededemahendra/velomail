@@ -28,7 +28,8 @@ public enum GmailMessageMapper {
             date: date(from: dto.internalDate),
             bodyHTML: html,
             bodyText: text,
-            isUnread: isUnread(dto))
+            isUnread: isUnread(dto),
+            labelIDs: [])
     }
 
     /// Derives the thread record from all of a thread's messages. Returns `nil`

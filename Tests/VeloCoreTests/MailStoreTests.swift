@@ -37,10 +37,10 @@ import Foundation
         try store.upsert(thread("t", date: 0, labels: ["INBOX"]))
         try store.upsert(Message(id: "m2", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 20),
-                                 bodyHTML: nil, bodyText: nil, isUnread: false))
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
         try store.upsert(Message(id: "m1", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 10),
-                                 bodyHTML: nil, bodyText: nil, isUnread: false))
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
         let ids = try store.messages(inThread: "t").map(\.id)
         #expect(ids == ["m1", "m2"])
     }

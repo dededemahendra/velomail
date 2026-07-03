@@ -27,10 +27,12 @@ import GRDB
             id: "m1", threadID: "t1", sender: "a@b.com",
             recipients: ["c@d.com"], subject: "hi",
             date: Date(timeIntervalSince1970: 10),
-            bodyHTML: "<p>hi</p>", bodyText: "hi", isUnread: true
+            bodyHTML: "<p>hi</p>", bodyText: "hi", isUnread: true,
+            labelIDs: ["INBOX", "UNREAD"]
         )
         try db.dbQueue.write { try msg.insert($0) }
         let fetched = try db.dbQueue.read { try Message.fetchOne($0, key: "m1") }
         #expect(fetched == msg)
+        #expect(fetched?.labelIDs == ["INBOX", "UNREAD"])
     }
 }

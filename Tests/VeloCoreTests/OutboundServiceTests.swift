@@ -46,7 +46,7 @@ private final class ScriptedWriter: GmailWriting {
         for (i, mid) in messageIDs.enumerated() {
             try store.upsert(Message(id: mid, threadID: id, sender: "x", recipients: [], subject: "",
                                      date: Date(timeIntervalSince1970: TimeInterval(i)),
-                                     bodyHTML: nil, bodyText: nil, isUnread: unread))
+                                     bodyHTML: nil, bodyText: nil, isUnread: unread, labelIDs: labels))
         }
     }
 

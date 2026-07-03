@@ -65,6 +65,12 @@ public final class AppDatabase {
             try db.create(index: "pendingMutation_on_status", on: "pendingMutation", columns: ["status"])
         }
 
+        migrator.registerMigration("v4_add_message_labelIDs") { db in
+            try db.alter(table: "message") { t in
+                t.add(column: "labelIDs", .text).notNull().defaults(to: "[]")
+            }
+        }
+
         return migrator
     }
 }
