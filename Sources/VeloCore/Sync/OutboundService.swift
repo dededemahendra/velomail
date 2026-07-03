@@ -71,3 +71,43 @@ public struct OutboundService {
         _ = try mutations.enqueue(PendingMutation(kind: kind, payload: encoded, createdAt: now(), status: .pending))
     }
 }
+
+extension OutboundService {
+    /// Pushes every pending mutation to Gmail. For each: modify every message in
+    /// the payload; on success delete the row; on API failure revert the thread
+    /// to its pre-change state (from the persisted payload) and mark the mutation
+    /// failed, then continue. Never rethrows an API failure; only genuine DB/decode
+    /// faults propagate.
+    public func drain() async throws {
+        for mutation in try queue.pending() {
+            guard let id = mutation.id else { continue }
+            let payload = try JSONDecoder().decode(OutboundMutationPayload.self, from: mutation.payload)
+
+            var apiFailed = false
+            do {
+                for messageID in payload.messageIDs {
+                    _ = try await gmailWriter.modifyMessage(
+                        id: messageID,
+                        addLabelIDs: payload.addLabelIDs,
+                        removeLabelIDs: payload.removeLabelIDs)
+                }
+            } catch is AuthError {
+                apiFailed = true
+            }
+
+            if apiFailed {
+                try revert(payload)
+                try queue.markFailed(id: id)
+            } else {
+                try queue.delete(id: id)
+            }
+        }
+    }
+
+    private func revert(_ payload: OutboundMutationPayload) throws {
+        guard var thread = try mailStore.thread(id: payload.threadID) else { return }
+        thread.labelIDs = payload.previousLabelIDs
+        thread.isUnread = payload.previousIsUnread
+        try mailStore.upsert(thread)
+    }
+}

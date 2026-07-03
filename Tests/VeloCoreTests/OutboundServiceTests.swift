@@ -10,6 +10,25 @@ private struct UnusedWriter: GmailWriting {
     }
 }
 
+private func stubDTO(id: String) -> GmailMessageDTO {
+    try! JSONDecoder().decode(GmailMessageDTO.self,
+                              from: Data("{\"id\":\"\(id)\",\"threadId\":\"t\",\"labelIds\":[]}".utf8))
+}
+
+/// Scripted writer that throws for a configured set of message ids.
+private final class ScriptedWriter: GmailWriting {
+    var failingMessageIDs: Set<String>
+    private(set) var modifyCalls: [(id: String, add: [String], remove: [String])] = []
+
+    init(failing: Set<String> = []) { self.failingMessageIDs = failing }
+
+    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
+        modifyCalls.append((id, addLabelIDs, removeLabelIDs))
+        if failingMessageIDs.contains(id) { throw AuthError.server(code: "500", description: "boom") }
+        return stubDTO(id: id)
+    }
+}
+
 @Suite struct OutboundServiceTests {
     private func makeContext(now: @escaping () -> Date = { Date(timeIntervalSince1970: 42) })
         throws -> (OutboundService, MailStore, MutationStore) {
@@ -101,5 +120,91 @@ private struct UnusedWriter: GmailWriting {
         try service.archive(threadID: "t")
 
         #expect(try mutations.pending()[0].createdAt == fixed)
+    }
+
+    // MARK: - Drain (B5)
+
+    private func makeDrainContext(writer: ScriptedWriter)
+        throws -> (OutboundService, MailStore, MutationStore) {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let mutations = MutationStore(db)
+        let service = OutboundService(writer: writer, store: store, mutations: mutations,
+                                      now: { Date(timeIntervalSince1970: 1) })
+        return (service, store, mutations)
+    }
+
+    @Test func drainSuccessModifiesEveryMessageThenDeletesRow() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1", "m2"])
+        try service.archive(threadID: "t")
+
+        try await service.drain()
+
+        #expect(writer.modifyCalls.map(\.id) == ["m1", "m2"])
+        #expect(writer.modifyCalls.allSatisfy { $0.remove == ["INBOX"] })
+        #expect(try mutations.all().isEmpty)
+        #expect(try store.inboxThreads().isEmpty)   // stays archived
+    }
+
+    @Test func drainFailureRevertsAndMarksFailed() async throws {
+        let writer = ScriptedWriter(failing: ["m1"])
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX", "UNREAD"], unread: true, messageIDs: ["m1"])
+        try service.archive(threadID: "t")
+
+        try await service.drain()
+
+        let reverted = try store.thread(id: "t")
+        #expect(reverted?.labelIDs == ["INBOX", "UNREAD"])   // restored
+        #expect(reverted?.isUnread == true)
+        #expect(try store.inboxThreads().map(\.id) == ["t"])  // back in inbox
+        #expect(try mutations.pending().isEmpty)
+        #expect(try mutations.all().first?.status == .failed)
+    }
+
+    @Test func drainIsIdempotentAfterSuccess() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.archive(threadID: "t")
+
+        try await service.drain()
+        let callsAfterFirst = writer.modifyCalls.count
+        try await service.drain()
+
+        #expect(writer.modifyCalls.count == callsAfterFirst)   // no new calls
+        #expect(try mutations.all().isEmpty)
+    }
+
+    @Test func drainProcessesMultipleMutations() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "a", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try seedThread(store, id: "b", labels: ["INBOX"], unread: false, messageIDs: ["m2"])
+        try service.archive(threadID: "a")
+        try service.archive(threadID: "b")
+
+        try await service.drain()
+
+        #expect(try mutations.all().isEmpty)
+        #expect(try store.inboxThreads().isEmpty)
+    }
+
+    @Test func failedMutationDoesNotBlockGoodOne() async throws {
+        let writer = ScriptedWriter(failing: ["m1"])
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "a", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try seedThread(store, id: "b", labels: ["INBOX"], unread: false, messageIDs: ["m2"])
+        try service.archive(threadID: "a")
+        try service.archive(threadID: "b")
+
+        try await service.drain()
+
+        #expect(try store.inboxThreads().map(\.id) == ["a"])   // a reverted, b archived
+        let all = try mutations.all()
+        #expect(all.count == 1)                                 // b deleted, a kept failed
+        #expect(all.first?.status == .failed)
     }
 }
