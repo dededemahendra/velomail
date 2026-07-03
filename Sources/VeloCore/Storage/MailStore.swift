@@ -40,6 +40,21 @@ public final class MailStore {
         }
     }
 
+    public func message(id: String) throws -> Message? {
+        try database.dbQueue.read { try Message.fetchOne($0, key: id) }
+    }
+
+    /// Sets a thread's aggregate `labelIDs` + `isUnread`, preserving all other
+    /// fields. No-op if the thread does not exist.
+    public func updateThreadDerivedLabels(_ labelIDs: [String], isUnread: Bool, onThread threadID: String) throws {
+        try database.dbQueue.write { db in
+            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
+            thread.labelIDs = labelIDs
+            thread.isUnread = isUnread
+            try thread.update(db)
+        }
+    }
+
     public func setLabels(_ labelIDs: [String], onThread threadID: String) throws {
         try database.dbQueue.write { db in
             guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
