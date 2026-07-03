@@ -61,8 +61,70 @@ private final class HistorySource: GmailReading {
     }
 }
 
+/// Source whose fetchHistory throws a supplied error; used for expiry tests.
+private final class ThrowingFetchHistorySource: GmailReading {
+    let error: Error
+    private(set) var getCallCount = 0
+
+    init(error: Error) { self.error = error }
+
+    func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
+        throw error
+    }
+    func getMessage(id: String) async throws -> GmailMessageDTO {
+        getCallCount += 1
+        fatalError("getMessage should not be called on history-expired")
+    }
+    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+        fatalError("list not used")
+    }
+    func getProfile() async throws -> GmailProfile { fatalError("getProfile not used") }
+}
+
 @Suite struct IncrementalSyncServiceTests {
     private let account = "acct-1"
+
+    private func makeThrowingContext(_ error: Error) throws
+        -> (IncrementalSyncService, SyncStateStore, ThrowingFetchHistorySource) {
+        let db = try AppDatabase.makeInMemory()
+        let mailStore = MailStore(db)
+        let syncStore = SyncStateStore(db)
+        try syncStore.save(SyncState(accountID: account, historyId: "1000", backfillComplete: true))
+        let source = ThrowingFetchHistorySource(error: error)
+        let service = IncrementalSyncService(source: source, store: mailStore, syncState: syncStore)
+        return (service, syncStore, source)
+    }
+
+    @Test func historyExpired404MapsToSyncError() async throws {
+        let (service, _, _) = try makeThrowingContext(AuthError.server(code: "404", description: "gone"))
+        await #expect(throws: SyncError.historyExpired) {
+            try await service.sync(accountID: account)
+        }
+    }
+
+    @Test func historyExpiredNotFoundMapsToSyncError() async throws {
+        let (service, _, _) = try makeThrowingContext(AuthError.server(code: "NOT_FOUND", description: "gone"))
+        await #expect(throws: SyncError.historyExpired) {
+            try await service.sync(accountID: account)
+        }
+    }
+
+    @Test func historyExpiredLeavesCursorUntouched() async throws {
+        let (service, syncStore, source) = try makeThrowingContext(AuthError.server(code: "404", description: "gone"))
+        await #expect(throws: SyncError.historyExpired) {
+            try await service.sync(accountID: account)
+        }
+        let state = try syncStore.load(accountID: account)
+        #expect(state?.historyId == "1000")
+        #expect(source.getCallCount == 0)
+    }
+
+    @Test func nonExpiryServerErrorPropagatesUnchanged() async throws {
+        let (service, _, _) = try makeThrowingContext(AuthError.server(code: "UNAUTHENTICATED", description: "bad"))
+        await #expect(throws: AuthError.server(code: "UNAUTHENTICATED", description: "bad")) {
+            try await service.sync(accountID: account)
+        }
+    }
 
     private func makeContext(pages: [GmailHistoryResponse], messages: [GmailMessageDTO],
                              seedHistoryId: String?) throws

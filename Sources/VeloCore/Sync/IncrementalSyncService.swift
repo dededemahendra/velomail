@@ -27,7 +27,13 @@ public struct IncrementalSyncService {
         var latestHistoryId = startHistoryId
         var pageToken: String?
         repeat {
-            let page = try await source.fetchHistory(startHistoryId: startHistoryId, pageToken: pageToken)
+            let page: GmailHistoryResponse
+            do {
+                page = try await source.fetchHistory(startHistoryId: startHistoryId, pageToken: pageToken)
+            } catch let error as AuthError where Self.isHistoryExpired(error) {
+                // Cursor is too old; throw before advancing/saving so the caller re-backfills.
+                throw SyncError.historyExpired
+            }
             addedIDs.append(contentsOf: page.addedMessageIDs)
             if let historyId = page.historyId { latestHistoryId = historyId }
             pageToken = page.nextPageToken
@@ -44,5 +50,12 @@ public struct IncrementalSyncService {
 
         state.historyId = latestHistoryId
         try syncState.save(state)
+    }
+
+    /// A too-old `startHistoryId` surfaces as a Gmail 404, which `checkedDecode`
+    /// maps to `.server` with code `"404"` or (via Gmail's `status`) `"NOT_FOUND"`.
+    private static func isHistoryExpired(_ error: AuthError) -> Bool {
+        guard case let .server(code, _) = error else { return false }
+        return code == "404" || code == "NOT_FOUND"
     }
 }
