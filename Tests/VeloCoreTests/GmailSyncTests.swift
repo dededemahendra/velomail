@@ -86,9 +86,9 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         let mutations = MutationStore(db)
         if let seedState { try syncStore.save(seedState) }
         if let ids = seedMutationMessageIDs {
-            let payload = OutboundMutationPayload(threadID: "seed", messageIDs: ids, addLabelIDs: [],
-                                                  removeLabelIDs: ["INBOX"], previousLabelIDs: ["INBOX"],
-                                                  previousIsUnread: false)
+            let payload = OutboundMutationPayload(
+                threadID: "seed", messageIDs: ids, addLabelIDs: [], removeLabelIDs: ["INBOX"],
+                previousMessageLabels: Dictionary(uniqueKeysWithValues: ids.map { ($0, ["INBOX"]) }))
             _ = try mutations.enqueue(PendingMutation(kind: .archive, payload: try JSONEncoder().encode(payload),
                                                       createdAt: Date(timeIntervalSince1970: 0)))
         }

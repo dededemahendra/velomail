@@ -68,7 +68,8 @@ private final class ScriptedWriter: GmailWriting {
         #expect(p.removeLabelIDs == ["INBOX"])
         #expect(p.addLabelIDs == [])
         #expect(p.messageIDs == ["m1", "m2"])
-        #expect(p.previousLabelIDs.contains("INBOX"))
+        #expect(p.previousMessageLabels["m1"]?.contains("INBOX") == true)
+        #expect(try store.message(id: "m1")?.labelIDs.contains("INBOX") == false)   // message row updated too
     }
 
     @Test func markReadClearsUnreadLocallyAndEnqueues() async throws {
@@ -110,6 +111,21 @@ private final class ScriptedWriter: GmailWriting {
         let (service, _, mutations) = try makeContext()
         try service.archive(threadID: "ghost")
         #expect(try mutations.pending().isEmpty)
+    }
+
+    @Test func optimisticApplyUpdatesMessagesSoReDerivationDoesNotResurrect() async throws {
+        // Regression: markRead must update the message rows too, else a later
+        // thread re-derivation (LabelDeltaApplier) resurrects UNREAD.
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX", "UNREAD"], unread: true, messageIDs: ["m1"])
+
+        try service.markRead(threadID: "t")
+        #expect(try store.message(id: "m1")?.labelIDs.contains("UNREAD") == false)
+
+        // An unrelated incremental label delta re-derives the thread from its messages.
+        try LabelDeltaApplier.apply([.init(messageID: "m1", added: ["IMPORTANT"], removed: [])], into: store)
+
+        #expect(try store.thread(id: "t")?.isUnread == false)   // mark-read survives
     }
 
     @Test func createdAtUsesInjectedClock() async throws {

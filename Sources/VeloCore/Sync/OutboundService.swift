@@ -2,14 +2,14 @@ import Foundation
 
 /// The pre-change state and intended label change for one outbound mutation,
 /// persisted in `PendingMutation.payload`. Everything needed to push the change
-/// AND to revert it lives here, so `drain()` works even in a later process.
+/// AND to revert it lives here (including each message's prior labels), so
+/// `drain()` works even in a later process.
 struct OutboundMutationPayload: Codable, Equatable {
     var threadID: String
     var messageIDs: [String]
     var addLabelIDs: [String]
     var removeLabelIDs: [String]
-    var previousLabelIDs: [String]
-    var previousIsUnread: Bool
+    var previousMessageLabels: [String: [String]]
 }
 
 /// Applies triage actions (archive, mark read/unread) optimistically to local
@@ -49,27 +49,43 @@ public struct OutboundService {
 
     private func enqueueLabelChange(threadID: String, kind: MutationKind,
                                    add: [String], remove: [String]) throws {
-        guard let thread = try store.thread(id: threadID) else { return }
-        let messageIDs = try store.messages(inThread: threadID).map(\.id)
+        guard try store.thread(id: threadID) != nil else { return }
+        let messages = try store.messages(inThread: threadID)
 
-        var newLabels = thread.labelIDs.filter { !remove.contains($0) }
-        for label in add where !newLabels.contains(label) { newLabels.append(label) }
-
-        var updated = thread
-        updated.labelIDs = newLabels
-        updated.isUnread = newLabels.contains("UNREAD")
-        try store.upsert(updated)
+        // Apply the change to each message row (capturing prior labels for revert),
+        // then re-derive the thread from its messages. This preserves the invariant
+        // thread.labelIDs == union(message.labelIDs), so a later thread re-derivation
+        // (LabelDeltaApplier) can't resurrect the removed label.
+        var previousMessageLabels: [String: [String]] = [:]
+        for var message in messages {
+            previousMessageLabels[message.id] = message.labelIDs
+            message.labelIDs = applyLabels(to: message.labelIDs, add: add, remove: remove)
+            message.isUnread = message.labelIDs.contains("UNREAD")
+            try store.upsert(message)
+        }
+        try deriveThread(threadID, in: store)
 
         let payload = OutboundMutationPayload(
             threadID: threadID,
-            messageIDs: messageIDs,
+            messageIDs: messages.map(\.id),
             addLabelIDs: add,
             removeLabelIDs: remove,
-            previousLabelIDs: thread.labelIDs,
-            previousIsUnread: thread.isUnread)
+            previousMessageLabels: previousMessageLabels)
         let encoded = try JSONEncoder().encode(payload)
         _ = try mutations.enqueue(PendingMutation(kind: kind, payload: encoded, createdAt: now(), status: .pending))
     }
+}
+
+func applyLabels(to labels: [String], add: [String], remove: [String]) -> [String] {
+    var result = labels.filter { !remove.contains($0) }
+    for label in add where !result.contains(label) { result.append(label) }
+    return result
+}
+
+func deriveThread(_ threadID: String, in store: MailStore) throws {
+    let messages = try store.messages(inThread: threadID)
+    let (labelIDs, isUnread) = GmailMessageMapper.threadAggregate(from: messages)
+    try store.updateThreadDerivedLabels(labelIDs, isUnread: isUnread, onThread: threadID)
 }
 
 extension OutboundService {
@@ -105,9 +121,13 @@ extension OutboundService {
     }
 
     private func revert(_ payload: OutboundMutationPayload) throws {
-        guard var thread = try mailStore.thread(id: payload.threadID) else { return }
-        thread.labelIDs = payload.previousLabelIDs
-        thread.isUnread = payload.previousIsUnread
-        try mailStore.upsert(thread)
+        for messageID in payload.messageIDs {
+            guard var message = try mailStore.message(id: messageID),
+                  let previous = payload.previousMessageLabels[messageID] else { continue }
+            message.labelIDs = previous
+            message.isUnread = previous.contains("UNREAD")
+            try mailStore.upsert(message)
+        }
+        try deriveThread(payload.threadID, in: mailStore)
     }
 }
