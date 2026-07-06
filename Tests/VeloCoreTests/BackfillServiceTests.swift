@@ -18,7 +18,7 @@ private func makeDTO(id: String, thread: String, labels: [String],
 
 /// Scripted Gmail source. Paging restarts whenever a fresh backfill begins
 /// (`pageToken == nil`), so the same instance can drive repeated backfills.
-private final class ScriptedSource: GmailReading {
+private final class ScriptedSource: GmailReading, @unchecked Sendable {
     let pages: [(ids: [String], next: String?)]
     let messages: [String: GmailMessageDTO]
     let profileHistoryId: String

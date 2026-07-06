@@ -3,7 +3,7 @@ import Foundation
 /// Applies Gmail `history.list` deltas since the stored `historyId`: hydrates
 /// newly arrived messages, reconciles them into `MailStore`, and advances the
 /// stored cursor. Per-message label deltas are not yet applied (deferred).
-public struct IncrementalSyncService {
+public struct IncrementalSyncService: Sendable {
     private let source: GmailReading
     private let store: MailStore
     private let syncState: SyncStateStore

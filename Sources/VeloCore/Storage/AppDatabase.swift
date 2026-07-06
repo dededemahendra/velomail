@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 /// Owns the SQLite connection and applies schema migrations.
-public final class AppDatabase {
+public final class AppDatabase: Sendable {
     let dbQueue: DatabaseQueue
 
     public init(_ dbQueue: DatabaseQueue) throws {

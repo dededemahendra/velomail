@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public final class MailStore {
+public final class MailStore: Sendable {
     private let database: AppDatabase
 
     public init(_ database: AppDatabase) {

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 /// Persists the per-account `SyncState` (Gmail history cursor + backfill flag).
-public final class SyncStateStore {
+public final class SyncStateStore: Sendable {
     private let database: AppDatabase
 
     public init(_ database: AppDatabase) {

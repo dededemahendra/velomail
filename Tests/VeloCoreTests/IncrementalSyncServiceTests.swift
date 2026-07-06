@@ -48,7 +48,7 @@ private func labelHistoryPage(added: [(id: String, thread: String)] = [],
 }
 
 /// Scripted history source. Paging restarts on a fresh sync (`pageToken == nil`).
-private final class HistorySource: GmailReading {
+private final class HistorySource: GmailReading, @unchecked Sendable {
     let pages: [GmailHistoryResponse]
     let messages: [String: GmailMessageDTO]
     private var index = 0
@@ -83,7 +83,7 @@ private final class HistorySource: GmailReading {
 }
 
 /// Source whose fetchHistory throws a supplied error; used for expiry tests.
-private final class ThrowingFetchHistorySource: GmailReading {
+private final class ThrowingFetchHistorySource: GmailReading, @unchecked Sendable {
     let error: Error
     private(set) var getCallCount = 0
 

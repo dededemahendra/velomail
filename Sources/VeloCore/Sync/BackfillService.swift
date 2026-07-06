@@ -6,7 +6,7 @@ import Foundation
 /// backfill produces the same rows rather than duplicates. On completion it
 /// records the mailbox `historyId` baseline (captured up front, before listing)
 /// and marks `backfillComplete`, so incremental sync can run without seeding.
-public struct BackfillService {
+public struct BackfillService: Sendable {
     private let source: GmailReading
     private let store: MailStore
     private let syncState: SyncStateStore

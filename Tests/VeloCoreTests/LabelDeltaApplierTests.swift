@@ -81,7 +81,8 @@ import Foundation
             .init(messageID: "m1", added: ["UNREAD"], removed: []),
         ], into: store)
 
-        #expect(try store.message(id: "m1")?.labelIDs.contains("UNREAD") == true)
+        let labels = try #require(store.message(id: "m1")?.labelIDs)
+        #expect(labels.contains("UNREAD"))
         #expect(try store.thread(id: "t")?.isUnread == true)
     }
 }
