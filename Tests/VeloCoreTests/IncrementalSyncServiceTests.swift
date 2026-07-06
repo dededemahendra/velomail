@@ -51,13 +51,15 @@ private func labelHistoryPage(added: [(id: String, thread: String)] = [],
 private final class HistorySource: GmailReading, @unchecked Sendable {
     let pages: [GmailHistoryResponse]
     let messages: [String: GmailMessageDTO]
+    let notFoundIDs: Set<String>
     private var index = 0
     private(set) var getCallCount = 0
     private(set) var lastStartHistoryId: String?
 
-    init(pages: [GmailHistoryResponse], messages: [GmailMessageDTO]) {
+    init(pages: [GmailHistoryResponse], messages: [GmailMessageDTO], notFoundIDs: Set<String> = []) {
         self.pages = pages
         self.messages = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+        self.notFoundIDs = notFoundIDs
     }
 
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
@@ -70,6 +72,7 @@ private final class HistorySource: GmailReading, @unchecked Sendable {
 
     func getMessage(id: String) async throws -> GmailMessageDTO {
         getCallCount += 1
+        if notFoundIDs.contains(id) { throw AuthError.server(code: "NOT_FOUND", description: "deleted") }
         return messages[id]!
     }
 
@@ -278,6 +281,23 @@ private final class ThrowingFetchHistorySource: GmailReading, @unchecked Sendabl
 
         #expect(try mailStore.message(id: "m1")?.labelIDs == ["INBOX", "STARRED"])
         #expect(try mailStore.messages(inThread: "t2").count == 1)
+    }
+
+    @Test func skipsDeletedMessageOn404AndAdvancesCursor() async throws {
+        // m1 is in history's messagesAdded but 404s on getMessage (deleted/trashed).
+        let db = try AppDatabase.makeInMemory()
+        let mailStore = MailStore(db)
+        let syncStore = SyncStateStore(db)
+        try syncStore.save(SyncState(accountID: account, historyId: "1000", backfillComplete: true))
+        let source = HistorySource(
+            pages: [historyPage(added: [("m1", "t1")], historyId: "1100", nextPageToken: nil)],
+            messages: [], notFoundIDs: ["m1"])
+        let service = IncrementalSyncService(source: source, store: mailStore, syncState: syncStore)
+
+        try await service.sync(accountID: account)   // must NOT throw
+
+        #expect(try mailStore.inboxThreads().isEmpty)                     // deleted message skipped
+        #expect(try syncStore.load(accountID: account)?.historyId == "1100")  // cursor advances
     }
 
     @Test func labelDeltaForUnknownMessageIsIgnored() async throws {

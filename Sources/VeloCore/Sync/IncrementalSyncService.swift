@@ -31,7 +31,7 @@ public struct IncrementalSyncService: Sendable {
             let page: GmailHistoryResponse
             do {
                 page = try await source.fetchHistory(startHistoryId: startHistoryId, pageToken: pageToken)
-            } catch let error as AuthError where Self.isHistoryExpired(error) {
+            } catch let error as AuthError where Self.isNotFound(error) {
                 // Cursor is too old; throw before advancing/saving so the caller re-backfills.
                 throw SyncError.historyExpired
             }
@@ -46,7 +46,13 @@ public struct IncrementalSyncService: Sendable {
 
         var dtos: [GmailMessageDTO] = []
         for id in uniqueIDs {
-            dtos.append(try await source.getMessage(id: id))
+            do {
+                dtos.append(try await source.getMessage(id: id))
+            } catch let error as AuthError where Self.isNotFound(error) {
+                // Message was deleted/trashed between history and fetch; skip it and
+                // keep advancing rather than stalling sync forever on the same page.
+                continue
+            }
         }
         // Reconcile newly-arrived messages first, so deltas targeting them find them present.
         try InboxReconciler.reconcile(dtos, into: store)
@@ -56,9 +62,10 @@ public struct IncrementalSyncService: Sendable {
         try syncState.save(state)
     }
 
-    /// A too-old `startHistoryId` surfaces as a Gmail 404, which `checkedDecode`
-    /// maps to `.server` with code `"404"` or (via Gmail's `status`) `"NOT_FOUND"`.
-    private static func isHistoryExpired(_ error: AuthError) -> Bool {
+    /// A Gmail 404 surfaces as `.server` with code `"404"` or (via Gmail's
+    /// `status`) `"NOT_FOUND"`. Used both for a too-old history cursor and for a
+    /// message that no longer exists.
+    private static func isNotFound(_ error: AuthError) -> Bool {
         guard case let .server(code, _) = error else { return false }
         return code == "404" || code == "NOT_FOUND"
     }
