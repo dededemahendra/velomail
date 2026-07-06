@@ -38,10 +38,31 @@ private func decodeHistory(_ json: String) throws -> GmailHistoryResponse {
 
     @Test func recordWithoutMessagesAddedContributesNothing() throws {
         let json = """
-        {"history": [{"id": "9", "labelsRemoved": [{"message": {"id": "x"}}]}], "historyId": "1"}
+        {"history": [{"id": "9", "labelsRemoved": [{"message": {"id": "x"}, "labelIds": ["UNREAD"]}]}], "historyId": "1"}
         """
         let response = try decodeHistory(json)
 
         #expect(response.addedMessageIDs == [])
+        #expect(response.labelDeltas == [GmailHistoryResponse.LabelDelta(messageID: "x", added: [], removed: ["UNREAD"])])
+    }
+
+    @Test func decodesLabelDeltasAcrossRecordsInOrder() throws {
+        let json = """
+        {"history": [
+          {"id": "1", "labelsRemoved": [{"message": {"id": "m1"}, "labelIds": ["UNREAD"]}]},
+          {"id": "2", "labelsAdded": [{"message": {"id": "m2"}, "labelIds": ["STARRED"]}]}
+        ], "historyId": "9"}
+        """
+        let response = try decodeHistory(json)
+
+        #expect(response.labelDeltas == [
+            GmailHistoryResponse.LabelDelta(messageID: "m1", added: [], removed: ["UNREAD"]),
+            GmailHistoryResponse.LabelDelta(messageID: "m2", added: ["STARRED"], removed: []),
+        ])
+    }
+
+    @Test func absentHistoryYieldsNoLabelDeltas() throws {
+        let response = try decodeHistory(#"{"historyId": "3000"}"#)
+        #expect(response.labelDeltas == [])
     }
 }

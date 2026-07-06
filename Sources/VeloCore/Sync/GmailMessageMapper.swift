@@ -28,7 +28,8 @@ public enum GmailMessageMapper {
             date: date(from: dto.internalDate),
             bodyHTML: html,
             bodyText: text,
-            isUnread: isUnread(dto))
+            isUnread: isUnread(dto),
+            labelIDs: dto.labelIds ?? [])
     }
 
     /// Derives the thread record from all of a thread's messages. Returns `nil`
@@ -36,14 +37,24 @@ public enum GmailMessageMapper {
     public static func thread(from dtos: [GmailMessageDTO]) -> MailThread? {
         guard let threadID = dtos.first?.threadId else { return nil }
         let newest = dtos.max { seconds($0.internalDate) < seconds($1.internalDate) }!
+        let (labelIDs, isUnread) = threadAggregate(from: dtos.map(message(from:)))
 
         return MailThread(
             id: threadID,
             snippet: newest.snippet ?? "",
             lastMessageDate: date(from: newest.internalDate),
-            isUnread: dtos.contains(where: isUnread),
+            isUnread: isUnread,
             hasAttachments: dtos.contains { hasAttachment($0.payload) },
-            labelIDs: Set(dtos.flatMap { $0.labelIds ?? [] }).sorted())
+            labelIDs: labelIDs)
+    }
+
+    /// Aggregates a thread's per-message labels: the sorted union of all message
+    /// labels, and unread iff any message carries `UNREAD`. Shared by backfill
+    /// derivation and incremental label-delta re-derivation.
+    public static func threadAggregate(from messages: [Message]) -> (labelIDs: [String], isUnread: Bool) {
+        let labelIDs = Set(messages.flatMap { $0.labelIDs }).sorted()
+        let isUnread = messages.contains { $0.labelIDs.contains("UNREAD") }
+        return (labelIDs, isUnread)
     }
 
     // MARK: - Internals

@@ -123,4 +123,44 @@ private let threadNewerJSON = """
     @Test func threadFromEmptyIsNil() {
         #expect(GmailMessageMapper.thread(from: []) == nil)
     }
+
+    // MARK: - Per-message labels (C2)
+
+    private func msg(_ id: String, labels: [String]) -> Message {
+        Message(id: id, threadID: "t", sender: "", recipients: [], subject: "",
+                date: Date(timeIntervalSince1970: 0), bodyHTML: nil, bodyText: nil,
+                isUnread: false, labelIDs: labels)
+    }
+
+    @Test func messageCopiesLabelIDsFromDTO() throws {
+        let dto = try decodeDTO(htmlMessageJSON)   // labelIds: ["INBOX","UNREAD"]
+        let message = GmailMessageMapper.message(from: dto)
+        #expect(message.labelIDs == ["INBOX", "UNREAD"])
+    }
+
+    @Test func messageLabelIDsEmptyWhenDTOHasNone() throws {
+        let dto = try decodeDTO(#"{"id":"x","threadId":"t","internalDate":"1"}"#)
+        let message = GmailMessageMapper.message(from: dto)
+        #expect(message.labelIDs == [])
+    }
+
+    @Test func threadAggregateUnionsLabelsSorted() {
+        let (labels, _) = GmailMessageMapper.threadAggregate(
+            from: [msg("a", labels: ["INBOX", "B"]), msg("b", labels: ["A", "INBOX"])])
+        #expect(labels == ["A", "B", "INBOX"])
+    }
+
+    @Test func threadAggregateIsUnreadIffAnyMessageUnread() {
+        let (_, unread) = GmailMessageMapper.threadAggregate(
+            from: [msg("a", labels: ["INBOX"]), msg("b", labels: ["INBOX", "UNREAD"])])
+        #expect(unread == true)
+        let (_, allRead) = GmailMessageMapper.threadAggregate(from: [msg("a", labels: ["INBOX"])])
+        #expect(allRead == false)
+    }
+
+    @Test func threadAggregateEmptyIsNoneAndFalse() {
+        let (labels, unread) = GmailMessageMapper.threadAggregate(from: [])
+        #expect(labels == [])
+        #expect(unread == false)
+    }
 }

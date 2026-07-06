@@ -37,10 +37,10 @@ import Foundation
         try store.upsert(thread("t", date: 0, labels: ["INBOX"]))
         try store.upsert(Message(id: "m2", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 20),
-                                 bodyHTML: nil, bodyText: nil, isUnread: false))
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
         try store.upsert(Message(id: "m1", threadID: "t", sender: "x", recipients: [],
                                  subject: "", date: Date(timeIntervalSince1970: 10),
-                                 bodyHTML: nil, bodyText: nil, isUnread: false))
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
         let ids = try store.messages(inThread: "t").map(\.id)
         #expect(ids == ["m1", "m2"])
     }
@@ -51,5 +51,40 @@ import Foundation
         try store.setLabels([], onThread: "t")
         let isEmpty = try store.inboxThreads().isEmpty
         #expect(isEmpty)
+    }
+
+    @Test func threadByIDReturnsStoredOrNil() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
+        #expect(try store.thread(id: "t")?.id == "t")
+        #expect(try store.thread(id: "missing") == nil)
+    }
+
+    @Test func messageByIDReturnsStoredOrNil() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
+        try store.upsert(Message(id: "m1", threadID: "t", sender: "", recipients: [], subject: "",
+                                 date: Date(timeIntervalSince1970: 1), bodyHTML: nil, bodyText: nil,
+                                 isUnread: false, labelIDs: ["INBOX"]))
+        #expect(try store.message(id: "m1")?.id == "m1")
+        #expect(try store.message(id: "nope") == nil)
+    }
+
+    @Test func updateThreadDerivedLabelsPreservesOtherFields() throws {
+        let store = try makeStore()
+        try store.upsert(MailThread(id: "t", snippet: "keep", lastMessageDate: Date(timeIntervalSince1970: 55),
+                                    isUnread: true, hasAttachments: true, labelIDs: ["INBOX", "UNREAD"]))
+
+        try store.updateThreadDerivedLabels(["INBOX"], isUnread: false, onThread: "t")
+
+        let updated = try store.thread(id: "t")
+        #expect(updated?.labelIDs == ["INBOX"])
+        #expect(updated?.isUnread == false)
+        #expect(updated?.snippet == "keep")
+        #expect(updated?.lastMessageDate == Date(timeIntervalSince1970: 55))
+        #expect(updated?.hasAttachments == true)
+
+        try store.updateThreadDerivedLabels(["X"], isUnread: true, onThread: "ghost")   // no-op
+        #expect(try store.thread(id: "ghost") == nil)
     }
 }

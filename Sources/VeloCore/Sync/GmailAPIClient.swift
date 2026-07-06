@@ -2,16 +2,25 @@ import Foundation
 
 /// The Gmail read operations `BackfillService` needs. Abstracted so backfill can
 /// be driven by a scripted source in tests; `GmailAPIClient` is the live impl.
-public protocol GmailReading {
+public protocol GmailReading: Sendable {
+    func getProfile() async throws -> GmailProfile
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
     func getMessage(id: String) async throws -> GmailMessageDTO
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
 }
 
+/// The Gmail write operations `OutboundService` needs. Abstracted so the outbound
+/// drain can be driven by a scripted writer in tests; `GmailAPIClient` is the live impl.
+public protocol GmailWriting {
+    /// Atomically adds/removes labels on many messages in one request, so a
+    /// multi-message change can't be left half-applied.
+    func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws
+}
+
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
 /// individual messages. Every request carries a bearer token obtained from
 /// `AccessTokenProvider` (refreshed on demand).
-public struct GmailAPIClient: GmailReading {
+public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
     private let httpClient: HTTPClient
     private let tokenProvider: AccessTokenProvider
     private let baseURL: URL
@@ -22,6 +31,14 @@ public struct GmailAPIClient: GmailReading {
         self.httpClient = httpClient
         self.tokenProvider = tokenProvider
         self.baseURL = baseURL
+    }
+
+    /// Fetches the mailbox profile, whose `historyId` is the canonical baseline
+    /// for incremental sync.
+    public func getProfile() async throws -> GmailProfile {
+        let url = baseURL.appendingPathComponent("users/me/profile")
+        let (data, response) = try await authorizedGET(url)
+        return try checkedDecode(data, response)
     }
 
     /// Lists INBOX message ids for one page. Pass the returned `nextPageToken`
@@ -59,6 +76,8 @@ public struct GmailAPIClient: GmailReading {
         var items = [
             URLQueryItem(name: "startHistoryId", value: startHistoryId),
             URLQueryItem(name: "historyTypes", value: "messageAdded"),
+            URLQueryItem(name: "historyTypes", value: "labelAdded"),
+            URLQueryItem(name: "historyTypes", value: "labelRemoved"),
         ]
         if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
         components.queryItems = items
@@ -67,7 +86,36 @@ public struct GmailAPIClient: GmailReading {
         return try checkedDecode(data, response)
     }
 
+    /// Adds/removes labels on a message via `users.messages.modify`. Returns the
+    /// updated message resource. Idempotent (removing a label twice is a no-op).
+    public func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
+        let url = baseURL.appendingPathComponent("users/me/messages/\(id)/modify")
+        let body = try JSONEncoder().encode(ModifyRequest(addLabelIds: addLabelIDs, removeLabelIds: removeLabelIDs))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        return try checkedDecode(data, response)
+    }
+
+    /// Atomically adds/removes labels on many messages via
+    /// `users.messages.batchModify` (returns 204 No Content on success).
+    public func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
+        let url = baseURL.appendingPathComponent("users/me/messages/batchModify")
+        let body = try JSONEncoder().encode(BatchModifyRequest(ids: ids, addLabelIds: addLabelIDs, removeLabelIds: removeLabelIDs))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        try mapErrorIfNeeded(data, response)   // no body to decode on success
+    }
+
     // MARK: - Internals
+
+    private struct ModifyRequest: Encodable {
+        let addLabelIds: [String]
+        let removeLabelIds: [String]
+    }
+
+    private struct BatchModifyRequest: Encodable {
+        let ids: [String]
+        let addLabelIds: [String]
+        let removeLabelIds: [String]
+    }
 
     private struct ListResponse: Decodable {
         struct Ref: Decodable { let id: String }
@@ -93,7 +141,20 @@ public struct GmailAPIClient: GmailReading {
         }
     }
 
-    private func checkedDecode<T: Decodable>(_ data: Data, _ response: HTTPURLResponse) throws -> T {
+    private func authorizedPOST(_ url: URL, body: Data) async throws -> (Data, HTTPURLResponse) {
+        let token = try await tokenProvider.validAccessToken()
+        do {
+            return try await httpClient.post(
+                url: url,
+                headers: ["Authorization": "Bearer \(token)", "Content-Type": "application/json"],
+                body: body)
+        } catch {
+            throw AuthError.network(error)
+        }
+    }
+
+    /// Throws a typed error for a non-2xx response; returns normally on success.
+    private func mapErrorIfNeeded(_ data: Data, _ response: HTTPURLResponse) throws {
         guard (200..<300).contains(response.statusCode) else {
             if let err = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
                 throw AuthError.server(
@@ -102,6 +163,10 @@ public struct GmailAPIClient: GmailReading {
             }
             throw AuthError.invalidResponse
         }
+    }
+
+    private func checkedDecode<T: Decodable>(_ data: Data, _ response: HTTPURLResponse) throws -> T {
+        try mapErrorIfNeeded(data, response)
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {

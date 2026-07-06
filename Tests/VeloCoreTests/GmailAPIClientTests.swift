@@ -91,6 +91,19 @@ private func makeClient(_ getResult: Result<(Data, HTTPURLResponse), Error>) thr
         #expect(query.contains("historyTypes=messageAdded"))
     }
 
+    @Test func fetchHistoryRequestsLabelHistoryTypes() async throws {
+        let json = Data(#"{"history":[],"historyId":"2100"}"#.utf8)
+        let (api, client) = try makeClient(.success((json, http(200))))
+
+        _ = try await api.fetchHistory(startHistoryId: "2000", pageToken: nil)
+
+        let query = client.lastGetURL?.query ?? ""
+        #expect(query.contains("historyTypes=messageAdded"))
+        #expect(query.contains("historyTypes=labelAdded"))
+        #expect(query.contains("historyTypes=labelRemoved"))
+        #expect(client.lastGetHeaders?["Authorization"] == "Bearer tok")
+    }
+
     @Test func fetchHistoryPassesPageToken() async throws {
         let json = Data(#"{"history":[],"historyId":"2100"}"#.utf8)
         let (api, client) = try makeClient(.success((json, http(200))))
@@ -106,6 +119,27 @@ private func makeClient(_ getResult: Result<(Data, HTTPURLResponse), Error>) thr
 
         await #expect(throws: AuthError.server(code: "UNAUTHENTICATED", description: "Invalid Credentials")) {
             _ = try await api.getMessage(id: "x")
+        }
+    }
+
+    @Test func getProfileParsesFieldsAndAttachesBearer() async throws {
+        let json = Data(#"{"emailAddress":"u@x.com","historyId":"5000","messagesTotal":1}"#.utf8)
+        let (api, client) = try makeClient(.success((json, http(200))))
+
+        let profile = try await api.getProfile()
+
+        #expect(profile.emailAddress == "u@x.com")
+        #expect(profile.historyId == "5000")
+        #expect(client.lastGetHeaders?["Authorization"] == "Bearer tok")
+        #expect((client.lastGetURL?.path ?? "").hasSuffix("/users/me/profile"))
+    }
+
+    @Test func fetchHistory404MapsToNotFoundServerError() async throws {
+        let json = Data(#"{"error":{"code":404,"message":"gone","status":"NOT_FOUND"}}"#.utf8)
+        let (api, _) = try makeClient(.success((json, http(404))))
+
+        await #expect(throws: AuthError.server(code: "NOT_FOUND", description: "gone")) {
+            _ = try await api.fetchHistory(startHistoryId: "1", pageToken: nil)
         }
     }
 }

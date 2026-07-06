@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public final class MailStore {
+public final class MailStore: Sendable {
     private let database: AppDatabase
 
     public init(_ database: AppDatabase) {
@@ -27,12 +27,31 @@ public final class MailStore {
         try database.dbQueue.read { try Self.inboxRequest().fetchAll($0) }
     }
 
+    public func thread(id: String) throws -> MailThread? {
+        try database.dbQueue.read { try MailThread.fetchOne($0, key: id) }
+    }
+
     public func messages(inThread threadID: String) throws -> [Message] {
         try database.dbQueue.read { db in
             try Message
                 .filter(Column("threadID") == threadID)
                 .order(Column("date").asc)
                 .fetchAll(db)
+        }
+    }
+
+    public func message(id: String) throws -> Message? {
+        try database.dbQueue.read { try Message.fetchOne($0, key: id) }
+    }
+
+    /// Sets a thread's aggregate `labelIDs` + `isUnread`, preserving all other
+    /// fields. No-op if the thread does not exist.
+    public func updateThreadDerivedLabels(_ labelIDs: [String], isUnread: Bool, onThread threadID: String) throws {
+        try database.dbQueue.write { db in
+            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
+            thread.labelIDs = labelIDs
+            thread.isUnread = isUnread
+            try thread.update(db)
         }
     }
 
