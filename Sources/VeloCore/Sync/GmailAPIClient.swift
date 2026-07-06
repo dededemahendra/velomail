@@ -12,7 +12,9 @@ public protocol GmailReading: Sendable {
 /// The Gmail write operations `OutboundService` needs. Abstracted so the outbound
 /// drain can be driven by a scripted writer in tests; `GmailAPIClient` is the live impl.
 public protocol GmailWriting {
-    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO
+    /// Atomically adds/removes labels on many messages in one request, so a
+    /// multi-message change can't be left half-applied.
+    func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws
 }
 
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
@@ -93,9 +95,24 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         return try checkedDecode(data, response)
     }
 
+    /// Atomically adds/removes labels on many messages via
+    /// `users.messages.batchModify` (returns 204 No Content on success).
+    public func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
+        let url = baseURL.appendingPathComponent("users/me/messages/batchModify")
+        let body = try JSONEncoder().encode(BatchModifyRequest(ids: ids, addLabelIds: addLabelIDs, removeLabelIds: removeLabelIDs))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        try mapErrorIfNeeded(data, response)   // no body to decode on success
+    }
+
     // MARK: - Internals
 
     private struct ModifyRequest: Encodable {
+        let addLabelIds: [String]
+        let removeLabelIds: [String]
+    }
+
+    private struct BatchModifyRequest: Encodable {
+        let ids: [String]
         let addLabelIds: [String]
         let removeLabelIds: [String]
     }
@@ -136,7 +153,8 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         }
     }
 
-    private func checkedDecode<T: Decodable>(_ data: Data, _ response: HTTPURLResponse) throws -> T {
+    /// Throws a typed error for a non-2xx response; returns normally on success.
+    private func mapErrorIfNeeded(_ data: Data, _ response: HTTPURLResponse) throws {
         guard (200..<300).contains(response.statusCode) else {
             if let err = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
                 throw AuthError.server(
@@ -145,6 +163,10 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
             }
             throw AuthError.invalidResponse
         }
+    }
+
+    private func checkedDecode<T: Decodable>(_ data: Data, _ response: HTTPURLResponse) throws -> T {
+        try mapErrorIfNeeded(data, response)
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {

@@ -3,29 +3,25 @@ import Foundation
 import GRDB
 @testable import VeloCore
 
-/// Writer stub — B4 exercises optimistic apply only, so modify is never called.
+/// Writer stub — B4 exercises optimistic apply only, so the writer is never called.
 private struct UnusedWriter: GmailWriting {
-    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
-        fatalError("modify not called during optimistic apply")
+    func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
+        fatalError("batchModify not called during optimistic apply")
     }
 }
 
-private func stubDTO(id: String) -> GmailMessageDTO {
-    try! JSONDecoder().decode(GmailMessageDTO.self,
-                              from: Data("{\"id\":\"\(id)\",\"threadId\":\"t\",\"labelIds\":[]}".utf8))
-}
-
-/// Scripted writer that throws for a configured set of message ids.
+/// Scripted writer that throws when the batch contains any failing message id.
 private final class ScriptedWriter: GmailWriting {
     var failingMessageIDs: Set<String>
-    private(set) var modifyCalls: [(id: String, add: [String], remove: [String])] = []
+    private(set) var batchCalls: [(ids: [String], add: [String], remove: [String])] = []
 
     init(failing: Set<String> = []) { self.failingMessageIDs = failing }
 
-    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
-        modifyCalls.append((id, addLabelIDs, removeLabelIDs))
-        if failingMessageIDs.contains(id) { throw AuthError.server(code: "500", description: "boom") }
-        return stubDTO(id: id)
+    func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
+        batchCalls.append((ids, addLabelIDs, removeLabelIDs))
+        if !failingMessageIDs.isDisjoint(with: Set(ids)) {
+            throw AuthError.server(code: "500", description: "boom")
+        }
     }
 }
 
@@ -158,10 +154,24 @@ private final class ScriptedWriter: GmailWriting {
 
         try await service.drain()
 
-        #expect(writer.modifyCalls.map(\.id) == ["m1", "m2"])
-        #expect(writer.modifyCalls.allSatisfy { $0.remove == ["INBOX"] })
+        #expect(writer.batchCalls.count == 1)                 // one atomic call, not per-message
+        #expect(writer.batchCalls.first?.ids == ["m1", "m2"])
+        #expect(writer.batchCalls.first?.remove == ["INBOX"])
         #expect(try mutations.all().isEmpty)
         #expect(try store.inboxThreads().isEmpty)   // stays archived
+    }
+
+    @Test func drainUsesSingleAtomicBatchCallSoNoPartialApplication() async throws {
+        let writer = ScriptedWriter(failing: ["m2"])   // second message fails
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1", "m2"])
+        try service.archive(threadID: "t")
+
+        try await service.drain()
+
+        #expect(writer.batchCalls.count == 1)                 // atomic: not a per-message loop
+        #expect(try store.inboxThreads().map(\.id) == ["t"])  // fully reverted, no half-applied state
+        #expect(try mutations.all().first?.status == .failed)
     }
 
     @Test func drainFailureRevertsAndMarksFailed() async throws {
@@ -187,10 +197,10 @@ private final class ScriptedWriter: GmailWriting {
         try service.archive(threadID: "t")
 
         try await service.drain()
-        let callsAfterFirst = writer.modifyCalls.count
+        let callsAfterFirst = writer.batchCalls.count
         try await service.drain()
 
-        #expect(writer.modifyCalls.count == callsAfterFirst)   // no new calls
+        #expect(writer.batchCalls.count == callsAfterFirst)   // no new calls
         #expect(try mutations.all().isEmpty)
     }
 

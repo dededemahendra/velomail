@@ -99,14 +99,18 @@ extension OutboundService {
             guard let id = mutation.id else { continue }
             let payload = try JSONDecoder().decode(OutboundMutationPayload.self, from: mutation.payload)
 
+            if payload.messageIDs.isEmpty {
+                try queue.delete(id: id)   // nothing to push
+                continue
+            }
+
             var apiFailed = false
             do {
-                for messageID in payload.messageIDs {
-                    _ = try await gmailWriter.modifyMessage(
-                        id: messageID,
-                        addLabelIDs: payload.addLabelIDs,
-                        removeLabelIDs: payload.removeLabelIDs)
-                }
+                // One atomic batch call — a multi-message change can't be half-applied.
+                try await gmailWriter.batchModifyMessages(
+                    ids: payload.messageIDs,
+                    addLabelIDs: payload.addLabelIDs,
+                    removeLabelIDs: payload.removeLabelIDs)
             } catch is AuthError {
                 apiFailed = true
             }

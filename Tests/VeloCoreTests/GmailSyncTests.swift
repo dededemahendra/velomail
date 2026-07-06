@@ -68,9 +68,8 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         historyIndex += 1
         return page
     }
-    func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
+    func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
         callLog.append("modify")
-        return makeDTO(id: id, thread: "t")
     }
 }
 
