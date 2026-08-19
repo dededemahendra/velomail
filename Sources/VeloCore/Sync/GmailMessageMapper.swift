@@ -10,10 +10,20 @@ public enum GmailMessageMapper {
             headers.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.value
         }
 
-        let recipients = (header("To") ?? "")
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        func addressList(_ name: String) -> [String] {
+            (header(name) ?? "")
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+
+        let recipients = addressList("To")
+        let cc = addressList("Cc")
+
+        // `References` is a whitespace-separated list of message ids, not comma-separated.
+        let references = (header("References") ?? "")
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
 
         var html: String?
         var text: String?
@@ -24,12 +34,16 @@ public enum GmailMessageMapper {
             threadID: dto.threadId,
             sender: header("From") ?? "",
             recipients: recipients,
+            cc: cc,
             subject: header("Subject") ?? "",
             date: date(from: dto.internalDate),
             bodyHTML: html,
             bodyText: text,
             isUnread: isUnread(dto),
-            labelIDs: dto.labelIds ?? [])
+            labelIDs: dto.labelIds ?? [],
+            messageIDHeader: header("Message-ID"),
+            inReplyTo: header("In-Reply-To"),
+            references: references)
     }
 
     /// Derives the thread record from all of a thread's messages. Returns `nil`

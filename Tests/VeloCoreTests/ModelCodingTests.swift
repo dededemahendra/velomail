@@ -35,4 +35,23 @@ import GRDB
         #expect(fetched == msg)
         #expect(fetched?.labelIDs == ["INBOX", "UNREAD"])
     }
+
+    @Test func messageRoundTripsReplyHeaders() throws {
+        let db = try AppDatabase.makeInMemory()
+        let thread = MailThread(id: "t1", snippet: "", lastMessageDate: Date(timeIntervalSince1970: 0),
+                                isUnread: false, hasAttachments: false, labelIDs: [])
+        try db.dbQueue.write { try thread.insert($0) }
+        let msg = Message(
+            id: "m1", threadID: "t1", sender: "a@b.com", recipients: ["c@d.com"],
+            cc: ["e@f.com"], subject: "hi", date: Date(timeIntervalSince1970: 10),
+            bodyHTML: nil, bodyText: "hi", isUnread: false, labelIDs: ["SENT"],
+            messageIDHeader: "<mine@x.com>", inReplyTo: "<parent@x.com>",
+            references: ["<root@x.com>", "<parent@x.com>"]
+        )
+        try db.dbQueue.write { try msg.insert($0) }
+        let fetched = try db.dbQueue.read { try Message.fetchOne($0, key: "m1") }
+        #expect(fetched == msg)
+        #expect(fetched?.cc == ["e@f.com"])
+        #expect(fetched?.references == ["<root@x.com>", "<parent@x.com>"])
+    }
 }
