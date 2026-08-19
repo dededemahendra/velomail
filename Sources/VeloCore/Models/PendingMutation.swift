@@ -6,6 +6,9 @@ public enum MutationKind: String, Codable, Equatable {
     case archive
     case markRead
     case markUnread
+    /// An outgoing message. Unlike the label kinds, its payload is an
+    /// `OutboundSendPayload`, not an `OutboundMutationPayload`.
+    case send
 }
 
 /// Lifecycle of a queued mutation. Success removes the row (there is no `done`).

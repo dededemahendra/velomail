@@ -12,6 +12,19 @@ struct OutboundMutationPayload: Codable, Equatable {
     var previousMessageLabels: [String: [String]]
 }
 
+/// The persisted payload of a queued `.send`. It carries the whole `Draft` so a
+/// send survives a restart and a failed one can be re-opened, plus the ids of
+/// the optimistic rows `drain()` must swap out or roll back.
+struct OutboundSendPayload: Codable, Equatable {
+    var draft: Draft
+    /// The `local:`-prefixed id of the optimistically inserted message.
+    var placeholderMessageID: String
+    /// The thread the placeholder went into (a local id for a fresh compose).
+    var threadID: String
+    /// True when `send` invented the thread, so a failure must remove it too.
+    var createdThread: Bool
+}
+
 /// Applies triage actions (archive, mark read/unread) optimistically to local
 /// storage and enqueues a durable mutation for later push to Gmail.
 public struct OutboundService {

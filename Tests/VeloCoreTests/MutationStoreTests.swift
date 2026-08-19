@@ -65,4 +65,21 @@ import GRDB
         #expect(try store.all().count == 1)
         #expect(try store.all().first?.id == saved.id)
     }
+
+    @Test func sendMutationRoundTripsThroughTheQueue() throws {
+        let store = try makeStore()
+        let draft = Draft(to: ["a@b.com"], subject: "hi", bodyText: "body")
+        let payload = OutboundSendPayload(draft: draft, placeholderMessageID: "local:1",
+                                          threadID: "t1", createdThread: false)
+        let encoded = try JSONEncoder().encode(payload)
+        _ = try store.enqueue(PendingMutation(kind: .send, payload: encoded,
+                                              createdAt: Date(timeIntervalSince1970: 1),
+                                              status: .pending))
+
+        let pending = try #require(try store.pending().first)
+        #expect(pending.kind == .send)
+        let decoded = try JSONDecoder().decode(OutboundSendPayload.self, from: pending.payload)
+        #expect(decoded == payload)
+        #expect(decoded.draft.subject == "hi")
+    }
 }
