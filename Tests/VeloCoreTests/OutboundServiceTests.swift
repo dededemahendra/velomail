@@ -363,6 +363,140 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         // Domain comes from the sending identity, per RFC 5322.
         #expect(payload.messageID.hasSuffix("@example.com>"))
     }
+
+    // MARK: - Drain (send)
+
+    @Test func drainSendsRawBuiltFromTheQueuedDraft() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "Hello", bodyText: "hi", threadID: "t"))
+
+        try await service.drain()
+
+        #expect(writer.sendCalls.count == 1)
+        let call = try #require(writer.sendCalls.first)
+        #expect(call.threadID == "t")
+
+        var padded = call.raw.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        if padded.count % 4 > 0 { padded += String(repeating: "=", count: 4 - padded.count % 4) }
+        let message = String(decoding: Data(base64Encoded: padded)!, as: UTF8.self)
+        #expect(message.contains("From: me@example.com\r\n"))
+        #expect(message.contains("To: a@b.com\r\n"))
+        #expect(message.contains("Subject: Hello\r\n"))
+        #expect(message.hasSuffix("aGk="))          // base64 of "hi"
+    }
+
+    @Test func drainReplacesPlaceholderWithTheRealMessageOnSuccess() async throws {
+        let writer = ScriptedWriter()
+        writer.sendResult = try decodeMessageDTO(
+            #"{"id":"gmailID","threadId":"t","labelIds":["SENT"],"internalDate":"100000"}"#)
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "Hello", bodyText: "hi", threadID: "t"))
+
+        try await service.drain()
+
+        let messages = try store.messages(inThread: "t")
+        #expect(messages.count == 2)
+        #expect(messages.contains { $0.id == "gmailID" })
+        #expect(!messages.contains { $0.id.hasPrefix("local:") })
+
+        // The real row keeps everything the sparse send response cannot carry.
+        let sent = try #require(try store.message(id: "gmailID"))
+        #expect(sent.subject == "Hello")
+        #expect(sent.bodyText == "hi")
+        #expect(sent.recipients == ["a@b.com"])
+        #expect(sent.labelIDs == ["SENT"])
+        #expect(sent.messageIDHeader?.hasSuffix("@example.com>") == true)
+    }
+
+    @Test func drainRemovesTheQueueRowOnSuccessfulSend() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        try await service.drain()
+
+        #expect(try mutations.all().isEmpty)
+    }
+
+    @Test func drainMovesTheMessageToTheServerThreadForANewCompose() async throws {
+        let writer = ScriptedWriter()
+        writer.sendResult = try decodeMessageDTO(
+            #"{"id":"gmailID","threadId":"tServer","labelIds":["SENT"],"internalDate":"100000"}"#)
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try service.send(Draft(to: ["a@b.com"], subject: "Fresh", bodyText: "b"))
+
+        try await service.drain()
+
+        let sent = try #require(try store.message(id: "gmailID"))
+        #expect(sent.threadID == "tServer")
+        #expect(try store.thread(id: "tServer") != nil)
+        // The invented local thread must not linger.
+        #expect(try store.thread(id: "local:id3") == nil)
+    }
+
+    @Test func drainRevertsPlaceholderAndMarksFailedWhenSendFails() async throws {
+        let writer = ScriptedWriter()
+        writer.sendShouldFail = true
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        try await service.drain()
+
+        #expect(try store.messages(inThread: "t").map(\.id) == ["m1"])
+        #expect(try store.thread(id: "t")?.labelIDs == ["INBOX"])   // SENT re-derived away
+        let all = try mutations.all()
+        #expect(all.count == 1)
+        #expect(all.first?.status == .failed)
+    }
+
+    @Test func drainKeepsTheDraftRecoverableAfterAFailedSend() async throws {
+        let writer = ScriptedWriter()
+        writer.sendShouldFail = true
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "keep me", bodyText: "body", threadID: "t"))
+
+        try await service.drain()
+
+        let failed = try #require(try mutations.all().first)
+        let payload = try sendPayload(failed)
+        #expect(payload.draft.subject == "keep me")
+        #expect(payload.draft.bodyText == "body")
+    }
+
+    @Test func drainDropsThePlaceholderThreadWhenAFailedSendCreatedIt() async throws {
+        let writer = ScriptedWriter()
+        writer.sendShouldFail = true
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b"))
+        let threadID = try sendPayload(try #require(try mutations.pending().first)).threadID
+
+        try await service.drain()
+
+        #expect(try store.thread(id: threadID) == nil)
+    }
+
+    @Test func drainStillDrainsLabelMutationsAfterASendFailure() async throws {
+        let writer = ScriptedWriter()
+        writer.sendShouldFail = true
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+        try service.archive(threadID: "t")
+
+        try await service.drain()
+
+        #expect(writer.batchCalls.count == 1)                       // archive still went out
+        #expect(try store.inboxThreads().isEmpty)
+        let statuses = try mutations.all().map(\.status)
+        #expect(statuses == [.failed])                              // only the send remains
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.
