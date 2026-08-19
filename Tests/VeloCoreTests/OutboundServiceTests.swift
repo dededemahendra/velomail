@@ -8,6 +8,10 @@ private struct UnusedWriter: GmailWriting {
     func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
         fatalError("batchModify not called during optimistic apply")
     }
+
+    func sendMessage(raw: String, threadID: String?) async throws -> GmailMessageDTO {
+        fatalError("send not called during optimistic apply")
+    }
 }
 
 /// Scripted writer that throws when the batch contains any failing message id.
@@ -23,6 +27,26 @@ private final class ScriptedWriter: GmailWriting {
             throw AuthError.server(code: "500", description: "boom")
         }
     }
+
+    /// Scripted send: records the raw payload, then either throws or returns
+    /// `sendResult` (defaulting to a plausible created resource).
+    var sendShouldFail = false
+    var sendResult: GmailMessageDTO?
+    private(set) var sendCalls: [(raw: String, threadID: String?)] = []
+
+    func sendMessage(raw: String, threadID: String?) async throws -> GmailMessageDTO {
+        sendCalls.append((raw, threadID))
+        if sendShouldFail { throw AuthError.server(code: "500", description: "boom") }
+        if let sendResult { return sendResult }
+        return try decodeMessageDTO(#"""
+        {"id":"sent1","threadId":"\#(threadID ?? "tServer")","labelIds":["SENT"],
+         "internalDate":"100000","payload":{"mimeType":"text/plain","headers":[]}}
+        """#)
+    }
+}
+
+func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
+    try JSONDecoder().decode(GmailMessageDTO.self, from: Data(json.utf8))
 }
 
 @Suite struct OutboundServiceTests {

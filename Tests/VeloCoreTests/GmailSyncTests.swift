@@ -71,6 +71,12 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {
         callLog.append("modify")
     }
+
+    func sendMessage(raw: String, threadID: String?) async throws -> GmailMessageDTO {
+        callLog.append("send")
+        return try JSONDecoder().decode(GmailMessageDTO.self, from: Data(
+            #"{"id":"sent1","threadId":"t1","labelIds":["SENT"],"internalDate":"100000"}"#.utf8))
+    }
 }
 
 @Suite struct GmailSyncTests {

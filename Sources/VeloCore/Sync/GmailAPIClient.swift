@@ -15,6 +15,10 @@ public protocol GmailWriting {
     /// Atomically adds/removes labels on many messages in one request, so a
     /// multi-message change can't be left half-applied.
     func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws
+
+    /// Sends an already-serialized RFC 5322 message (base64url) and returns the
+    /// created resource. `threadID` attaches the send to an existing thread.
+    func sendMessage(raw: String, threadID: String?) async throws -> GmailMessageDTO
 }
 
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
@@ -104,7 +108,23 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         try mapErrorIfNeeded(data, response)   // no body to decode on success
     }
 
+    /// Sends a message via `users.messages.send`, returning the created resource
+    /// (whose `id`/`threadId` are Gmail's, assigned only now).
+    public func sendMessage(raw: String, threadID: String?) async throws -> GmailMessageDTO {
+        let url = baseURL.appendingPathComponent("users/me/messages/send")
+        let body = try JSONEncoder().encode(SendRequest(raw: raw, threadId: threadID))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        return try checkedDecode(data, response)
+    }
+
     // MARK: - Internals
+
+    /// `threadId` is omitted entirely when nil rather than encoded as null,
+    /// which Gmail rejects. `JSONEncoder` skips nil optionals by default.
+    private struct SendRequest: Encodable {
+        let raw: String
+        let threadId: String?
+    }
 
     private struct ModifyRequest: Encodable {
         let addLabelIds: [String]
