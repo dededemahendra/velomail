@@ -150,10 +150,18 @@ func applyLabels(to labels: [String], add: [String], remove: [String]) -> [Strin
     return result
 }
 
+/// Re-derives a thread from its messages, restoring both invariants the rest of
+/// the engine relies on: `thread.labelIDs == union(message.labelIDs)` and
+/// `thread.lastMessageDate == max(message.date)`. The date matters because a
+/// send adds a message the thread has never seen, and an inbox ordered by date
+/// would otherwise leave a thread you just replied to sitting where it was.
 func deriveThread(_ threadID: String, in store: MailStore) throws {
     let messages = try store.messages(inThread: threadID)
     let (labelIDs, isUnread) = GmailMessageMapper.threadAggregate(from: messages)
     try store.updateThreadDerivedLabels(labelIDs, isUnread: isUnread, onThread: threadID)
+    if let newest = messages.map(\.date).max() {
+        try store.updateThreadLastMessageDate(newest, onThread: threadID)
+    }
 }
 
 extension OutboundService {
@@ -242,8 +250,15 @@ extension OutboundService {
             messageIDHeader: payload.messageID, inReplyTo: draft.inReplyTo,
             references: draft.references))
 
-        if payload.createdThread && payload.threadID != sent.threadId {
-            try mailStore.deleteThread(id: payload.threadID)
+        // Gmail can decline the requested thread and file the message elsewhere.
+        // The message has left the original thread, so that thread has to be
+        // re-derived too, or it keeps the optimistic SENT label forever.
+        if payload.threadID != sent.threadId {
+            if payload.createdThread {
+                try mailStore.deleteThread(id: payload.threadID)
+            } else {
+                try deriveThread(payload.threadID, in: mailStore)
+            }
         }
         try deriveThread(sent.threadId, in: mailStore)
     }

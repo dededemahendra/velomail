@@ -497,6 +497,35 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         let statuses = try mutations.all().map(\.status)
         #expect(statuses == [.failed])                              // only the send remains
     }
+
+    // MARK: - Thread invariants after a send
+
+    @Test func sendBumpsTheThreadLastMessageDate() throws {
+        let (service, store, _) = try makeContext(now: { Date(timeIntervalSince1970: 5000) })
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        // A thread you just replied to must sort to the top of a date-ordered inbox.
+        #expect(try store.thread(id: "t")?.lastMessageDate == Date(timeIntervalSince1970: 5000))
+    }
+
+    @Test func drainReDerivesTheOriginalThreadWhenGmailRethreadsTheReply() async throws {
+        let writer = ScriptedWriter()
+        // Gmail declined the requested thread and made a new one.
+        writer.sendResult = try decodeMessageDTO(
+            #"{"id":"gmailID","threadId":"tOther","labelIds":["SENT"],"internalDate":"100000"}"#)
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        try await service.drain()
+
+        // The message left thread "t", so "t" must not keep the optimistic SENT.
+        #expect(try store.thread(id: "t")?.labelIDs == ["INBOX"])
+        #expect(try store.messages(inThread: "t").map(\.id) == ["m1"])
+        #expect(try store.message(id: "gmailID")?.threadID == "tOther")
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.
