@@ -129,3 +129,32 @@ swaps placeholder→real (mapper) or reverts. Label kinds keep their existing pa
 - Quoted-reply body construction (headers only; body text is the caller's).
 - `KeyboardEngine` and any SwiftUI/AppKit surface — still blocked on an app
   target and real OAuth client credentials.
+
+---
+
+## Completion record
+
+All seven tasks landed red→green, one commit each. Suite went 129 → 181 tests,
+clean build, no warnings.
+
+**Two defects found in the post-implementation review, each fixed with a
+reproducing test first:**
+
+1. **Thread date never moved on send.** `deriveThread` restored
+   `thread.labelIDs == union(message.labelIDs)` but not
+   `thread.lastMessageDate == max(message.date)`, so a thread you had just
+   replied to did not sort to the top of a date-ordered inbox. `deriveThread`
+   now derives both. The date got its own `MailStore` method rather than being
+   folded into `updateThreadDerivedLabels`, because `LabelDeltaApplier` shares
+   that call and a label delta must not move a thread's date.
+
+2. **Stale optimistic label when Gmail rethreads.** If the server declined the
+   requested `threadId` and filed the message in a new thread, the origin thread
+   kept the optimistic `SENT` label after the message had left it. `applySent`
+   now re-derives the origin thread whenever the server's thread differs.
+
+**Still deferred after E** (unchanged from the plan above): attachments,
+`users.drafts.*`, scheduled/undo send, automatic retry of `.failed` sends,
+quoted-reply body construction, and the whole UI layer (`KeyboardEngine`,
+SwiftUI/AppKit), which remains blocked on an app target and real Google OAuth
+client credentials.
