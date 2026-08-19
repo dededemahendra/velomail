@@ -29,6 +29,11 @@ private struct DecodedModifyBody: Decodable, Equatable {
     let removeLabelIds: [String]
 }
 
+private struct DecodedSendBody: Decodable, Equatable {
+    let raw: String
+    let threadId: String?
+}
+
 private func http(_ status: Int) -> HTTPURLResponse {
     HTTPURLResponse(url: URL(string: "https://gmail.googleapis.com/")!,
                     statusCode: status, httpVersion: nil, headerFields: nil)!
@@ -95,6 +100,51 @@ private func makeClient(_ postResult: Result<(Data, HTTPURLResponse), Error>) th
 
         await #expect(throws: AuthError.network(NSError(domain: "", code: 0))) {
             _ = try await api.modifyMessage(id: "m1", addLabelIDs: [], removeLabelIDs: ["INBOX"])
+        }
+    }
+
+    @Test func sendMessagePOSTsRawAndThreadIDToSendEndpoint() async throws {
+        let responseJSON = Data(#"{"id":"sent1","threadId":"t1","labelIds":["SENT"]}"#.utf8)
+        let (api, client) = try makeClient(.success((responseJSON, http(200))))
+
+        _ = try await api.sendMessage(raw: "cmF3LWJ5dGVz", threadID: "t1")
+
+        #expect((client.lastPostURL?.path ?? "").hasSuffix("/messages/send"))
+        let body = try #require(client.lastPostBody)
+        let decoded = try JSONDecoder().decode(DecodedSendBody.self, from: body)
+        #expect(decoded == DecodedSendBody(raw: "cmF3LWJ5dGVz", threadId: "t1"))
+    }
+
+    @Test func sendMessageOmitsThreadIDForANewCompose() async throws {
+        let responseJSON = Data(#"{"id":"sent1","threadId":"tNew","labelIds":["SENT"]}"#.utf8)
+        let (api, client) = try makeClient(.success((responseJSON, http(200))))
+
+        _ = try await api.sendMessage(raw: "cmF3", threadID: nil)
+
+        let body = try #require(client.lastPostBody)
+        let decoded = try JSONDecoder().decode(DecodedSendBody.self, from: body)
+        #expect(decoded.threadId == nil)
+        // The key must be absent, not null: Gmail rejects an explicit null threadId.
+        #expect(!String(decoding: body, as: UTF8.self).contains("threadId"))
+    }
+
+    @Test func sendMessageDecodesReturnedMessageResource() async throws {
+        let responseJSON = Data(#"{"id":"sent9","threadId":"t9","labelIds":["SENT"]}"#.utf8)
+        let (api, _) = try makeClient(.success((responseJSON, http(200))))
+
+        let dto = try await api.sendMessage(raw: "cmF3", threadID: "t9")
+
+        #expect(dto.id == "sent9")
+        #expect(dto.threadId == "t9")
+        #expect(dto.labelIds == ["SENT"])
+    }
+
+    @Test func sendMessageNonSuccessMapsToServerError() async throws {
+        let json = Data(#"{"error":{"code":400,"message":"bad raw","status":"INVALID_ARGUMENT"}}"#.utf8)
+        let (api, _) = try makeClient(.success((json, http(400))))
+
+        await #expect(throws: AuthError.server(code: "INVALID_ARGUMENT", description: "bad raw")) {
+            _ = try await api.sendMessage(raw: "cmF3", threadID: nil)
         }
     }
 }

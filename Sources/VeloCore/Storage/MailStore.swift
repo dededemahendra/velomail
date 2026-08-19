@@ -46,6 +46,30 @@ public final class MailStore: Sendable {
 
     /// Sets a thread's aggregate `labelIDs` + `isUnread`, preserving all other
     /// fields. No-op if the thread does not exist.
+    public func deleteMessage(id: String) throws {
+        _ = try database.dbQueue.write { db in
+            try Message.deleteOne(db, key: id)
+        }
+    }
+
+    /// Deletes a thread. Its messages go with it via the schema's
+    /// `onDelete: .cascade` foreign key.
+    public func deleteThread(id: String) throws {
+        _ = try database.dbQueue.write { db in
+            try MailThread.deleteOne(db, key: id)
+        }
+    }
+
+    /// Sets a thread's newest-message timestamp. Kept separate from
+    /// `updateThreadDerivedLabels` because a label delta never moves the date.
+    public func updateThreadLastMessageDate(_ date: Date, onThread threadID: String) throws {
+        try database.dbQueue.write { db in
+            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
+            thread.lastMessageDate = date
+            try thread.update(db)
+        }
+    }
+
     public func updateThreadDerivedLabels(_ labelIDs: [String], isUnread: Bool, onThread threadID: String) throws {
         try database.dbQueue.write { db in
             guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }

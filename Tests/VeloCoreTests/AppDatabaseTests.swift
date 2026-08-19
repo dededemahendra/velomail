@@ -18,4 +18,15 @@ import GRDB
             #expect(messageColumns.contains("labelIDs"))
         }
     }
+
+    @Test func messageTableHasReplyThreadingColumns() throws {
+        let db = try AppDatabase.makeInMemory()
+        try db.dbQueue.read { db in
+            let columns = try db.columns(in: "message").map(\.name)
+            #expect(columns.contains("cc"))
+            #expect(columns.contains("messageIDHeader"))
+            #expect(columns.contains("inReplyTo"))
+            #expect(columns.contains("references"))
+        }
+    }
 }

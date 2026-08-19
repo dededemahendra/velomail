@@ -12,20 +12,88 @@ struct OutboundMutationPayload: Codable, Equatable {
     var previousMessageLabels: [String: [String]]
 }
 
+/// The persisted payload of a queued `.send`. It carries the whole `Draft` so a
+/// send survives a restart and a failed one can be re-opened, plus the ids of
+/// the optimistic rows `drain()` must swap out or roll back.
+struct OutboundSendPayload: Codable, Equatable {
+    var draft: Draft
+    /// The RFC 5322 `Message-ID` minted at enqueue time, so it is stable across
+    /// a restart and identical on any later retry of the same send.
+    var messageID: String
+    /// The `local:`-prefixed id of the optimistically inserted message.
+    var placeholderMessageID: String
+    /// The thread the placeholder went into (a local id for a fresh compose).
+    var threadID: String
+    /// True when `send` invented the thread, so a failure must remove it too.
+    var createdThread: Bool
+}
+
 /// Applies triage actions (archive, mark read/unread) optimistically to local
 /// storage and enqueues a durable mutation for later push to Gmail.
 public struct OutboundService {
     private let writer: GmailWriting
     private let store: MailStore
     private let mutations: MutationStore
+    private let identity: String
     private let now: () -> Date
+    private let newID: () -> String
 
+    /// - Parameters:
+    ///   - identity: the account's own address, used as the `From` of anything sent.
+    ///   - newID: opaque unique-id source, injected so tests get stable ids.
     public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
-                now: @escaping () -> Date = { Date() }) {
+                identity: String, now: @escaping () -> Date = { Date() },
+                newID: @escaping () -> String = { UUID().uuidString }) {
         self.writer = writer
         self.store = store
         self.mutations = mutations
+        self.identity = identity
         self.now = now
+        self.newID = newID
+    }
+
+    /// Applies a draft locally at once and queues the real send.
+    ///
+    /// A send has no row to mutate yet, so the optimistic apply has to invent
+    /// one: a placeholder message under a `local:` id (which can never collide
+    /// with a Gmail id), in the draft's thread, or in a placeholder thread when
+    /// this is a fresh compose. `drain()` later swaps it for the real message or
+    /// rolls it back. The draft itself is persisted in the payload, so nothing
+    /// the user typed is lost if the send fails.
+    public func send(_ draft: Draft) throws {
+        let placeholderMessageID = "local:\(newID())"
+        let messageID = "<\(newID())@\(identityDomain)>"
+        let createdThread = draft.threadID == nil
+        let threadID = draft.threadID ?? "local:\(newID())"
+
+        if createdThread {
+            try store.upsert(MailThread(id: threadID, snippet: draft.bodyText,
+                                        lastMessageDate: now(), isUnread: false,
+                                        hasAttachments: false, labelIDs: ["SENT"]))
+        }
+
+        try store.upsert(Message(
+            id: placeholderMessageID, threadID: threadID, sender: identity,
+            recipients: draft.to, cc: draft.cc, subject: draft.subject, date: now(),
+            bodyHTML: draft.bodyHTML, bodyText: draft.bodyText,
+            isUnread: false, labelIDs: ["SENT"],
+            messageIDHeader: messageID, inReplyTo: draft.inReplyTo,
+            references: draft.references))
+        try deriveThread(threadID, in: store)
+
+        let payload = OutboundSendPayload(
+            draft: draft, messageID: messageID,
+            placeholderMessageID: placeholderMessageID,
+            threadID: threadID, createdThread: createdThread)
+        _ = try mutations.enqueue(PendingMutation(
+            kind: .send, payload: try JSONEncoder().encode(payload),
+            createdAt: now(), status: .pending))
+    }
+
+    /// The domain half of the sending identity, for minting a `Message-ID`.
+    private var identityDomain: String {
+        let address = Draft.normalizedAddress(identity)
+        return address.split(separator: "@").last.map(String.init) ?? "localhost"
     }
 
     public func archive(threadID: String) throws {
@@ -82,10 +150,18 @@ func applyLabels(to labels: [String], add: [String], remove: [String]) -> [Strin
     return result
 }
 
+/// Re-derives a thread from its messages, restoring both invariants the rest of
+/// the engine relies on: `thread.labelIDs == union(message.labelIDs)` and
+/// `thread.lastMessageDate == max(message.date)`. The date matters because a
+/// send adds a message the thread has never seen, and an inbox ordered by date
+/// would otherwise leave a thread you just replied to sitting where it was.
 func deriveThread(_ threadID: String, in store: MailStore) throws {
     let messages = try store.messages(inThread: threadID)
     let (labelIDs, isUnread) = GmailMessageMapper.threadAggregate(from: messages)
     try store.updateThreadDerivedLabels(labelIDs, isUnread: isUnread, onThread: threadID)
+    if let newest = messages.map(\.date).max() {
+        try store.updateThreadLastMessageDate(newest, onThread: threadID)
+    }
 }
 
 extension OutboundService {
@@ -97,6 +173,10 @@ extension OutboundService {
     public func drain() async throws {
         for mutation in try queue.pending() {
             guard let id = mutation.id else { continue }
+            if mutation.kind == .send {
+                try await drainSend(mutation, id: id)
+                continue
+            }
             let payload = try JSONDecoder().decode(OutboundMutationPayload.self, from: mutation.payload)
 
             if payload.messageIDs.isEmpty {
@@ -121,6 +201,75 @@ extension OutboundService {
             } else {
                 try queue.delete(id: id)
             }
+        }
+    }
+
+    /// Pushes one queued send. On success the optimistic placeholder is swapped
+    /// for the real message; on failure it is rolled back and the row is marked
+    /// failed (the draft survives inside the payload, so nothing typed is lost).
+    private func drainSend(_ mutation: PendingMutation, id: Int64) async throws {
+        let payload = try JSONDecoder().decode(OutboundSendPayload.self, from: mutation.payload)
+        let raw = MIMEBuilder.raw(payload.draft, from: identity,
+                                  messageID: payload.messageID, date: now(),
+                                  boundary: "velo-\(newID())")
+
+        let sent: GmailMessageDTO
+        do {
+            sent = try await gmailWriter.sendMessage(raw: raw, threadID: payload.draft.threadID)
+        } catch is AuthError {
+            try rollBackSend(payload)
+            try queue.markFailed(id: id)
+            return
+        }
+
+        try applySent(sent, for: payload)
+        try queue.delete(id: id)
+    }
+
+    /// Replaces the placeholder row with the real message. The send response is
+    /// sparse (id, threadId, labels -- not `format=full`), so the durable fields
+    /// come from the draft we already hold; only identity and labels come from
+    /// the server.
+    private func applySent(_ sent: GmailMessageDTO, for payload: OutboundSendPayload) throws {
+        let draft = payload.draft
+        try mailStore.deleteMessage(id: payload.placeholderMessageID)
+
+        // Gmail assigns the thread for a fresh compose; make sure it exists
+        // before the message references it, then drop the invented one.
+        if try mailStore.thread(id: sent.threadId) == nil {
+            try mailStore.upsert(MailThread(
+                id: sent.threadId, snippet: draft.bodyText, lastMessageDate: now(),
+                isUnread: false, hasAttachments: false, labelIDs: ["SENT"]))
+        }
+
+        try mailStore.upsert(Message(
+            id: sent.id, threadID: sent.threadId, sender: identity,
+            recipients: draft.to, cc: draft.cc, subject: draft.subject, date: now(),
+            bodyHTML: draft.bodyHTML, bodyText: draft.bodyText,
+            isUnread: false, labelIDs: sent.labelIds ?? ["SENT"],
+            messageIDHeader: payload.messageID, inReplyTo: draft.inReplyTo,
+            references: draft.references))
+
+        // Gmail can decline the requested thread and file the message elsewhere.
+        // The message has left the original thread, so that thread has to be
+        // re-derived too, or it keeps the optimistic SENT label forever.
+        if payload.threadID != sent.threadId {
+            if payload.createdThread {
+                try mailStore.deleteThread(id: payload.threadID)
+            } else {
+                try deriveThread(payload.threadID, in: mailStore)
+            }
+        }
+        try deriveThread(sent.threadId, in: mailStore)
+    }
+
+    /// Undoes the optimistic apply of a failed send.
+    private func rollBackSend(_ payload: OutboundSendPayload) throws {
+        try mailStore.deleteMessage(id: payload.placeholderMessageID)
+        if payload.createdThread {
+            try mailStore.deleteThread(id: payload.threadID)
+        } else {
+            try deriveThread(payload.threadID, in: mailStore)
         }
     }
 

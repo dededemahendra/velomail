@@ -163,4 +163,53 @@ private let threadNewerJSON = """
         #expect(labels == [])
         #expect(unread == false)
     }
+
+    @Test func mapperPopulatesReplyThreadingHeaders() throws {
+        let dto = try decodeDTO("""
+        {
+          "id": "m9", "threadId": "t9", "internalDate": "1719900000000",
+          "payload": { "mimeType": "text/plain", "headers": [
+            {"name": "From", "value": "alice@example.com"},
+            {"name": "Cc", "value": "dave@example.com, erin@example.com"},
+            {"name": "Message-ID", "value": "<abc@mail.example.com>"},
+            {"name": "In-Reply-To", "value": "<parent@mail.example.com>"},
+            {"name": "References", "value": "<root@mail.example.com>"}
+          ] }
+        }
+        """)
+        let message = GmailMessageMapper.message(from: dto)
+        #expect(message.cc == ["dave@example.com", "erin@example.com"])
+        #expect(message.messageIDHeader == "<abc@mail.example.com>")
+        #expect(message.inReplyTo == "<parent@mail.example.com>")
+        #expect(message.references == ["<root@mail.example.com>"])
+    }
+
+    @Test func mapperParsesMultipleReferencesSeparatedByWhitespace() throws {
+        let dto = try decodeDTO("""
+        {
+          "id": "m10", "threadId": "t9", "internalDate": "1719900000000",
+          "payload": { "mimeType": "text/plain", "headers": [
+            {"name": "References", "value": "<a@x.com>\\n <b@x.com>\\t<c@x.com>"}
+          ] }
+        }
+        """)
+        #expect(GmailMessageMapper.message(from: dto).references
+                == ["<a@x.com>", "<b@x.com>", "<c@x.com>"])
+    }
+
+    @Test func mapperLeavesReplyHeadersEmptyWhenAbsent() throws {
+        let dto = try decodeDTO("""
+        {
+          "id": "m11", "threadId": "t9", "internalDate": "1719900000000",
+          "payload": { "mimeType": "text/plain", "headers": [
+            {"name": "From", "value": "alice@example.com"}
+          ] }
+        }
+        """)
+        let message = GmailMessageMapper.message(from: dto)
+        #expect(message.cc == [])
+        #expect(message.messageIDHeader == nil)
+        #expect(message.inReplyTo == nil)
+        #expect(message.references == [])
+    }
 }

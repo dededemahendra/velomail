@@ -71,6 +71,15 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v5_add_message_reply_headers") { db in
+            try db.alter(table: "message") { t in
+                t.add(column: "cc", .text).notNull().defaults(to: "[]")
+                t.add(column: "messageIDHeader", .text)
+                t.add(column: "inReplyTo", .text)
+                t.add(column: "references", .text).notNull().defaults(to: "[]")
+            }
+        }
+
         return migrator
     }
 }

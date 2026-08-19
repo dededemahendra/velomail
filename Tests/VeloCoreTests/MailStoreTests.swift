@@ -87,4 +87,39 @@ import Foundation
         try store.updateThreadDerivedLabels(["X"], isUnread: true, onThread: "ghost")   // no-op
         #expect(try store.thread(id: "ghost") == nil)
     }
+
+    @Test func deleteMessageRemovesOnlyThatMessage() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
+        for id in ["m1", "m2"] {
+            try store.upsert(Message(id: id, threadID: "t", sender: "a@b.com", recipients: [],
+                                     subject: "s", date: Date(timeIntervalSince1970: 100),
+                                     bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
+        }
+
+        try store.deleteMessage(id: "m1")
+
+        #expect(try store.message(id: "m1") == nil)
+        #expect(try store.message(id: "m2") != nil)
+        #expect(try store.thread(id: "t") != nil)
+    }
+
+    @Test func deleteThreadRemovesThreadAndItsMessages() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
+        try store.upsert(Message(id: "m1", threadID: "t", sender: "a@b.com", recipients: [],
+                                 subject: "s", date: Date(timeIntervalSince1970: 100),
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: []))
+
+        try store.deleteThread(id: "t")
+
+        #expect(try store.thread(id: "t") == nil)
+        #expect(try store.message(id: "m1") == nil)
+    }
+
+    @Test func deleteMessageIsANoOpForAnUnknownID() throws {
+        let store = try makeStore()
+        try store.deleteMessage(id: "nope")
+        #expect(try store.message(id: "nope") == nil)
+    }
 }
