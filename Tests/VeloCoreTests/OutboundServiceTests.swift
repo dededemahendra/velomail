@@ -55,8 +55,20 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
         let mutations = MutationStore(db)
-        let service = OutboundService(writer: UnusedWriter(), store: store, mutations: mutations, now: now)
+        let service = OutboundService(writer: UnusedWriter(), store: store, mutations: mutations,
+                                      identity: "me@example.com", now: now, newID: counter())
         return (service, store, mutations)
+    }
+
+    /// Deterministic id source: "id1", "id2", ... so placeholder ids and
+    /// Message-IDs are assertable.
+    private func counter() -> () -> String {
+        let box = Counter()
+        return { box.next() }
+    }
+
+    private func sendPayload(_ mutation: PendingMutation) throws -> OutboundSendPayload {
+        try JSONDecoder().decode(OutboundSendPayload.self, from: mutation.payload)
     }
 
     private func seedThread(_ store: MailStore, id: String, labels: [String], unread: Bool,
@@ -166,7 +178,9 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         let store = MailStore(db)
         let mutations = MutationStore(db)
         let service = OutboundService(writer: writer, store: store, mutations: mutations,
-                                      now: { Date(timeIntervalSince1970: 1) })
+                                      identity: "me@example.com",
+                                      now: { Date(timeIntervalSince1970: 1) },
+                                      newID: counter())
         return (service, store, mutations)
     }
 
@@ -257,4 +271,102 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         #expect(all.count == 1)                                 // b deleted, a kept failed
         #expect(all.first?.status == .failed)
     }
+
+    // MARK: - Send (optimistic apply)
+
+    @Test func sendInsertsPlaceholderMessageLabelledSENTIntoExistingThread() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "Re: hi", bodyText: "yes",
+                               threadID: "t", inReplyTo: "<p@x.com>", references: ["<p@x.com>"]))
+
+        let messages = try store.messages(inThread: "t")
+        #expect(messages.count == 2)
+        let placeholder = try #require(messages.first { $0.id.hasPrefix("local:") })
+        #expect(placeholder.labelIDs == ["SENT"])
+        #expect(placeholder.sender == "me@example.com")
+        #expect(placeholder.recipients == ["a@b.com"])
+        #expect(placeholder.subject == "Re: hi")
+        #expect(placeholder.bodyText == "yes")
+        #expect(placeholder.inReplyTo == "<p@x.com>")
+    }
+
+    @Test func sendPlaceholderIsNotUnread() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        let placeholder = try #require(try store.messages(inThread: "t").first { $0.id.hasPrefix("local:") })
+        #expect(placeholder.isUnread == false)
+    }
+
+    @Test func sendReDerivesThreadLabelsToIncludeSENT() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        #expect(try store.thread(id: "t")?.labelIDs == ["INBOX", "SENT"])
+    }
+
+    @Test func sendCreatesAPlaceholderThreadForANewCompose() throws {
+        let (service, store, mutations) = try makeContext()
+
+        try service.send(Draft(to: ["a@b.com"], subject: "Fresh", bodyText: "b"))
+
+        let payload = try sendPayload(try #require(try mutations.pending().first))
+        #expect(payload.createdThread == true)
+        #expect(payload.threadID.hasPrefix("local:"))
+        let thread = try #require(try store.thread(id: payload.threadID))
+        #expect(thread.labelIDs == ["SENT"])
+        #expect(try store.messages(inThread: payload.threadID).count == 1)
+    }
+
+    @Test func sendIntoAnExistingThreadDoesNotFlagCreatedThread() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        let payload = try sendPayload(try #require(try mutations.pending().first))
+        #expect(payload.createdThread == false)
+        #expect(payload.threadID == "t")
+    }
+
+    @Test func sendEnqueuesASendMutationCarryingTheDraftAndPlaceholderIDs() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        let draft = Draft(to: ["a@b.com"], cc: ["c@d.com"], subject: "s", bodyText: "b", threadID: "t")
+
+        try service.send(draft)
+
+        let pending = try mutations.pending()
+        #expect(pending.count == 1)
+        #expect(pending.first?.kind == .send)
+        let payload = try sendPayload(pending[0])
+        #expect(payload.draft == draft)
+        #expect(payload.placeholderMessageID.hasPrefix("local:"))
+        #expect(try store.message(id: payload.placeholderMessageID) != nil)
+    }
+
+    @Test func sendStampsAMessageIDOnThePlaceholderAndThePayload() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        let payload = try sendPayload(try #require(try mutations.pending().first))
+        let placeholder = try #require(try store.message(id: payload.placeholderMessageID))
+        #expect(placeholder.messageIDHeader == payload.messageID)
+        // Domain comes from the sending identity, per RFC 5322.
+        #expect(payload.messageID.hasSuffix("@example.com>"))
+    }
+}
+
+/// Mutable id counter for deterministic placeholder ids in tests.
+private final class Counter {
+    private var n = 0
+    func next() -> String { n += 1; return "id\(n)" }
 }

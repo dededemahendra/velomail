@@ -99,7 +99,7 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         }
         let backfill = BackfillService(source: source, store: mailStore, syncState: syncStore)
         let incremental = IncrementalSyncService(source: source, store: mailStore, syncState: syncStore)
-        let outbound = OutboundService(writer: source, store: mailStore, mutations: mutations,
+        let outbound = OutboundService(writer: source, store: mailStore, mutations: mutations, identity: "me@example.com",
                                        now: { Date(timeIntervalSince1970: 0) })
         let sync = GmailSync(accountID: account, backfill: backfill, incremental: incremental,
                              outbound: outbound, syncState: syncStore, backfillLimit: backfillLimit)

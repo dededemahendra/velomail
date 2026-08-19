@@ -69,7 +69,8 @@ import GRDB
     @Test func sendMutationRoundTripsThroughTheQueue() throws {
         let store = try makeStore()
         let draft = Draft(to: ["a@b.com"], subject: "hi", bodyText: "body")
-        let payload = OutboundSendPayload(draft: draft, placeholderMessageID: "local:1",
+        let payload = OutboundSendPayload(draft: draft, messageID: "<x@example.com>",
+                                          placeholderMessageID: "local:1",
                                           threadID: "t1", createdThread: false)
         let encoded = try JSONEncoder().encode(payload)
         _ = try store.enqueue(PendingMutation(kind: .send, payload: encoded,

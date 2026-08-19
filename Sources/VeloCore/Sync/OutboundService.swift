@@ -17,6 +17,9 @@ struct OutboundMutationPayload: Codable, Equatable {
 /// the optimistic rows `drain()` must swap out or roll back.
 struct OutboundSendPayload: Codable, Equatable {
     var draft: Draft
+    /// The RFC 5322 `Message-ID` minted at enqueue time, so it is stable across
+    /// a restart and identical on any later retry of the same send.
+    var messageID: String
     /// The `local:`-prefixed id of the optimistically inserted message.
     var placeholderMessageID: String
     /// The thread the placeholder went into (a local id for a fresh compose).
@@ -31,14 +34,66 @@ public struct OutboundService {
     private let writer: GmailWriting
     private let store: MailStore
     private let mutations: MutationStore
+    private let identity: String
     private let now: () -> Date
+    private let newID: () -> String
 
+    /// - Parameters:
+    ///   - identity: the account's own address, used as the `From` of anything sent.
+    ///   - newID: opaque unique-id source, injected so tests get stable ids.
     public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
-                now: @escaping () -> Date = { Date() }) {
+                identity: String, now: @escaping () -> Date = { Date() },
+                newID: @escaping () -> String = { UUID().uuidString }) {
         self.writer = writer
         self.store = store
         self.mutations = mutations
+        self.identity = identity
         self.now = now
+        self.newID = newID
+    }
+
+    /// Applies a draft locally at once and queues the real send.
+    ///
+    /// A send has no row to mutate yet, so the optimistic apply has to invent
+    /// one: a placeholder message under a `local:` id (which can never collide
+    /// with a Gmail id), in the draft's thread, or in a placeholder thread when
+    /// this is a fresh compose. `drain()` later swaps it for the real message or
+    /// rolls it back. The draft itself is persisted in the payload, so nothing
+    /// the user typed is lost if the send fails.
+    public func send(_ draft: Draft) throws {
+        let placeholderMessageID = "local:\(newID())"
+        let messageID = "<\(newID())@\(identityDomain)>"
+        let createdThread = draft.threadID == nil
+        let threadID = draft.threadID ?? "local:\(newID())"
+
+        if createdThread {
+            try store.upsert(MailThread(id: threadID, snippet: draft.bodyText,
+                                        lastMessageDate: now(), isUnread: false,
+                                        hasAttachments: false, labelIDs: ["SENT"]))
+        }
+
+        try store.upsert(Message(
+            id: placeholderMessageID, threadID: threadID, sender: identity,
+            recipients: draft.to, cc: draft.cc, subject: draft.subject, date: now(),
+            bodyHTML: draft.bodyHTML, bodyText: draft.bodyText,
+            isUnread: false, labelIDs: ["SENT"],
+            messageIDHeader: messageID, inReplyTo: draft.inReplyTo,
+            references: draft.references))
+        try deriveThread(threadID, in: store)
+
+        let payload = OutboundSendPayload(
+            draft: draft, messageID: messageID,
+            placeholderMessageID: placeholderMessageID,
+            threadID: threadID, createdThread: createdThread)
+        _ = try mutations.enqueue(PendingMutation(
+            kind: .send, payload: try JSONEncoder().encode(payload),
+            createdAt: now(), status: .pending))
+    }
+
+    /// The domain half of the sending identity, for minting a `Message-ID`.
+    private var identityDomain: String {
+        let address = Draft.normalizedAddress(identity)
+        return address.split(separator: "@").last.map(String.init) ?? "localhost"
     }
 
     public func archive(threadID: String) throws {
