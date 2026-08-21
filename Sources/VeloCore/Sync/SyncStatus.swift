@@ -14,4 +14,8 @@ public enum SyncStatus: Equatable, Sendable {
     case upToDate(lastSyncedAt: Date)
     /// The last pass failed transiently; the engine will retry.
     case offline(consecutiveFailures: Int)
+    /// The last pass failed for a reason retrying is unlikely to fix (a dead
+    /// cursor that survived a re-backfill, a storage fault). Kept distinct from
+    /// `offline` so a UI can say "something is wrong" rather than "reconnecting".
+    case failed(reason: String)
 }

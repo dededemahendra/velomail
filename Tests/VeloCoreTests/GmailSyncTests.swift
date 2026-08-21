@@ -388,6 +388,39 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
         #expect(try mutations.all().isEmpty)              // requeued, then drained
     }
+
+    // MARK: - Non-transient failures
+
+    @Test func statusIsFailedAfterANonTransientError() async throws {
+        let source = fresh()
+        source.historyExpiredCalls = 99                   // never recovers
+        let (sync, _, _, _) = try makeSync(
+            source: source,
+            seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true))
+
+        await #expect(throws: SyncError.historyExpired) { try await sync.syncNow() }
+
+        // Must not be left on .syncing, or a UI shows a spinner forever.
+        let status = await sync.status
+        var isFailed = false
+        if case .failed = status { isFailed = true }
+        #expect(isFailed)
+    }
+
+    @Test func runBacksOffAfterANonTransientFailureToo() async throws {
+        let source = fresh()
+        source.historyExpiredCalls = 99
+        let clock = FakeClock(stopAfter: 3)
+        let (sync, _, _, _) = try makeSync(
+            source: source,
+            seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true),
+            clock: clock)
+
+        await sync.run(interval: 60)
+
+        // A failure that will not fix itself must not be retried at full rate.
+        #expect(clock.sleeps == [2, 4, 8])
+    }
 }
 
 /// Clock that lets the source start succeeding after `recoverAfter` sleeps, so

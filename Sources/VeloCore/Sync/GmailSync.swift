@@ -77,12 +77,20 @@ public actor GmailSync {
 
         do {
             try await runPass()
-        } catch let error as AuthError {
-            // Transient: a dropped connection or a 5xx. Count it so the caller
-            // can back off, but rethrow -- swallowing it here would hide a real
-            // failure from anyone driving syncNow() directly.
+        } catch {
+            // Every failure counts toward backoff -- something that will not fix
+            // itself must not be retried at full rate either. Only the reported
+            // status distinguishes them: AuthError is a dropped connection or a
+            // 5xx and will likely clear, anything else (a cursor still dead
+            // after a re-backfill, a storage fault) will not.
+            //
+            // Rethrown either way: swallowing here would hide a real failure
+            // from anyone driving syncNow() directly, and would leave status
+            // stuck on .syncing.
             consecutiveFailures += 1
-            status = .offline(consecutiveFailures: consecutiveFailures)
+            status = error is AuthError
+                ? .offline(consecutiveFailures: consecutiveFailures)
+                : .failed(reason: String(describing: error))
             throw error
         }
 
