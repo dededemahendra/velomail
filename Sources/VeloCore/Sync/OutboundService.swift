@@ -165,8 +165,9 @@ func deriveThread(_ threadID: String, in store: MailStore) throws {
     let messages = try store.messages(inThread: threadID)
     let (labelIDs, isUnread) = GmailMessageMapper.threadAggregate(from: messages)
     try store.updateThreadDerivedLabels(labelIDs, isUnread: isUnread, onThread: threadID)
-    if let newest = messages.map(\.date).max() {
-        try store.updateThreadLastMessageDate(newest, onThread: threadID)
+    if let newest = messages.max(by: { $0.date < $1.date }) {
+        try store.updateThreadLastMessageDate(newest.date, onThread: threadID)
+        try store.updateThreadSender(newest.sender, onThread: threadID)
     }
 }
 

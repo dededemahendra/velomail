@@ -55,6 +55,7 @@ public enum GmailMessageMapper {
 
         return MailThread(
             id: threadID,
+            sender: message(from: newest).sender,
             snippet: newest.snippet ?? "",
             lastMessageDate: date(from: newest.internalDate),
             isUnread: isUnread,

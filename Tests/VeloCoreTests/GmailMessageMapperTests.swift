@@ -212,4 +212,18 @@ private let threadNewerJSON = """
         #expect(message.inReplyTo == nil)
         #expect(message.references == [])
     }
+
+    @Test func threadTakesItsSenderFromTheNewestMessage() throws {
+        let older = try decodeDTO("""
+        {"id":"m1","threadId":"t","internalDate":"1000","labelIds":["INBOX"],
+         "payload":{"mimeType":"text/plain","headers":[{"name":"From","value":"old@x.com"}]}}
+        """)
+        let newer = try decodeDTO("""
+        {"id":"m2","threadId":"t","internalDate":"2000","labelIds":["INBOX"],
+         "payload":{"mimeType":"text/plain","headers":[{"name":"From","value":"Newest <new@x.com>"}]}}
+        """)
+
+        // A list row shows who spoke last, not who started the thread.
+        #expect(GmailMessageMapper.thread(from: [older, newer])?.sender == "Newest <new@x.com>")
+    }
 }

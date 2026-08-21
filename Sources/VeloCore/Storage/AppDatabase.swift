@@ -86,6 +86,12 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v7_add_thread_sender") { db in
+            try db.alter(table: "thread") { t in
+                t.add(column: "sender", .text).notNull().defaults(to: "")
+            }
+        }
+
         return migrator
     }
 }

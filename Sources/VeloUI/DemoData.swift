@@ -27,7 +27,7 @@ enum DemoData {
         for (offset, sample) in samples.enumerated() {
             let date = now.addingTimeInterval(TimeInterval(-offset * 3600))
             let labels = sample.unread ? ["INBOX", "UNREAD"] : ["INBOX"]
-            try store.upsert(MailThread(id: sample.id, snippet: sample.snippet, lastMessageDate: date,
+            try store.upsert(MailThread(id: sample.id, sender: sample.from, snippet: sample.snippet, lastMessageDate: date,
                                         isUnread: sample.unread, hasAttachments: false, labelIDs: labels))
             try store.upsert(Message(id: "m-\(sample.id)", threadID: sample.id, sender: sample.from,
                                      recipients: ["warren@livinglegacyforest.com"],
