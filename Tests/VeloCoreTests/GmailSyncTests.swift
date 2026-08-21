@@ -30,6 +30,9 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     let failGetMessage: Bool
     private(set) var callLog: [String] = []
     private(set) var listCallCount = 0
+    /// Number of upcoming fetchHistory calls that should 404, which
+    /// IncrementalSyncService maps to SyncError.historyExpired.
+    var historyExpiredCalls = 0
     private var backfillIndex = 0
     private var historyIndex = 0
 
@@ -63,6 +66,10 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
         await Task.yield()
         callLog.append("fetchHistory")
+        if historyExpiredCalls > 0 {
+            historyExpiredCalls -= 1
+            throw AuthError.server(code: "404", description: "history too old")
+        }
         if pageToken == nil { historyIndex = 0 }
         let page = historyPages[historyIndex]
         historyIndex += 1
@@ -179,5 +186,57 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         await #expect(throws: AuthError.self) { try await sync.syncNow() }
         // If isSyncing were stuck true, this second call would return without throwing.
         await #expect(throws: AuthError.self) { try await sync.syncNow() }
+    }
+
+    // MARK: - Auto re-backfill (F3)
+
+    @Test func historyExpiredResetsTheCursorAndReBackfillsInTheSamePass() async throws {
+        let source = fresh()
+        source.historyExpiredCalls = 1
+        let (sync, mailStore, syncStore, _) = try makeSync(
+            source: source, seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true))
+
+        try await sync.syncNow()
+
+        // Recovered without the caller doing anything.
+        #expect(source.listCallCount == 1)                       // re-backfill ran
+        let state = try syncStore.load(accountID: account)
+        #expect(state?.backfillComplete == true)
+        #expect(state?.historyId == "5100")                      // fresh cursor from history
+        #expect(try Set(mailStore.inboxThreads().map(\.id)) == ["tb", "th"])
+    }
+
+    @Test func reBackfillIsAttemptedOnlyOncePerPass() async throws {
+        let source = fresh()
+        source.historyExpiredCalls = 99                          // never recovers
+        let (sync, _, _, _) = try makeSync(
+            source: source, seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true))
+
+        await #expect(throws: SyncError.historyExpired) {
+            try await sync.syncNow()
+        }
+        #expect(source.listCallCount == 1)                       // one attempt, not a spin
+    }
+
+    @Test func notInitializedAlsoTriggersABackfill() async throws {
+        let source = fresh()
+        // Flagged complete but with no cursor: incremental cannot start.
+        let (sync, _, syncStore, _) = try makeSync(
+            source: source, seedState: SyncState(accountID: account, historyId: nil, backfillComplete: true))
+
+        try await sync.syncNow()
+
+        #expect(source.listCallCount == 1)
+        #expect(try syncStore.load(accountID: account)?.historyId == "5100")
+    }
+
+    @Test func aNormalPassDoesNotReBackfill() async throws {
+        let source = fresh()
+        let (sync, _, _, _) = try makeSync(
+            source: source, seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true))
+
+        try await sync.syncNow()
+
+        #expect(source.listCallCount == 0)                       // nothing to re-establish
     }
 }

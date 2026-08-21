@@ -41,7 +41,28 @@ public actor GmailSync {
         if state?.backfillComplete != true {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
         }
-        try await incremental.sync(accountID: accountID)
+
+        do {
+            try await incremental.sync(accountID: accountID)
+        } catch is SyncError {
+            // Both SyncError cases mean the same thing: there is no usable
+            // cursor. `historyExpired` is Gmail dropping history older than
+            // about a week (leave the app closed over a holiday and every sync
+            // fails); `notInitialized` is a baseline that was never set. A
+            // re-backfill re-establishes the cursor, so recover in this pass
+            // rather than surfacing an error the engine knows how to fix.
+            try resetCursor()
+            try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
+            // Exactly one retry: a cursor that is still unusable after a fresh
+            // backfill is a real fault, and retrying it in a loop would spin.
+            try await incremental.sync(accountID: accountID)
+        }
+
         try await outbound.drain()
+    }
+
+    /// Clears the cursor and the backfill flag so `backfillInbox` re-seeds both.
+    private func resetCursor() throws {
+        try syncState.save(SyncState(accountID: accountID, historyId: nil, backfillComplete: false))
     }
 }
