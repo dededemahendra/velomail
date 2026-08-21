@@ -86,11 +86,30 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     }
 }
 
+/// Deterministic clock: records every requested delay (which is how backoff is
+/// asserted) and ends the loop by throwing once `stopAfter` sleeps have run.
+private final class FakeClock: SyncClock, @unchecked Sendable {
+    private(set) var sleeps: [TimeInterval] = []
+    private let stopAfter: Int
+
+    init(stopAfter: Int) { self.stopAfter = stopAfter }
+
+    func now() -> Date { Date(timeIntervalSince1970: 0) }
+
+    func sleep(for duration: TimeInterval) async throws {
+        try Task.checkCancellation()
+        sleeps.append(duration)
+        if sleeps.count >= stopAfter { throw CancellationError() }
+        await Task.yield()
+    }
+}
+
 @Suite struct GmailSyncTests {
     private let account = "acct"
 
     private func makeSync(source: FakeGmail, seedState: SyncState? = nil,
-                          seedMutationMessageIDs: [String]? = nil, backfillLimit: Int = 500)
+                          seedMutationMessageIDs: [String]? = nil, backfillLimit: Int = 500,
+                          clock: SyncClock = SystemSyncClock(), failSeededMutation: Bool = false)
         throws -> (GmailSync, MailStore, SyncStateStore, MutationStore) {
         let db = try AppDatabase.makeInMemory()
         let mailStore = MailStore(db)
@@ -101,8 +120,9 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
             let payload = OutboundMutationPayload(
                 threadID: "seed", messageIDs: ids, addLabelIDs: [], removeLabelIDs: ["INBOX"],
                 previousMessageLabels: Dictionary(uniqueKeysWithValues: ids.map { ($0, ["INBOX"]) }))
-            _ = try mutations.enqueue(PendingMutation(kind: .archive, payload: try JSONEncoder().encode(payload),
-                                                      createdAt: Date(timeIntervalSince1970: 0)))
+            let saved = try mutations.enqueue(PendingMutation(kind: .archive, payload: try JSONEncoder().encode(payload),
+                                                              createdAt: Date(timeIntervalSince1970: 0)))
+            if failSeededMutation, let id = saved.id { try mutations.markFailed(id: id) }
         }
         let backfill = BackfillService(source: source, store: mailStore, syncState: syncStore)
         let incremental = IncrementalSyncService(source: source, store: mailStore, syncState: syncStore)
@@ -110,7 +130,7 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
                                        now: { Date(timeIntervalSince1970: 0) })
         let sync = GmailSync(accountID: account, backfill: backfill, incremental: incremental,
                              outbound: outbound, syncState: syncStore, backfillLimit: backfillLimit,
-                             now: { Date(timeIntervalSince1970: 0) })
+                             now: { Date(timeIntervalSince1970: 0) }, clock: clock)
         return (sync, mailStore, syncStore, mutations)
     }
 
@@ -299,5 +319,96 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
 
         // A failed pass must leave the cursor alone so the next one retries it.
         #expect(try syncStore.load(accountID: account)?.historyId == "5000")
+    }
+
+    // MARK: - Polling loop (F5)
+
+    @Test func runPollsRepeatedlyAtTheConfiguredInterval() async throws {
+        let source = fresh()
+        let clock = FakeClock(stopAfter: 3)
+        let (sync, _, _, _) = try makeSync(
+            source: source,
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            clock: clock)
+
+        await sync.run(interval: 60)
+
+        #expect(clock.sleeps == [60, 60, 60])
+        #expect(source.callLog.filter { $0 == "fetchHistory" }.count == 3)
+    }
+
+    @Test func runSleepsForTheBackoffDelayAfterAFailedPass() async throws {
+        let clock = FakeClock(stopAfter: 3)
+        let (sync, _, _, _) = try makeSync(
+            source: fresh(failGetMessage: true),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            clock: clock)
+
+        await sync.run(interval: 60)
+
+        // Standard policy: 2s doubling. The poll interval is not used while failing.
+        #expect(clock.sleeps == [2, 4, 8])
+    }
+
+    @Test func runReturnsToTheIntervalOnceAPassSucceeds() async throws {
+        let source = fresh(failGetMessage: true)
+        let clock = RecoveringClock(recoverAfter: 2, source: source)
+        let (sync, _, _, _) = try makeSync(
+            source: source,
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            clock: clock)
+
+        await sync.run(interval: 60)
+
+        #expect(clock.sleeps == [2, 4, 60])
+    }
+
+    @Test func runStopsWhenTheTaskIsCancelled() async throws {
+        let clock = FakeClock(stopAfter: 10_000)
+        let (sync, _, _, _) = try makeSync(
+            source: fresh(),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            clock: clock)
+
+        let task = Task { await sync.run(interval: 60) }
+        task.cancel()
+        await task.value      // must terminate rather than poll forever
+
+        #expect(clock.sleeps.count < 10_000)
+    }
+
+    @Test func aPassRetriesFailedMutations() async throws {
+        let (sync, _, _, mutations) = try makeSync(
+            source: fresh(),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            seedMutationMessageIDs: ["mb1"], failSeededMutation: true)
+        #expect(try mutations.pending().isEmpty)          // stranded before the pass
+
+        try await sync.syncNow()
+
+        #expect(try mutations.all().isEmpty)              // requeued, then drained
+    }
+}
+
+/// Clock that lets the source start succeeding after `recoverAfter` sleeps, so
+/// the loop can be observed returning from backoff to the normal interval.
+private final class RecoveringClock: SyncClock, @unchecked Sendable {
+    private(set) var sleeps: [TimeInterval] = []
+    private let recoverAfter: Int
+    private let source: FakeGmail
+
+    init(recoverAfter: Int, source: FakeGmail) {
+        self.recoverAfter = recoverAfter
+        self.source = source
+    }
+
+    func now() -> Date { Date(timeIntervalSince1970: 0) }
+
+    func sleep(for duration: TimeInterval) async throws {
+        try Task.checkCancellation()
+        sleeps.append(duration)
+        if sleeps.count == recoverAfter { source.failGetMessage = false }
+        if sleeps.count >= recoverAfter + 1 { throw CancellationError() }
+        await Task.yield()
     }
 }

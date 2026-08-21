@@ -96,6 +96,12 @@ public struct OutboundService {
         return address.split(separator: "@").last.map(String.init) ?? "localhost"
     }
 
+    /// Returns failed mutations to the queue while they are under `maxAttempts`,
+    /// so the next drain retries them.
+    public func retryFailed(maxAttempts: Int) throws {
+        try mutations.retryFailed(maxAttempts: maxAttempts)
+    }
+
     public func archive(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .archive, add: [], remove: ["INBOX"])
     }

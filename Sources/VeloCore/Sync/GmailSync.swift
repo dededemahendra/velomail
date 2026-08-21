@@ -14,6 +14,9 @@ public actor GmailSync {
     private let syncState: SyncStateStore
     private let backfillLimit: Int
     private let now: () -> Date
+    private let clock: SyncClock
+    private let backoff: BackoffPolicy
+    private let maxMutationAttempts: Int
     private var isSyncing = false
     private var consecutiveFailures = 0
 
@@ -23,7 +26,8 @@ public actor GmailSync {
 
     public init(accountID: String, backfill: BackfillService, incremental: IncrementalSyncService,
                 outbound: OutboundService, syncState: SyncStateStore, backfillLimit: Int = 500,
-                now: @escaping () -> Date = { Date() }) {
+                now: @escaping () -> Date = { Date() }, clock: SyncClock = SystemSyncClock(),
+                backoff: BackoffPolicy = .standard, maxMutationAttempts: Int = 3) {
         self.accountID = accountID
         self.backfill = backfill
         self.incremental = incremental
@@ -31,6 +35,31 @@ public actor GmailSync {
         self.syncState = syncState
         self.backfillLimit = backfillLimit
         self.now = now
+        self.clock = clock
+        self.backoff = backoff
+        self.maxMutationAttempts = maxMutationAttempts
+    }
+
+    /// Polls until cancelled: a pass, then a wait, forever.
+    ///
+    /// The wait is the poll `interval` after a good pass and the backoff delay
+    /// after a bad one, so a dropped connection is retried quickly at first and
+    /// then ever more patiently, instead of hammering an API that is not
+    /// answering. Failures are already recorded in `status` by `syncNow`, so
+    /// they are deliberately swallowed here -- the loop's job is to keep going.
+    public func run(interval: TimeInterval) async {
+        while !Task.isCancelled {
+            try? await syncNow()
+
+            let delay = consecutiveFailures > 0
+                ? backoff.delay(afterFailures: consecutiveFailures)
+                : interval
+            do {
+                try await clock.sleep(for: delay)
+            } catch {
+                return   // cancelled
+            }
+        }
     }
 
     /// Runs one initial sync pass.
@@ -64,6 +93,11 @@ public actor GmailSync {
     /// One pass: backfill (if needed) → incremental (recovering a dead cursor)
     /// → drain.
     private func runPass() async throws {
+        // Give previously-failed writes another go before pulling, so a write
+        // that lost a connection goes out on the next tick rather than waiting
+        // for the user to touch the thread again.
+        try outbound.retryFailed(maxAttempts: maxMutationAttempts)
+
         let state = try syncState.load(accountID: accountID)
         if state?.backfillComplete != true {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
