@@ -29,9 +29,9 @@ public struct SelectionCursor: Equatable, Sendable {
     /// index (now the next item), clamping at the end of the list and clearing
     /// when the list empties.
     public mutating func removeCurrent() {
-        guard index != nil, count > 0 else { return }
+        guard let current = index, count > 0 else { return }
         count -= 1
-        index = count > 0 ? min(index!, count - 1) : nil
+        index = count > 0 ? min(current, count - 1) : nil
     }
 
     /// Re-points the cursor at a list whose length changed underneath it —

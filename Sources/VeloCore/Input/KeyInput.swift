@@ -25,7 +25,10 @@ public struct KeyInput: Hashable, Sendable {
         // lock on, and so equality and hashing agree without special cases.
         switch key {
         case let .character(character):
-            self.key = .character(Character(character.lowercased()))
+            // `Character(String)` traps unless the string is exactly one
+            // grapheme cluster, so take the first rather than constructing
+            // blindly — a keystroke handler must not be able to crash.
+            self.key = .character(character.lowercased().first ?? character)
         default:
             self.key = key
         }

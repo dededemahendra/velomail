@@ -77,3 +77,29 @@ sequences, two-state machine.
 - Executing actions — the view model owns that.
 - Everything still blocked on an app target and real Google OAuth client
   credentials: interactive sign-in, the AppKit message list, ThreadView.
+
+---
+
+## Completion record
+
+All four tasks landed red→green, one commit each. Suite went 212 → 252 tests,
+clean build, no warnings.
+
+**Review notes:**
+
+- One test fixture was wrong, not the code: `prefixMatchesOutrankLaterMatches`
+  originally used "Search Mail" as the non-prefix match for query `re`, but
+  there is no `e` after the `r` in "search mail", so it never matched. Replaced
+  with "Mark Read", where `re` genuinely starts at index 5.
+- Two robustness refactors, tests green throughout: `KeyInput` case folding no
+  longer constructs `Character(String)` (which traps unless the string is
+  exactly one grapheme cluster — a keystroke handler must not be able to crash),
+  and `SelectionCursor.removeCurrent` no longer force-unwraps.
+
+**This closes the headless v1 scope.** Against the v1 design's ten milestones:
+storage, auth token core, backfill, incremental sync, the outbound/send engine,
+the keyboard model and the palette's matching are all done and tested. Every
+remaining milestone — the Xcode app target, interactive `ASWebAuthenticationSession`
+sign-in, the AppKit `NSTableView` message list, `ThreadView`/`WKWebView`, and the
+palette UI — needs an app target and real Google Cloud OAuth client credentials,
+which cannot be built or tested headlessly.

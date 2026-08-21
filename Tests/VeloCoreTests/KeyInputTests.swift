@@ -28,4 +28,11 @@ import Testing
         #expect(MailAction.archiveSelected != MailAction.openSelected)
         #expect(MailAction.moveSelectionDown != MailAction.moveSelectionUp)
     }
+
+    @Test func nonASCIIUppercaseFoldsWithoutTrapping() {
+        // Character(String) traps unless the string is exactly one grapheme
+        // cluster, so case folding must never construct one blindly.
+        #expect(KeyInput(.character("É")) == KeyInput(.character("é")))
+        #expect(KeyInput(.character("Ǆ")) == KeyInput(.character("ǆ")))
+    }
 }
