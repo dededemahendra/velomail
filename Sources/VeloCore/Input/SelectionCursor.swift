@@ -34,6 +34,14 @@ public struct SelectionCursor: Equatable, Sendable {
         index = count > 0 ? min(current, count - 1) : nil
     }
 
+    /// Jumps straight to an index — a mouse click, rather than j/k walking.
+    /// An out-of-range index is ignored rather than clamped, because a click
+    /// outside the list is a miss, not a request to move to the end.
+    public mutating func select(_ newIndex: Int) {
+        guard count > 0, (0..<count).contains(newIndex) else { return }
+        index = newIndex
+    }
+
     /// Re-points the cursor at a list whose length changed underneath it —
     /// background sync adding or removing threads. An out-of-range selection
     /// clamps rather than disappearing.
