@@ -526,6 +526,16 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         #expect(try store.messages(inThread: "t").map(\.id) == ["m1"])
         #expect(try store.message(id: "gmailID")?.threadID == "tOther")
     }
+
+    @Test func sendMakesTheSenderOfTheThreadTheAccountIdentity() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        // A list row shows who spoke last; after replying, that is you.
+        #expect(try store.thread(id: "t")?.sender == "me@example.com")
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.

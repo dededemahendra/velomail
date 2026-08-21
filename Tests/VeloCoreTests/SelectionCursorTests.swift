@@ -104,4 +104,24 @@ import Testing
 
         #expect(cursor.index == 1)
     }
+
+    @Test func selectMovesDirectlyToAnIndex() {
+        var cursor = SelectionCursor(count: 5)
+        cursor.select(3)
+        #expect(cursor.index == 3)
+    }
+
+    @Test func selectIgnoresAnOutOfRangeIndex() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.select(9)
+        #expect(cursor.index == 0)
+        cursor.select(-1)
+        #expect(cursor.index == 0)
+    }
+
+    @Test func selectOnAnEmptyListIsANoOp() {
+        var cursor = SelectionCursor(count: 0)
+        cursor.select(0)
+        #expect(cursor.index == nil)
+    }
 }

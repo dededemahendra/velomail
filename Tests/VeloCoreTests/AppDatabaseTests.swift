@@ -37,4 +37,12 @@ import GRDB
             #expect(columns.contains("attempts"))
         }
     }
+
+    @Test func threadTableHasASenderColumn() throws {
+        let db = try AppDatabase.makeInMemory()
+        try db.dbQueue.read { db in
+            let columns = try db.columns(in: "thread").map(\.name)
+            #expect(columns.contains("sender"))
+        }
+    }
 }

@@ -60,6 +60,15 @@ public final class MailStore: Sendable {
         }
     }
 
+    /// Sets the thread's displayed sender (the newest message's).
+    public func updateThreadSender(_ sender: String, onThread threadID: String) throws {
+        try database.dbQueue.write { db in
+            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
+            thread.sender = sender
+            try thread.update(db)
+        }
+    }
+
     /// Sets a thread's newest-message timestamp. Kept separate from
     /// `updateThreadDerivedLabels` because a label delta never moves the date.
     public func updateThreadLastMessageDate(_ date: Date, onThread threadID: String) throws {
