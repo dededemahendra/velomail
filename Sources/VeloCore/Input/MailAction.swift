@@ -1,0 +1,19 @@
+import Foundation
+
+/// Everything the v1 keymap can ask for. The engine decides *what* was asked;
+/// performing it against `OutboundService`/`MailStore` is the view model's job,
+/// which is what keeps this whole layer testable without a window.
+public enum MailAction: String, Equatable, Sendable, CaseIterable {
+    case moveSelectionDown
+    case moveSelectionUp
+    case openSelected
+    /// Archive and auto-advance — the core triage gesture.
+    case archiveSelected
+    case reply
+    case send
+    case compose
+    case goToInbox
+    /// Leave the current view; also cancels a half-typed chord.
+    case back
+    case openCommandPalette
+}
