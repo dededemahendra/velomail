@@ -10,6 +10,7 @@ final class AppHost: ObservableObject {
     let app: AppViewModel
     private let sync: GmailSync?
     private let store: MailStore
+    private let auth: AuthCoordinator?
     private var syncTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
 
@@ -21,11 +22,15 @@ final class AppHost: ObservableObject {
         self.app = assembly.app
         self.sync = assembly.sync
         self.store = assembly.store
+        self.auth = assembly.auth
+        // The view model routes; the coordinator owns the browser hop.
+        app.onSignInRequested = { [weak self] in self?.auth?.signIn() }
     }
 
     func start() async {
         try? app.start()
         observeInbox()
+        observeAuth()
         guard let sync else { return }
         syncTask = Task { await sync.run(interval: 60) }
         statusTask = Task { [weak self] in
@@ -39,6 +44,13 @@ final class AppHost: ObservableObject {
     func stop() {
         syncTask?.cancel()
         statusTask?.cancel()
+    }
+
+    /// Mirrors sign-in state into the view model so routing reacts to it.
+    private func observeAuth() {
+        guard let auth else { return }
+        auth.onStateChange = { [weak self] state in self?.app.setAuthState(state) }
+        app.setAuthState(auth.state)
     }
 
     /// Repaints the list whenever sync lands rows, so the UI never polls.
@@ -56,6 +68,6 @@ final class AppHost: ObservableObject {
         return Composition.Assembly(
             app: AppViewModel(config: AppConfig(clientID: nil, isDemo: false),
                               store: store, outbound: outbound, identity: "me@example.com"),
-            sync: nil, store: store)
+            sync: nil, store: store, auth: nil)
     }
 }

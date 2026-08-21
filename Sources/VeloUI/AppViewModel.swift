@@ -3,7 +3,7 @@ import SwiftUI
 import VeloCore
 
 public enum Route: Equatable, Sendable {
-    case setup, list, thread, compose, palette
+    case setup, signIn, list, thread, compose, palette
 }
 
 /// Owns which surface is focused and turns keystrokes into actions.
@@ -15,6 +15,10 @@ public enum Route: Equatable, Sendable {
 public final class AppViewModel: ObservableObject {
     @Published public private(set) var route: Route
     @Published public private(set) var syncStatus: SyncStatus = .idle
+    @Published public private(set) var authState: AuthCoordinator.AuthState = .signedOut
+
+    /// Set by `AppHost`, which owns the coordinator; the view model only routes.
+    public var onSignInRequested: (() -> Void)?
 
     public let inbox: InboxViewModel
     public let compose: ComposeViewModel
@@ -22,24 +26,59 @@ public final class AppViewModel: ObservableObject {
 
     private let config: AppConfig
     private var keyboard = KeyboardEngine()
+    private var isSignedIn: Bool
 
     public var setupHint: String { AppConfig.setupInstructions }
     public var isConfigured: Bool { config.isConfigured }
 
-    public init(config: AppConfig, store: MailStore, outbound: OutboundService, identity: String) {
+    /// Demo mode exists precisely to be looked at without credentials, so it
+    /// must reach the mail surface even though it has no client id. Only a
+    /// genuinely unconfigured launch goes to setup.
+    private var canShowMail: Bool { config.isDemo || (config.isConfigured && isSignedIn) }
+
+    public init(config: AppConfig, store: MailStore, outbound: OutboundService,
+                identity: String, isSignedIn: Bool = false) {
         self.config = config
+        self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
         self.compose = ComposeViewModel(outbound: outbound, identity: identity)
-        self.route = config.isConfigured ? .list : .setup
+        self.route = .setup
+        self.route = landingRoute
     }
 
     public func start() throws {
-        guard config.isConfigured else { return }
+        guard canShowMail else {
+            route = landingRoute
+            return
+        }
         try inbox.reload()
         route = .list
     }
 
+    /// Sign-in state changed underneath us (the browser leg finished, or the
+    /// user signed out).
+    public func setSignedIn(_ signedIn: Bool) {
+        isSignedIn = signedIn
+        route = landingRoute
+        if route == .list { try? inbox.reload() }
+    }
+
+    /// Where a fresh launch lands. Order matters: with no credentials there is
+    /// nothing to sign in *to*, so setup comes first.
+    private var landingRoute: Route {
+        if config.isDemo { return .list }
+        guard config.isConfigured else { return .setup }
+        return isSignedIn ? .list : .signIn
+    }
+
     public func setSyncStatus(_ status: SyncStatus) { syncStatus = status }
+
+    public func setAuthState(_ state: AuthCoordinator.AuthState) {
+        authState = state
+        setSignedIn(state == .signedIn)
+    }
+
+    public func signIn() { onSignInRequested?() }
 
     /// Feeds one keystroke through the keymap. Returns whether it was consumed:
     /// the event monitor must only swallow handled keys, or typing in a text
@@ -108,7 +147,7 @@ public final class AppViewModel: ObservableObject {
     private func goBack() {
         switch route {
         case .thread, .compose, .palette: route = .list
-        case .list, .setup: break
+        case .list, .setup, .signIn: break
         }
     }
 }

@@ -21,6 +21,7 @@ public enum Composition {
         public let app: AppViewModel
         public let sync: GmailSync?
         public let store: MailStore
+        public let auth: AuthCoordinator?
     }
 
     @MainActor
@@ -44,13 +45,14 @@ public enum Composition {
                                            mutations: mutations, identity: identity)
             return Assembly(app: AppViewModel(config: config, store: store,
                                               outbound: outbound, identity: identity),
-                            sync: nil, store: store)
+                            sync: nil, store: store, auth: nil)
         }
 
         let httpClient = URLSessionHTTPClient()
         let authConfig = AuthConfig.gmail(clientID: clientID, redirectURI: redirectURI)
         let tokenService = TokenService(config: authConfig, httpClient: httpClient)
-        let tokenProvider = AccessTokenProvider(store: KeychainTokenStore(), service: tokenService)
+        let tokenStore = KeychainTokenStore()
+        let tokenProvider = AccessTokenProvider(store: tokenStore, service: tokenService)
         let api = GmailAPIClient(httpClient: httpClient, tokenProvider: tokenProvider)
 
         let outbound = OutboundService(writer: api, store: store, mutations: mutations, identity: identity)
@@ -61,9 +63,10 @@ public enum Composition {
             outbound: outbound,
             syncState: syncState)
 
-        return Assembly(app: AppViewModel(config: config, store: store,
-                                          outbound: outbound, identity: identity),
-                        sync: sync, store: store)
+        let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
+        let app = AppViewModel(config: config, store: store, outbound: outbound,
+                               identity: identity, isSignedIn: auth.state == .signedIn)
+        return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }
 

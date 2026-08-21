@@ -22,7 +22,8 @@ import VeloCore
                                        identity: "me@x.com")
         let config = AppConfig.resolve(
             environment: configured ? ["VELOMAIL_CLIENT_ID": "cid"] : [:], configFile: nil)
-        let app = AppViewModel(config: config, store: store, outbound: outbound, identity: "me@x.com")
+        let app = AppViewModel(config: config, store: store, outbound: outbound,
+                               identity: "me@x.com", isSignedIn: true)
         try app.start()
         return app
     }
@@ -126,12 +127,50 @@ import VeloCore
                                store: store,
                                outbound: OutboundService(writer: NoopWriter(), store: store,
                                                          mutations: MutationStore(db), identity: "me@x.com"),
-                               identity: "me@x.com")
+                               identity: "me@x.com", isSignedIn: true)
         try app.start()
 
         app.handle(KeyInput(.character("o")))
 
         #expect(app.inbox.selectedThread?.isUnread == false)
+    }
+
+    @Test func configuredButSignedOutRoutesToSignIn() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: false)
+        try app.start()
+
+        // Credentials present but no token yet: ask the user to sign in rather
+        // than showing an empty inbox that will never fill.
+        #expect(app.route == .signIn)
+    }
+
+    @Test func signingInMovesToTheList() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: false)
+        try app.start()
+
+        app.setSignedIn(true)
+
+        #expect(app.route == .list)
+    }
+
+    @Test func unconfiguredStillWinsOverSignIn() throws {
+        // No credentials at all: setup instructions come first; there is nothing
+        // to sign in *to* yet.
+        #expect(try makeApp(configured: false).route == .setup)
     }
 }
 
