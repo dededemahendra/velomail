@@ -83,4 +83,63 @@ import GRDB
         #expect(decoded == payload)
         #expect(decoded.draft.subject == "hi")
     }
+
+    // MARK: - Bounded retry (F1)
+
+    @Test func newMutationsStartWithZeroAttempts() throws {
+        let store = try makeStore()
+        let saved = try store.enqueue(mutation())
+        #expect(saved.attempts == 0)
+    }
+
+    @Test func markFailedIncrementsAttempts() throws {
+        let store = try makeStore()
+        let saved = try store.enqueue(mutation())
+        let id = try #require(saved.id)
+
+        try store.markFailed(id: id)
+        #expect(try store.all().first?.attempts == 1)
+
+        // A second failure of the same row must count again, not reset.
+        try store.retryFailed(maxAttempts: 3)
+        try store.markFailed(id: id)
+        #expect(try store.all().first?.attempts == 2)
+    }
+
+    @Test func retryFailedRequeuesFailedMutationsUnderTheCap() throws {
+        let store = try makeStore()
+        let id = try #require(try store.enqueue(mutation()).id)
+        try store.markFailed(id: id)
+        #expect(try store.pending().isEmpty)
+
+        try store.retryFailed(maxAttempts: 3)
+
+        #expect(try store.pending().count == 1)
+        #expect(try store.all().first?.status == .pending)
+        #expect(try store.all().first?.attempts == 1)   // history preserved
+    }
+
+    @Test func retryFailedLeavesMutationsAtTheCapFailed() throws {
+        let store = try makeStore()
+        let id = try #require(try store.enqueue(mutation()).id)
+        for _ in 0..<3 {
+            try store.markFailed(id: id)
+            try store.retryFailed(maxAttempts: 3)
+        }
+
+        // Third failure hits the cap, so the last retry must not requeue it.
+        #expect(try store.all().first?.attempts == 3)
+        #expect(try store.all().first?.status == .failed)
+        #expect(try store.pending().isEmpty)
+    }
+
+    @Test func retryFailedIgnoresPendingRows() throws {
+        let store = try makeStore()
+        _ = try store.enqueue(mutation())
+
+        try store.retryFailed(maxAttempts: 3)
+
+        #expect(try store.all().first?.attempts == 0)
+        #expect(try store.pending().count == 1)
+    }
 }

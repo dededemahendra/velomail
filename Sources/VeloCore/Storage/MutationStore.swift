@@ -36,12 +36,32 @@ public final class MutationStore {
         }
     }
 
-    /// Marks a mutation failed (keeps the row). No-op if the id is unknown.
+    /// Marks a mutation failed and counts the attempt (keeps the row).
+    /// No-op if the id is unknown.
     public func markFailed(id: Int64) throws {
         try database.dbQueue.write { db in
             guard var mutation = try PendingMutation.fetchOne(db, key: id) else { return }
             mutation.status = .failed
+            mutation.attempts += 1
             try mutation.update(db)
+        }
+    }
+
+    /// Returns failed mutations to the queue so the next drain retries them,
+    /// but only while they are under `maxAttempts`. Rows at the cap stay
+    /// `.failed`, which is what stops a deterministically-broken write (a
+    /// malformed send, say) from being retried on every tick forever.
+    /// `attempts` is deliberately not reset, so the cap survives a requeue.
+    public func retryFailed(maxAttempts: Int) throws {
+        try database.dbQueue.write { db in
+            let retryable = try PendingMutation
+                .filter(Column("status") == MutationStatus.failed.rawValue)
+                .filter(Column("attempts") < maxAttempts)
+                .fetchAll(db)
+            for var mutation in retryable {
+                mutation.status = .pending
+                try mutation.update(db)
+            }
         }
     }
 
