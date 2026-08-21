@@ -13,16 +13,24 @@ public actor GmailSync {
     private let outbound: OutboundService
     private let syncState: SyncStateStore
     private let backfillLimit: Int
+    private let now: () -> Date
     private var isSyncing = false
+    private var consecutiveFailures = 0
+
+    /// The engine's current state, for a status indicator. Read-only from
+    /// outside; only a pass changes it.
+    public private(set) var status: SyncStatus = .idle
 
     public init(accountID: String, backfill: BackfillService, incremental: IncrementalSyncService,
-                outbound: OutboundService, syncState: SyncStateStore, backfillLimit: Int = 500) {
+                outbound: OutboundService, syncState: SyncStateStore, backfillLimit: Int = 500,
+                now: @escaping () -> Date = { Date() }) {
         self.accountID = accountID
         self.backfill = backfill
         self.incremental = incremental
         self.outbound = outbound
         self.syncState = syncState
         self.backfillLimit = backfillLimit
+        self.now = now
     }
 
     /// Runs one initial sync pass.
@@ -35,8 +43,27 @@ public actor GmailSync {
     public func syncNow() async throws {
         guard !isSyncing else { return }
         isSyncing = true
+        status = .syncing
         defer { isSyncing = false }
 
+        do {
+            try await runPass()
+        } catch let error as AuthError {
+            // Transient: a dropped connection or a 5xx. Count it so the caller
+            // can back off, but rethrow -- swallowing it here would hide a real
+            // failure from anyone driving syncNow() directly.
+            consecutiveFailures += 1
+            status = .offline(consecutiveFailures: consecutiveFailures)
+            throw error
+        }
+
+        consecutiveFailures = 0
+        status = .upToDate(lastSyncedAt: now())
+    }
+
+    /// One pass: backfill (if needed) → incremental (recovering a dead cursor)
+    /// → drain.
+    private func runPass() async throws {
         let state = try syncState.load(accountID: accountID)
         if state?.backfillComplete != true {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)

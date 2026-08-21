@@ -27,7 +27,7 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     let backfillPages: [(ids: [String], next: String?)]
     let messages: [String: GmailMessageDTO]
     let historyPages: [GmailHistoryResponse]
-    let failGetMessage: Bool
+    var failGetMessage: Bool
     private(set) var callLog: [String] = []
     private(set) var listCallCount = 0
     /// Number of upcoming fetchHistory calls that should 404, which
@@ -109,7 +109,8 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         let outbound = OutboundService(writer: source, store: mailStore, mutations: mutations, identity: "me@example.com",
                                        now: { Date(timeIntervalSince1970: 0) })
         let sync = GmailSync(accountID: account, backfill: backfill, incremental: incremental,
-                             outbound: outbound, syncState: syncStore, backfillLimit: backfillLimit)
+                             outbound: outbound, syncState: syncStore, backfillLimit: backfillLimit,
+                             now: { Date(timeIntervalSince1970: 0) })
         return (sync, mailStore, syncStore, mutations)
     }
 
@@ -238,5 +239,65 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         try await sync.syncNow()
 
         #expect(source.listCallCount == 0)                       // nothing to re-establish
+    }
+
+    // MARK: - Status (F4)
+
+    @Test func statusStartsIdle() async throws {
+        let (sync, _, _, _) = try makeSync(source: fresh())
+        let status = await sync.status
+        #expect(status == .idle)
+    }
+
+    @Test func statusIsUpToDateAfterASuccessfulPass() async throws {
+        let (sync, _, _, _) = try makeSync(source: fresh())
+
+        try await sync.syncNow()
+
+        let status = await sync.status
+        #expect(status == .upToDate(lastSyncedAt: Date(timeIntervalSince1970: 0)))
+    }
+
+    @Test func statusIsOfflineAfterATransientFailure() async throws {
+        let (sync, _, _, _) = try makeSync(source: fresh(failGetMessage: true))
+
+        await #expect(throws: AuthError.self) { try await sync.syncNow() }
+
+        let status = await sync.status
+        #expect(status == .offline(consecutiveFailures: 1))
+    }
+
+    @Test func consecutiveFailuresAccumulate() async throws {
+        let (sync, _, _, _) = try makeSync(source: fresh(failGetMessage: true))
+
+        await #expect(throws: AuthError.self) { try await sync.syncNow() }
+        await #expect(throws: AuthError.self) { try await sync.syncNow() }
+
+        let status = await sync.status
+        #expect(status == .offline(consecutiveFailures: 2))
+    }
+
+    @Test func aSuccessfulPassClearsTheFailureCount() async throws {
+        let source = fresh(failGetMessage: true)
+        let (sync, _, _, _) = try makeSync(source: source)
+        await #expect(throws: AuthError.self) { try await sync.syncNow() }
+
+        source.failGetMessage = false                    // network came back
+        try await sync.syncNow()
+
+        // Recovery must be immediate, not served out behind a stale backoff.
+        let status = await sync.status
+        #expect(status == .upToDate(lastSyncedAt: Date(timeIntervalSince1970: 0)))
+    }
+
+    @Test func transientFailureDoesNotAdvanceTheCursor() async throws {
+        let (sync, _, syncStore, _) = try makeSync(
+            source: fresh(failGetMessage: true),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true))
+
+        await #expect(throws: AuthError.self) { try await sync.syncNow() }
+
+        // A failed pass must leave the cursor alone so the next one retries it.
+        #expect(try syncStore.load(accountID: account)?.historyId == "5000")
     }
 }
