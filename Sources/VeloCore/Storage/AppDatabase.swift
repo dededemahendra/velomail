@@ -80,6 +80,12 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v6_add_mutation_attempts") { db in
+            try db.alter(table: "pendingMutation") { t in
+                t.add(column: "attempts", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         return migrator
     }
 }

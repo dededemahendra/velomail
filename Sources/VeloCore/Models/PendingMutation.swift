@@ -26,16 +26,22 @@ public struct PendingMutation: Codable, FetchableRecord, MutablePersistableRecor
     public var payload: Data
     public var createdAt: Date
     public var status: MutationStatus
+    /// How many times `drain()` has tried and failed to push this mutation.
+    /// Persisted rather than counted in memory: the queue is durable so a
+    /// restart cannot lose writes, and an in-memory count would reset on every
+    /// launch, turning a permanently-failing mutation into an endless loop.
+    public var attempts: Int
 
     public static let databaseTableName = "pendingMutation"
 
     public init(id: Int64? = nil, kind: MutationKind, payload: Data,
-                createdAt: Date, status: MutationStatus = .pending) {
+                createdAt: Date, status: MutationStatus = .pending, attempts: Int = 0) {
         self.id = id
         self.kind = kind
         self.payload = payload
         self.createdAt = createdAt
         self.status = status
+        self.attempts = attempts
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
