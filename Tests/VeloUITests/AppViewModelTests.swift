@@ -172,6 +172,27 @@ import VeloCore
         // to sign in *to* yet.
         #expect(try makeApp(configured: false).route == .setup)
     }
+
+    @Test func keystrokesAreIgnoredWhileTheCommandPaletteIsOpen() throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("k"), [.command]))
+        #expect(app.route == .palette)
+
+        // The palette has a text field. Typing "reply" must not fire r=reply
+        // and e=archive on the way past.
+        for character in "reply" { app.handle(KeyInput(.character(character))) }
+
+        #expect(app.route == .palette)
+        #expect(app.inbox.threads.count == 3)
+    }
+
+    @Test func paletteKeystrokesFallThroughToTheTextField() throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("k"), [.command]))
+
+        // Not consumed, so the search field still receives them.
+        #expect(app.handle(KeyInput(.character("r"))) == false)
+    }
 }
 
 private struct NoopWriter: GmailWriting {

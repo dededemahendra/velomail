@@ -85,9 +85,10 @@ public final class AppViewModel: ObservableObject {
     /// field would fire triage actions.
     @discardableResult
     public func handle(_ input: KeyInput) -> Bool {
-        // While composing, the text field owns the keyboard. Only Escape gets
-        // through, so typing "e" in a message body cannot archive the inbox.
-        if route == .compose {
+        // Compose and the palette both own a text field, and while one is open
+        // it owns the keyboard. Only Escape gets through, so typing "reply" in
+        // the palette cannot fire r=reply and e=archive on the way past.
+        if route == .compose || route == .palette {
             guard input.key == .escape else { return false }
             route = .list
             return true

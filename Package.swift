@@ -17,7 +17,9 @@ let package = Package(
             name: "VeloCore",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
         ),
-        .target(name: "VeloUI", dependencies: ["VeloCore"]),
+        // GRDB is explicit rather than transitive: VeloUI retains the
+        // AnyDatabaseCancellable that MailStore's observation returns.
+        .target(name: "VeloUI", dependencies: ["VeloCore", .product(name: "GRDB", package: "GRDB.swift")]),
         .executableTarget(name: "VeloMail", dependencies: ["VeloUI"]),
         .testTarget(
             name: "VeloCoreTests",

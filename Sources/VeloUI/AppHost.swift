@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import GRDB
 import VeloCore
 
 /// Owns the assembled app and the background sync task for the process
@@ -13,6 +14,9 @@ final class AppHost: ObservableObject {
     private let auth: AuthCoordinator?
     private var syncTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    /// Must be retained: GRDB cancels the observation when this is released,
+    /// which would silently stop the list ever repainting on sync.
+    private var inboxObservation: AnyDatabaseCancellable?
 
     init() {
         // A failure here means the store could not be opened at all, which is
@@ -55,7 +59,7 @@ final class AppHost: ObservableObject {
 
     /// Repaints the list whenever sync lands rows, so the UI never polls.
     private func observeInbox() {
-        store.observeInboxThreads { [weak app] _ in
+        inboxObservation = store.observeInboxThreads { [weak app] _ in
             Task { @MainActor in try? app?.inbox.reload() }
         }
     }
