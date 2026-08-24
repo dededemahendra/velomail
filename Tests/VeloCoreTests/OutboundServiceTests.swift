@@ -536,6 +536,44 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         // A list row shows who spoke last; after replying, that is you.
         #expect(try store.thread(id: "t")?.sender == "me@example.com")
     }
+
+    // MARK: - Late-bound identity (I2)
+
+    @Test func identityIsResolvedAtSendTimeNotConstructionTime() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        // The real address arrives with the first backfill, long after the
+        // service is built, so it must not be captured at construction.
+        var current = "placeholder@example.com"
+        let service = OutboundService(writer: UnusedWriter(), store: store,
+                                      mutations: MutationStore(db),
+                                      identity: { current },
+                                      now: { Date(timeIntervalSince1970: 1) },
+                                      newID: counter())
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        current = "real@example.com"
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        let placeholder = try #require(try store.messages(inThread: "t").first { $0.id.hasPrefix("local:") })
+        #expect(placeholder.sender == "real@example.com")
+        #expect(placeholder.messageIDHeader?.hasSuffix("@example.com>") == true)
+    }
+
+    @Test func theStringInitializerStillWorks() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let service = OutboundService(writer: UnusedWriter(), store: store,
+                                      mutations: MutationStore(db),
+                                      identity: "fixed@example.com",
+                                      now: { Date(timeIntervalSince1970: 1) },
+                                      newID: counter())
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        #expect(try store.thread(id: "t")?.sender == "fixed@example.com")
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.
