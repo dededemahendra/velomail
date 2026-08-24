@@ -574,6 +574,107 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
 
         #expect(try store.thread(id: "t")?.sender == "fixed@example.com")
     }
+
+    // MARK: - Undo Send / Send Later (M2)
+
+    @Test func anImmediateSendIsDueAtOnce() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        #expect(try mutations.pending(due: Date(timeIntervalSince1970: 42)).count == 1)
+    }
+
+    @Test func aDelayedSendIsNotDueUntilTheWindowPasses() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"),
+                         after: 10)
+
+        // now() is fixed at 42 in this harness.
+        #expect(try mutations.pending(due: Date(timeIntervalSince1970: 45)).isEmpty)
+        #expect(try mutations.pending(due: Date(timeIntervalSince1970: 52)).count == 1)
+    }
+
+    @Test func sendReturnsTheMutationIdSoItCanBeUndone() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        let id = try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"),
+                                  after: 10)
+
+        #expect(id != nil)
+    }
+
+    @Test func theMessageStillAppearsImmediatelyWhileDelayed() throws {
+        let (service, store, _) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"), after: 10)
+
+        // Optimism is the point: the user sees it sent, we just hold it back.
+        #expect(try store.messages(inThread: "t").contains { $0.id.hasPrefix("local:") })
+    }
+
+    @Test func cancellingRemovesTheQueuedSendAndThePlaceholder() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        let id = try #require(try service.send(
+            Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"), after: 10))
+
+        try service.cancelSend(mutationID: id)
+
+        #expect(try mutations.all().isEmpty)
+        #expect(try store.messages(inThread: "t").map(\.id) == ["m1"])
+        #expect(try store.thread(id: "t")?.labelIDs == ["INBOX"])   // SENT derived away
+    }
+
+    @Test func cancellingANewComposeAlsoRemovesTheInventedThread() throws {
+        let (service, store, mutations) = try makeContext()
+        let id = try #require(try service.send(
+            Draft(to: ["a@b.com"], subject: "s", bodyText: "b"), after: 10))
+        // A fresh compose is labelled SENT, so it is not in the inbox; the
+        // invented thread id lives in the payload.
+        let threadID = try sendPayload(try #require(try mutations.all().first)).threadID
+        #expect(try store.thread(id: threadID) != nil)
+
+        try service.cancelSend(mutationID: id)
+
+        #expect(try store.thread(id: threadID) == nil)
+    }
+
+    @Test func cancellingAnUnknownIdIsANoOp() throws {
+        let (service, _, _) = try makeContext()
+        try service.cancelSend(mutationID: 999)
+    }
+
+    @Test func cancellingALabelMutationIsRefusedRatherThanCorrupting() throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.archive(threadID: "t")
+        let id = try #require(try mutations.pending().first?.id)
+
+        try service.cancelSend(mutationID: id)
+
+        // cancelSend is for sends; decoding an archive payload as one would
+        // throw, and silently deleting it would lose the archive.
+        #expect(try mutations.all().count == 1)
+    }
+
+    @Test func drainSkipsASendThatIsNotYetDue() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"),
+                         after: 3_600)
+
+        try await service.drain()
+
+        #expect(writer.sendCalls.isEmpty)
+        #expect(try mutations.all().count == 1)   // still queued, still waiting
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.
