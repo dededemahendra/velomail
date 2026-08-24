@@ -19,11 +19,15 @@ public final class MutationStore {
         }
     }
 
-    /// Pending mutations, oldest first (FIFO by id).
-    public func pending() throws -> [PendingMutation] {
+    /// Pending mutations that are due, oldest first (FIFO by id).
+    ///
+    /// A null `dueAt` means "now", so the label kinds -- which never
+    /// schedule -- are unaffected.
+    public func pending(due now: Date = Date()) throws -> [PendingMutation] {
         try database.dbQueue.read { db in
             try PendingMutation
                 .filter(Column("status") == MutationStatus.pending.rawValue)
+                .filter(sql: "dueAt IS NULL OR dueAt <= ?", arguments: [now])
                 .order(Column("id").asc)
                 .fetchAll(db)
         }

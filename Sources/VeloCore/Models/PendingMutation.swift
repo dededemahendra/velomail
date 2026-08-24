@@ -31,17 +31,24 @@ public struct PendingMutation: Codable, FetchableRecord, MutablePersistableRecor
     /// restart cannot lose writes, and an in-memory count would reset on every
     /// launch, turning a permanently-failing mutation into an endless loop.
     public var attempts: Int
+    /// When this may be pushed. `nil` means immediately.
+    ///
+    /// One column buys both Undo Send and Send Later: both are simply "do not
+    /// send this yet", and the drain skips anything not yet due.
+    public var dueAt: Date?
 
     public static let databaseTableName = "pendingMutation"
 
     public init(id: Int64? = nil, kind: MutationKind, payload: Data,
-                createdAt: Date, status: MutationStatus = .pending, attempts: Int = 0) {
+                createdAt: Date, status: MutationStatus = .pending, attempts: Int = 0,
+                dueAt: Date? = nil) {
         self.id = id
         self.kind = kind
         self.payload = payload
         self.createdAt = createdAt
         self.status = status
         self.attempts = attempts
+        self.dueAt = dueAt
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) {
