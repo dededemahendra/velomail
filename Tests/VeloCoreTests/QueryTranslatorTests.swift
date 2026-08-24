@@ -116,4 +116,28 @@ private let today = Date(timeIntervalSince1970: 1_756_000_000)   // 2025-08-24
         // The model has no clock.
         #expect(try #require(provider.requests.first).prompt.contains("2025-08-24"))
     }
+
+    // MARK: - Translation that produces nothing
+
+    @Test func aTranslationWithNothingInItFallsBackToTheRawText() async throws {
+        // Seen against a real model: "plot map" came back as {} and the search
+        // would then have matched everything instead of the one thread.
+        let provider = ScriptedProvider("{}")
+        #expect(await translator(provider).translate("plot map").terms == "plot map")
+    }
+
+    @Test func emptyTermsWithNoFiltersAlsoFallsBack() async throws {
+        let provider = ScriptedProvider(#"{"terms":""}"#)
+        #expect(await translator(provider).translate("plot map").terms == "plot map")
+    }
+
+    @Test func aFilterOnlyTranslationIsKeptRatherThanOverridden() async throws {
+        // "unread mail" legitimately has no keywords; that is not a failure.
+        let provider = ScriptedProvider(#"{"terms":"","isUnread":true}"#)
+
+        let query = await translator(provider).translate("unread mail")
+
+        #expect(query.isUnread == true)
+        #expect(query.terms.isEmpty)
+    }
 }

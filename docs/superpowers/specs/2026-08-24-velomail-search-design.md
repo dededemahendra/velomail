@@ -86,3 +86,28 @@ resolved; the model has no clock.
 - No search-result highlighting or snippets.
 - No `has:attachment` — attachment parts are not stored yet (roadmap item 30).
 - Relative dates depend on the model resolving them correctly.
+
+---
+
+## Completion record
+
+443 → 499 tests, clean build, no warnings.
+
+**A bug only a real model would have shown.** Against `qwen3.5:9b-mlx` the
+complex case worked exactly as designed —
+`"unread emails from natalie last week about the open day"` became
+`terms="open day", from="natalie", isUnread=true, after=2025-08-17` — but the
+*plain* query `"plot map"` came back as `{}`, which would have matched the entire
+mailbox instead of one thread. A translation that searches for nothing is worse
+than no translation, so an empty result now falls back to the raw text. A
+filter-only translation (`"unread mail"`) is still kept, because having no
+keywords is legitimate there rather than a failure.
+
+**A bug its own unit test caught.** The escape path for text-field surfaces
+returned early and never reached `goBack`, so leaving search left the previous
+query and results behind.
+
+**Not visually verified:** the search view itself, for the usual reason —
+synthetic input needs Accessibility permission, so `/` cannot be pressed.
+Everything under it is covered by 26 unit tests over a real FTS5 index plus two
+live tests against a real model.

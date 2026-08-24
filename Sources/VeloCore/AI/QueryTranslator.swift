@@ -25,7 +25,13 @@ public struct QueryTranslator: Sendable {
 
         do {
             let raw = try await assistant.translateQuery(trimmed, today: isoDay(now()))
-            return Self.parse(raw) ?? SearchQuery(terms: trimmed)
+            guard let translated = Self.parse(raw), !translated.isEmpty else {
+                // A translation that searches for nothing is worse than none at
+                // all: it matches everything. Seen against a real model, which
+                // reduced the plain query "plot map" to {}.
+                return SearchQuery(terms: trimmed)
+            }
+            return translated
         } catch {
             return SearchQuery(terms: trimmed)
         }
