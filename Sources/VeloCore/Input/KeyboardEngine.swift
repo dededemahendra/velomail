@@ -68,6 +68,8 @@ public struct KeyboardEngine {
         KeyInput(.character("e")): .archiveSelected,
         KeyInput(.character("r")): .reply,
         KeyInput(.character("c")): .compose,
+        KeyInput(.character("s")): .summarizeThread,
+        KeyInput(.character("d")): .suggestReplies,
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,
         KeyInput(.character("k"), [.command]): .openCommandPalette,

@@ -22,7 +22,15 @@ public final class AppViewModel: ObservableObject {
 
     public let inbox: InboxViewModel
     public let compose: ComposeViewModel
-    public let palette = CommandRegistry.v1
+    public let assistant: AssistantViewModel
+
+    /// AI commands are filtered out when no provider is configured, so the
+    /// palette never offers an action that can only fail.
+    public var palette: CommandRegistry {
+        assistant.isAvailable
+            ? CommandRegistry.v1
+            : CommandRegistry(commands: CommandRegistry.v1.commands.filter { !$0.action.isAI })
+    }
 
     private let config: AppConfig
     private var keyboard = KeyboardEngine()
@@ -37,17 +45,20 @@ public final class AppViewModel: ObservableObject {
     private var canShowMail: Bool { config.isDemo || (config.isConfigured && isSignedIn) }
 
     public convenience init(config: AppConfig, store: MailStore, outbound: OutboundService,
-                            identity: String, isSignedIn: Bool = false) {
+                            identity: String, isSignedIn: Bool = false,
+                            assistant: MailAssistant = MailAssistant(provider: nil)) {
         self.init(config: config, store: store, outbound: outbound,
-                  identity: { identity }, isSignedIn: isSignedIn)
+                  identity: { identity }, isSignedIn: isSignedIn, assistant: assistant)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
-                identity: @escaping () -> String, isSignedIn: Bool = false) {
+                identity: @escaping () -> String, isSignedIn: Bool = false,
+                assistant: MailAssistant = MailAssistant(provider: nil)) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
         self.compose = ComposeViewModel(outbound: outbound, identity: identity)
+        self.assistant = AssistantViewModel(assistant: assistant)
         self.route = .setup
         self.route = landingRoute
     }
@@ -111,6 +122,17 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Opens the composer pre-filled with a suggested reply, so a suggestion is
+    /// a starting point the user edits rather than something sent on their
+    /// behalf.
+    public func startReply(with suggestion: String) {
+        guard let message = inbox.selectedMessages.last else { return }
+        compose.startReply(to: message)
+        compose.body = suggestion + compose.body
+        assistant.dismiss()
+        route = .compose
+    }
+
     public func perform(_ action: MailAction) {
         switch action {
         case .moveSelectionDown: inbox.moveDown()
@@ -125,6 +147,9 @@ public final class AppViewModel: ObservableObject {
         case .goToInbox: route = .list
         case .back: goBack()
         case .openCommandPalette: route = .palette
+        case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
+        case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
+        case .triageThread: runAssistant { await $0.triage(messages: $1) }
         }
     }
 
@@ -135,6 +160,16 @@ public final class AppViewModel: ObservableObject {
         // Opening a thread is what marks it read, exactly as in a real client.
         try? inbox.markSelectedRead()
         route = .thread
+    }
+
+    /// Runs an assistant operation over the open thread. Silently ignored when
+    /// there is no provider or no thread -- both are states, not errors.
+    private func runAssistant(_ operation: @escaping (AssistantViewModel, [Message]) async -> Void) {
+        guard assistant.isAvailable else { return }
+        let messages = inbox.selectedMessages
+        guard !messages.isEmpty else { return }
+        if route == .palette { route = .list }
+        Task { await operation(assistant, messages) }
     }
 
     private func startReply() {

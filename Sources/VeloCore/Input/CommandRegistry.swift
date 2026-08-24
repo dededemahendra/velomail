@@ -36,6 +36,9 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Previous Thread", action: .moveSelectionUp),
         Command(title: "Back", action: .back),
         Command(title: "Command Palette", action: .openCommandPalette),
+        Command(title: "Summarise Thread", action: .summarizeThread),
+        Command(title: "Suggest Replies", action: .suggestReplies),
+        Command(title: "Triage Thread", action: .triageThread),
     ])
 
     /// Commands matching `query`, best first. An empty query is everything, in
@@ -77,7 +80,7 @@ public struct CommandRegistry: Equatable, Sendable {
     /// skippable like any other gap, so "gti" spans "Go to Inbox".
     private static func subsequenceStart(of needle: String, in haystack: String) -> Int? {
         var first: Int?
-        var characters = Array(needle)
+        let characters = Array(needle)
         var next = 0
         for (offset, character) in haystack.enumerated() where next < characters.count {
             if character == characters[next] {

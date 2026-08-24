@@ -193,6 +193,85 @@ import VeloCore
         // Not consumed, so the search field still receives them.
         #expect(app.handle(KeyInput(.character("r"))) == false)
     }
+
+    // MARK: - Assistant wiring
+
+    private func makeAIApp(provider: LLMProvider?) throws -> AppViewModel {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        try store.upsert(MailThread(id: "t", sender: "a@b.com", snippet: "s",
+                                    lastMessageDate: Date(timeIntervalSince1970: 1),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
+        try store.upsert(Message(id: "m", threadID: "t", sender: "Alice <alice@example.com>",
+                                 recipients: ["me@x.com"], subject: "Lunch",
+                                 date: Date(timeIntervalSince1970: 1), bodyHTML: nil,
+                                 bodyText: "free Friday?", isUnread: false, labelIDs: ["INBOX"],
+                                 messageIDHeader: "<p@x>"))
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true,
+            assistant: MailAssistant(provider: provider))
+        try app.start()
+        return app
+    }
+
+    @Test func withNoProviderThePaletteHidesTheAICommands() throws {
+        let app = try makeAIApp(provider: nil)
+        // An action that is visible and always errors is worse than one that is
+        // simply not offered.
+        #expect(!app.palette.commands.contains { $0.action.isAI })
+    }
+
+    @Test func withAProviderThePaletteOffersTheAICommands() throws {
+        let app = try makeAIApp(provider: StubProvider("x"))
+        #expect(app.palette.commands.contains { $0.action == .summarizeThread })
+    }
+
+    @Test func summariseKeyRunsTheAssistant() async throws {
+        let app = try makeAIApp(provider: StubProvider("A short summary."))
+
+        app.handle(KeyInput(.character("s")))
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(app.assistant.state == .result("A short summary."))
+    }
+
+    @Test func aiKeysDoNothingWhenNoProviderIsConfigured() async throws {
+        let app = try makeAIApp(provider: nil)
+
+        app.handle(KeyInput(.character("s")))
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        #expect(app.assistant.state == .idle)
+    }
+
+    @Test func usingASuggestionOpensTheComposerPrefilled() throws {
+        let app = try makeAIApp(provider: StubProvider("x"))
+
+        app.startReply(with: "Yes, Friday works.")
+
+        // A suggestion is a starting point the user edits, never something sent
+        // on their behalf.
+        #expect(app.route == .compose)
+        #expect(app.compose.body.hasPrefix("Yes, Friday works."))
+        #expect(app.compose.to == "Alice <alice@example.com>")
+    }
+
+    @Test func usingASuggestionAlsoKeepsTheQuotedParent() throws {
+        let app = try makeAIApp(provider: StubProvider("x"))
+        app.startReply(with: "Yes.")
+        #expect(app.compose.body.contains("wrote:"))
+    }
+}
+
+private final class StubProvider: LLMProvider, @unchecked Sendable {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var displayName: String { "Stub" }
+    func complete(_ request: LLMRequest) async throws -> String { text }
 }
 
 private struct NoopWriter: GmailWriting {
