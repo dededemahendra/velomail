@@ -4,11 +4,12 @@ import VeloCore
 
 /// Renders a message body in a `WKWebView` with remote content blocked.
 ///
-/// Mail HTML is hostile: remote images are tracking pixels, and scripts have no
-/// business running. The configuration below is the sandbox the v1 design asks
-/// for -- no JavaScript, and a content rule that blocks every off-document load.
+/// Mail HTML is hostile: remote images are tracking pixels and scripts have no
+/// business running. JavaScript is off, and a content rule blocks remote loads.
 struct MessageBodyView: NSViewRepresentable {
     let message: Message
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -16,44 +17,112 @@ struct MessageBodyView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
-        installRemoteContentBlocker(on: webView)
+        context.coordinator.attach(webView, document: Self.document(for: message))
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        webView.loadHTMLString(document(for: message), baseURL: nil)
+        context.coordinator.render(Self.document(for: message))
     }
 
-    /// Blocks every remote load. Applied asynchronously, so the body is only
-    /// loaded once the rules are in place -- otherwise the first render could
-    /// still fetch trackers.
-    private func installRemoteContentBlocker(on webView: WKWebView) {
-        let rules = """
-        [{"trigger":{"url-filter":".*","load-type":["third-party","first-party"]},
-          "action":{"type":"block"}}]
-        """
-        WKContentRuleListStore.default()?.compileContentRuleList(
-            forIdentifier: "velo-block-remote", encodedContentRuleList: rules
-        ) { list, _ in
-            if let list { webView.configuration.userContentController.add(list) }
+    /// Compiles the blocker once, then renders. Rendering genuinely waits for
+    /// the rules: compilation is async, so loading immediately would let the
+    /// first message fetch trackers before the blocker existed.
+    @MainActor
+    final class Coordinator {
+        private enum State {
+            case compiling
+            case ready
+            case unavailable
         }
+
+        private var state: State = .compiling
+        private weak var webView: WKWebView?
+        private var pending: String?
+
+        /// Remote schemes only. A catch-all ".*" also matches the inline
+        /// document `loadHTMLString` creates, which blocks the message itself
+        /// and renders a blank pane.
+        private static let rules = """
+        [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}}]
+        """
+
+        func attach(_ webView: WKWebView, document: String) {
+            self.webView = webView
+            pending = document
+
+            guard let store = WKContentRuleListStore.default() else {
+                state = .unavailable
+                flush()
+                return
+            }
+            store.compileContentRuleList(forIdentifier: "velo-block-remote",
+                                         encodedContentRuleList: Self.rules) { [weak self] list, _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let list {
+                        self.webView?.configuration.userContentController.add(list)
+                        self.state = .ready
+                    } else {
+                        self.state = .unavailable
+                    }
+                    self.flush()
+                }
+            }
+        }
+
+        func render(_ document: String) {
+            pending = document
+            flush()
+        }
+
+        private func flush() {
+            guard let webView, let document = pending else { return }
+            switch state {
+            case .compiling:
+                return                      // held until the blocker exists
+            case .ready:
+                pending = nil
+                webView.loadHTMLString(document, baseURL: nil)
+            case .unavailable:
+                // Without a blocker, rendering raw mail HTML would leak
+                // tracking pixels. Strip what can fetch, rather than choosing
+                // between a blank pane and a privacy hole.
+                pending = nil
+                webView.loadHTMLString(MessageBodyView.stripRemoteContent(from: document), baseURL: nil)
+            }
+        }
+    }
+
+    /// Last-resort fallback: drop every element that can pull a remote URL.
+    static func stripRemoteContent(from document: String) -> String {
+        var stripped = document
+        for tag in ["img", "iframe", "video", "audio", "object", "embed", "source", "script"] {
+            stripped = stripped.replacingOccurrences(
+                of: "</?\(tag)\\b[^>]*>", with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        return stripped
     }
 
     /// Wraps the body so it inherits the system font and respects dark mode,
     /// rather than rendering as unstyled 1990s HTML on white.
-    private func document(for message: Message) -> String {
+    static func document(for message: Message) -> String {
         let body = message.bodyHTML ?? "<pre>\(escaped(message.bodyText ?? ""))</pre>"
         return """
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
           :root { color-scheme: light dark; }
-          body { font: -apple-system-body, system-ui, sans-serif; font-size: 14px;
+          /* font-family, not the `font` shorthand: `font: -apple-system-body,
+             system-ui, ...` is invalid and the whole rule gets dropped, which
+             silently falls back to Times. */
+          body { font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif;
+                 font-size: 14px;
                  line-height: 1.55; margin: 0; padding: 20px 24px;
                  color: canvastext; background: transparent;
                  word-wrap: break-word; }
           img { max-width: 100%; height: auto; }
-          pre { white-space: pre-wrap; font: inherit; }
+          pre { white-space: pre-wrap; font-family: inherit; font-size: inherit; }
           blockquote { margin: 0 0 0 12px; padding-left: 12px;
                        border-left: 2px solid color-mix(in srgb, canvastext 25%, transparent);
                        color: color-mix(in srgb, canvastext 65%, transparent); }
@@ -62,7 +131,7 @@ struct MessageBodyView: NSViewRepresentable {
         """
     }
 
-    private func escaped(_ text: String) -> String {
+    static func escaped(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
