@@ -68,10 +68,10 @@ final class AppHost: ObservableObject {
         let database = try! AppDatabase.makeInMemory()
         let store = MailStore(database)
         let outbound = OutboundService(writer: LocalOnlyWriter(), store: store,
-                                       mutations: MutationStore(database), identity: "me@example.com")
+                                       mutations: MutationStore(database), identity: "me@localhost")
         return Composition.Assembly(
             app: AppViewModel(config: AppConfig(clientID: nil, isDemo: false),
-                              store: store, outbound: outbound, identity: "me@example.com"),
+                              store: store, outbound: outbound, identity: "me@localhost"),
             sync: nil, store: store, auth: nil)
     }
 }

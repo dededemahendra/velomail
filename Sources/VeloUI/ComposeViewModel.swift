@@ -12,12 +12,17 @@ public final class ComposeViewModel: ObservableObject {
     @Published public private(set) var isReply = false
 
     private let outbound: OutboundService
-    private let identity: String
+    private let resolveIdentity: () -> String
+    private var identity: String { resolveIdentity() }
     private var replyContext: Message?
 
-    public init(outbound: OutboundService, identity: String) {
+    public init(outbound: OutboundService, identity: @escaping () -> String) {
         self.outbound = outbound
-        self.identity = identity
+        self.resolveIdentity = identity
+    }
+
+    public convenience init(outbound: OutboundService, identity: String) {
+        self.init(outbound: outbound, identity: { identity })
     }
 
     /// A send with no recipient is the one mistake worth blocking in the UI;
