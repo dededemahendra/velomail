@@ -9,6 +9,10 @@ public enum MutationKind: String, Codable, Equatable {
     /// An outgoing message. Unlike the label kinds, its payload is an
     /// `OutboundSendPayload`, not an `OutboundMutationPayload`.
     case send
+    /// Removes INBOX so a snooze is visible on every device.
+    case snooze
+    /// Puts INBOX back when the thread wakes.
+    case unsnooze
 }
 
 /// Lifecycle of a queued mutation. Success removes the row (there is no `done`).

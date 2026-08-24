@@ -157,6 +157,12 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v11_add_thread_snoozedUntil") { db in
+            try db.alter(table: "thread") { t in
+                t.add(column: "snoozedUntil", .datetime)
+            }
+        }
+
         return migrator
     }
 }

@@ -144,6 +144,31 @@ public struct OutboundService {
         try enqueueLabelChange(threadID: threadID, kind: .markRead, add: [], remove: ["UNREAD"])
     }
 
+    /// Hides a thread until `date`.
+    ///
+    /// Removing INBOX goes through the queue like any other label change, so the
+    /// thread disappears on every device; the wake time stays local because
+    /// Gmail has no public snooze.
+    public func snooze(threadID: String, until date: Date) throws {
+        guard try store.thread(id: threadID) != nil else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .snooze, add: [], remove: ["INBOX"])
+        try store.setSnoozedUntil(date, onThread: threadID)
+    }
+
+    /// Returns any thread whose snooze has expired to the inbox.
+    /// - Returns: the ids that woke.
+    @discardableResult
+    public func wakeSnoozed(now moment: Date) throws -> [String] {
+        let due = try store.snoozedThreadsDue(now: moment)
+        for thread in due {
+            try enqueueLabelChange(threadID: thread.id, kind: .unsnooze, add: ["INBOX"], remove: [])
+            // Cleared after re-labelling, so a failure mid-way leaves it asleep
+            // rather than awake-but-unlabelled.
+            try store.setSnoozedUntil(nil, onThread: thread.id)
+        }
+        return due.map(\.id)
+    }
+
     public func markUnread(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .markUnread, add: ["UNREAD"], remove: [])
     }

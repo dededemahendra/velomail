@@ -18,15 +18,34 @@ public final class MailStore: Sendable {
         try database.dbQueue.write { try message.save($0) }
     }
 
-    /// The canonical inbox query: threads labeled INBOX, newest first.
-    private static func inboxRequest() -> QueryInterfaceRequest<MailThread> {
+    /// The canonical inbox query: threads labeled INBOX and not sleeping,
+    /// newest first.
+    private static func inboxRequest(now: Date = Date()) -> QueryInterfaceRequest<MailThread> {
         MailThread
             .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
+            .filter(sql: "snoozedUntil IS NULL OR snoozedUntil <= ?", arguments: [now])
             .order(sql: "lastMessageDate DESC")
     }
 
-    public func inboxThreads() throws -> [MailThread] {
-        try database.dbQueue.read { try Self.inboxRequest().fetchAll($0) }
+    public func inboxThreads(now: Date = Date()) throws -> [MailThread] {
+        try database.dbQueue.read { try Self.inboxRequest(now: now).fetchAll($0) }
+    }
+
+    /// Threads whose snooze has expired.
+    public func snoozedThreadsDue(now: Date) throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "snoozedUntil IS NOT NULL AND snoozedUntil <= ?", arguments: [now])
+                .fetchAll(db)
+        }
+    }
+
+    public func setSnoozedUntil(_ date: Date?, onThread threadID: String) throws {
+        try database.dbQueue.write { db in
+            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
+            thread.snoozedUntil = date
+            try thread.update(db)
+        }
     }
 
     public func thread(id: String) throws -> MailThread? {
