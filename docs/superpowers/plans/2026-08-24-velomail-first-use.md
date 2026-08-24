@@ -39,3 +39,38 @@ I claims **`v8_add_syncstate_email`**.
 - `aSingleMessageThreadIsExpanded`
 
 ## I6 — `ThreadView` renders the transcript  *(view; gate is launch + look)*
+
+---
+
+## Completion record
+
+304 → 343 tests, clean build, verified by launching and looking.
+
+**The headline fix was a bug the tests could never have caught**, because it was
+about a value nobody had told the tests was wrong: the app did not know its own
+address. `users.getProfile` returns `emailAddress` and backfill discarded it, so
+identity fell back to a hardcoded `me@example.com` — the `From` on every send,
+the `Message-ID` domain, the reply-all self-exclusion and the sync account id.
+Now discovered from Gmail (migration v8) and resolved *late*, since the answer
+arrives with the first backfill, after the object graph is built.
+
+**Found while looking at the running app:**
+
+- Rewriting `ThreadView` as a transcript silently dropped the **subject** from
+  the thread pane. Restored as a thread-level header, above the messages rather
+  than repeated in each one.
+- Long senders (`Name <addr>`) wrapped to two lines in every collapsed row.
+  Display name only when collapsed; the full address earns its space once
+  opened. The list's `displayName`/`shortDate` helpers moved to a shared
+  `MailFormatting` rather than being duplicated.
+
+Demo data gained a three-message conversation, ordered newest so the transcript
+is what you land on — otherwise the multi-message path was never visible when
+reviewing the app.
+
+**Still not verified:** synthetic input (Accessibility permission), so
+click-to-expand is covered by `ThreadTranscriptTests` rather than by driving it.
+
+**Deferred, unchanged:** attachments, drafts API, scheduled/undo send, search,
+multiple accounts, quote *collapsing* inside a body (parsing someone else's
+quoting is a different problem), signature trimming.

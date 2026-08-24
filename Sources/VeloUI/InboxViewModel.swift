@@ -15,6 +15,7 @@ public final class InboxViewModel: ObservableObject {
     private let store: MailStore
     private let outbound: OutboundService
     private var cursor = SelectionCursor(count: 0)
+    @Published private var transcript = ThreadTranscript()
 
     public init(store: MailStore, outbound: OutboundService) {
         self.store = store
@@ -82,5 +83,12 @@ public final class InboxViewModel: ObservableObject {
             return
         }
         selectedMessages = try store.messages(inThread: thread.id)
+        transcript.sync(threadID: thread.id, messages: selectedMessages)
     }
+
+    // MARK: - Transcript
+
+    public func isExpanded(_ messageID: String) -> Bool { transcript.isExpanded(messageID) }
+
+    public func toggleExpansion(_ messageID: String) { transcript.toggle(messageID) }
 }

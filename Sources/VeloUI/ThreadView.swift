@@ -138,36 +138,114 @@ struct MessageBodyView: NSViewRepresentable {
     }
 }
 
-/// A thread: header, then the newest message's body.
+/// A thread as a transcript: every message, newest expanded, older ones
+/// collapsed to a line that expands on click.
 struct ThreadView: View {
     let thread: MailThread
     let messages: [Message]
+    let isExpanded: (String) -> Bool
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        if messages.isEmpty {
+            Text("No messages")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                // The subject belongs to the thread, not to each message, so it
+                // sits above the transcript rather than repeating in every card.
+                Text(subject)
+                    .font(.title3.weight(.semibold))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+                Divider()
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(messages) { message in
+                            MessageCard(message: message,
+                                        isExpanded: isExpanded(message.id),
+                                        isOnly: messages.count == 1,
+                                        onToggle: { onToggle(message.id) })
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var subject: String {
+        let subject = messages.last?.subject ?? ""
+        return subject.isEmpty ? "(no subject)" : subject
+    }
+}
+
+/// One message: a header that is always shown and always clickable, plus the
+/// body when expanded.
+private struct MessageCard: View {
+    let message: Message
+    let isExpanded: Bool
+    let isOnly: Bool
+    let onToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let message = messages.last {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(message.subject.isEmpty ? "(no subject)" : message.subject)
-                        .font(.title3.weight(.semibold))
+            Button(action: onToggle) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(message.sender).font(.callout)
+                        // Display name only: a full "Name <addr>" wraps to two
+                        // lines and makes the transcript look ragged.
+                        Text(MailFormatting.displayName(message.sender))
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
                         Spacer()
                         Text(message.date.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if !message.recipients.isEmpty {
-                        Text("to \(message.recipients.joined(separator: ", "))")
+                    if isExpanded {
+                        // The full address earns its space only once opened.
+                        Text(addressLine)
                             .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    } else {
+                        // Collapsed: one line of what it said, so the thread can
+                        // be skimmed without opening every message.
+                        Text(preview)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
-                Divider()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // A one-message thread has nothing to collapse into.
+            .disabled(isOnly)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+
+            if isExpanded {
                 MessageBodyView(message: message)
-            } else {
-                Text("No messages").foregroundStyle(.secondary).padding()
+                    .frame(minHeight: 220)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var addressLine: String {
+        var line = message.sender
+        if !message.recipients.isEmpty {
+            line += " → " + message.recipients.map(MailFormatting.displayName).joined(separator: ", ")
+        }
+        return line
+    }
+
+    private var preview: String {
+        let text = message.bodyText
+            ?? MessageBodyView.stripRemoteContent(from: message.bodyHTML ?? "")
+        return text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

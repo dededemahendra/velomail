@@ -88,11 +88,11 @@ private final class ThreadRowView: NSView {
         dot.font = .systemFont(ofSize: 9)
         dot.textColor = .controlAccentColor
 
-        let sender = NSTextField(labelWithString: MessageListView.displayName(thread.sender))
+        let sender = NSTextField(labelWithString: MailFormatting.displayName(thread.sender))
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.lineBreakMode = .byTruncatingTail
 
-        let date = NSTextField(labelWithString: MessageListView.shortDate(thread.lastMessageDate))
+        let date = NSTextField(labelWithString: MailFormatting.shortDate(thread.lastMessageDate))
         date.font = .systemFont(ofSize: 11)
         date.textColor = .secondaryLabelColor
 
@@ -121,8 +121,9 @@ private final class ThreadRowView: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
-extension MessageListView {
-    /// "Alice <a@b.com>" reads better as "Alice" in a dense list.
+/// Shared address and date formatting for anything that lists mail.
+enum MailFormatting {
+    /// "Alice <a@b.com>" reads better as "Alice" wherever space is tight.
     static func displayName(_ value: String) -> String {
         guard let open = value.firstIndex(of: "<") else { return value }
         let name = value[value.startIndex..<open].trimmingCharacters(in: .whitespaces)
