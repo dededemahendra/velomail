@@ -92,6 +92,12 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v8_add_syncstate_email") { db in
+            try db.alter(table: "syncState") { t in
+                t.add(column: "emailAddress", .text)
+            }
+        }
+
         return migrator
     }
 }

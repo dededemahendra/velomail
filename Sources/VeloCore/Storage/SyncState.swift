@@ -8,14 +8,19 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiab
     public var accountID: String
     public var historyId: String?
     public var backfillComplete: Bool
+    /// The account's own address, learned from `users.getProfile` during
+    /// backfill. It is what a send must use as its `From`.
+    public var emailAddress: String?
 
     public var id: String { accountID }
 
     public static let databaseTableName = "syncState"
 
-    public init(accountID: String, historyId: String?, backfillComplete: Bool) {
+    public init(accountID: String, historyId: String?, backfillComplete: Bool,
+                emailAddress: String? = nil) {
         self.accountID = accountID
         self.historyId = historyId
         self.backfillComplete = backfillComplete
+        self.emailAddress = emailAddress
     }
 }

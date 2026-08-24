@@ -22,7 +22,8 @@ public struct BackfillService: Sendable {
     public func backfillInbox(accountID: String, maxMessages: Int) async throws {
         // Capture the baseline BEFORE listing: messages arriving mid-backfill are
         // then re-delivered by history.list from this cursor (upserts make it idempotent).
-        let baseline = try await source.getProfile().historyId
+        let profile = try await source.getProfile()
+        let baseline = profile.historyId
 
         var ids: [String] = []
         var pageToken: String?
@@ -41,6 +42,10 @@ public struct BackfillService: Sendable {
         try InboxReconciler.reconcile(dtos, into: store)
 
         // Persist the cursor only after reconcile succeeds.
-        try syncState.save(SyncState(accountID: accountID, historyId: baseline, backfillComplete: true))
+        // Record the account's own address too: it is on the wire either way,
+        // and without it a send has no correct `From` to use.
+        try syncState.save(SyncState(accountID: accountID, historyId: baseline,
+                                     backfillComplete: true,
+                                     emailAddress: profile.emailAddress))
     }
 }

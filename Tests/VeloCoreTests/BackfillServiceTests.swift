@@ -166,4 +166,31 @@ private final class ScriptedSource: GmailReading, @unchecked Sendable {
         #expect(state?.historyId == "9000")
         #expect(state?.backfillComplete == true)
     }
+
+    @Test func backfillPersistsTheProfileEmailAddress() async throws {
+        let source = ScriptedSource(
+            pages: [(["m1"], nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", labels: ["INBOX"],
+                               internalDate: "1000", snippet: "s")])
+        let (service, _, syncStore) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 10)
+
+        // The address is already on the wire; discarding it is what left the
+        // app sending as "me@example.com".
+        #expect(try syncStore.load(accountID: account)?.emailAddress == "u@x.com")
+    }
+
+    @Test func backfillKeepsTheEmailAddressOnASecondRun() async throws {
+        let source = ScriptedSource(
+            pages: [(["m1"], nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", labels: ["INBOX"],
+                               internalDate: "1000", snippet: "s")])
+        let (service, _, syncStore) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 10)
+        try await service.backfillInbox(accountID: account, maxMessages: 10)
+
+        #expect(try syncStore.load(accountID: account)?.emailAddress == "u@x.com")
+    }
 }
