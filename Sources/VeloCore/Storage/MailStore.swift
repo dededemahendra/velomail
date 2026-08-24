@@ -2,7 +2,9 @@ import Foundation
 import GRDB
 
 public final class MailStore: Sendable {
-    private let database: AppDatabase
+    /// Exposed so search can build its own reader over the same store rather
+    /// than threading an AppDatabase through every caller.
+    public let database: AppDatabase
 
     public init(_ database: AppDatabase) {
         self.database = database

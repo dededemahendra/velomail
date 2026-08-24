@@ -3,7 +3,7 @@ import SwiftUI
 import VeloCore
 
 public enum Route: Equatable, Sendable {
-    case setup, signIn, list, thread, compose, palette
+    case setup, signIn, list, thread, compose, palette, search
 }
 
 /// Owns which surface is focused and turns keystrokes into actions.
@@ -23,6 +23,7 @@ public final class AppViewModel: ObservableObject {
     public let inbox: InboxViewModel
     public let compose: ComposeViewModel
     public let assistant: AssistantViewModel
+    public let search: SearchViewModel
 
     /// AI commands are filtered out when no provider is configured, so the
     /// palette never offers an action that can only fail.
@@ -46,19 +47,25 @@ public final class AppViewModel: ObservableObject {
 
     public convenience init(config: AppConfig, store: MailStore, outbound: OutboundService,
                             identity: String, isSignedIn: Bool = false,
-                            assistant: MailAssistant = MailAssistant(provider: nil)) {
+                            assistant: MailAssistant = MailAssistant(provider: nil),
+                            search: SearchViewModel? = nil) {
         self.init(config: config, store: store, outbound: outbound,
-                  identity: { identity }, isSignedIn: isSignedIn, assistant: assistant)
+                  identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
+                  search: search)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
                 identity: @escaping () -> String, isSignedIn: Bool = false,
-                assistant: MailAssistant = MailAssistant(provider: nil)) {
+                assistant: MailAssistant = MailAssistant(provider: nil),
+                search: SearchViewModel? = nil) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
         self.compose = ComposeViewModel(outbound: outbound, identity: identity)
         self.assistant = AssistantViewModel(assistant: assistant)
+        self.search = search ?? SearchViewModel(
+            search: SearchService(store.database),
+            translator: QueryTranslator(assistant: assistant))
         self.route = .setup
         self.route = landingRoute
     }
@@ -105,9 +112,12 @@ public final class AppViewModel: ObservableObject {
         // Compose and the palette both own a text field, and while one is open
         // it owns the keyboard. Only Escape gets through, so typing "reply" in
         // the palette cannot fire r=reply and e=archive on the way past.
-        if route == .compose || route == .palette {
+        if route == .compose || route == .palette || route == .search {
             guard input.key == .escape else { return false }
-            route = .list
+            // Via goBack, not a direct assignment: leaving a surface may have
+            // cleanup to do (search clears its query), and bypassing it left
+            // the old results behind.
+            goBack()
             return true
         }
 
@@ -133,6 +143,22 @@ public final class AppViewModel: ObservableObject {
         route = .compose
     }
 
+    /// Opens a search hit. The thread may not be in the inbox at all, so the
+    /// list is reloaded and the selection moved to it rather than assuming it
+    /// is already on screen.
+    public func openFromSearch(_ thread: MailThread) {
+        search.clear()
+        try? inbox.reload()
+        if let index = inbox.threads.firstIndex(where: { $0.id == thread.id }) {
+            inbox.select(index: index)
+            route = .thread
+        } else {
+            // Archived or otherwise outside the inbox: nothing to select, so
+            // returning to the list is the honest outcome.
+            route = .list
+        }
+    }
+
     public func perform(_ action: MailAction) {
         switch action {
         case .moveSelectionDown: inbox.moveDown()
@@ -147,6 +173,7 @@ public final class AppViewModel: ObservableObject {
         case .goToInbox: route = .list
         case .back: goBack()
         case .openCommandPalette: route = .palette
+        case .openSearch: route = .search
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
         case .triageThread: runAssistant { await $0.triage(messages: $1) }
@@ -189,6 +216,9 @@ public final class AppViewModel: ObservableObject {
     private func goBack() {
         switch route {
         case .thread, .compose, .palette: route = .list
+        case .search:
+            search.clear()
+            route = .list
         case .list, .setup, .signIn: break
         }
     }
