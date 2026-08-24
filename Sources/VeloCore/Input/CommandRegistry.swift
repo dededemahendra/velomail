@@ -80,7 +80,7 @@ public struct CommandRegistry: Equatable, Sendable {
     /// skippable like any other gap, so "gti" spans "Go to Inbox".
     private static func subsequenceStart(of needle: String, in haystack: String) -> Int? {
         var first: Int?
-        var characters = Array(needle)
+        let characters = Array(needle)
         var next = 0
         for (offset, character) in haystack.enumerated() where next < characters.count {
             if character == characters[next] {
