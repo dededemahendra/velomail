@@ -56,6 +56,14 @@ public struct MailAssistant: Sendable {
         try await text(MailPrompt.subjectLine(body: body))
     }
 
+    /// Raw model output for a search translation. Parsing is `QueryTranslator`'s
+    /// job, which keeps the shape of the answer testable separately from the
+    /// call.
+    public func translateQuery(_ text: String, today: String) async throws -> String {
+        guard let provider else { throw LLMError.notConfigured }
+        return try await provider.complete(MailPrompt.translateQuery(text, today: today))
+    }
+
     // MARK: - Internals
 
     private func text(_ request: LLMRequest) async throws -> String {

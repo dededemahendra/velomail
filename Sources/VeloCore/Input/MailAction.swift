@@ -16,6 +16,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// Leave the current view; also cancels a half-typed chord.
     case back
     case openCommandPalette
+    case openSearch
 
     // AI. Present only when a provider is configured -- an action that is
     // visible and always errors is worse than one that is not offered.

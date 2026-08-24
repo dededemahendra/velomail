@@ -265,6 +265,58 @@ import VeloCore
         app.startReply(with: "Yes.")
         #expect(app.compose.body.contains("wrote:"))
     }
+
+    // MARK: - Search routing
+
+    @Test func slashOpensSearch() throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("/")))
+        #expect(app.route == .search)
+    }
+
+    @Test func escapeLeavesSearchAndClearsIt() async throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("/")))
+        app.search.text = "boundary"
+
+        app.handle(KeyInput(.escape))
+
+        #expect(app.route == .list)
+        #expect(app.search.text.isEmpty)
+    }
+
+    @Test func typingInSearchDoesNotTriggerTriageActions() throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("/")))
+
+        // "e" in a search field must not archive the inbox behind it.
+        #expect(app.handle(KeyInput(.character("e"))) == false)
+        #expect(app.inbox.threads.count == 3)
+    }
+
+    @Test func openingASearchHitSelectsAndOpensTheThread() throws {
+        let app = try makeApp()
+        let target = app.inbox.threads[2]
+        app.handle(KeyInput(.character("/")))
+
+        app.openFromSearch(target)
+
+        #expect(app.route == .thread)
+        #expect(app.inbox.selectedThread?.id == target.id)
+    }
+
+    @Test func openingAHitThatIsNotInTheInboxReturnsToTheList() throws {
+        let app = try makeApp()
+        let archived = MailThread(id: "gone", sender: "x@y.com", snippet: "s",
+                                  lastMessageDate: Date(timeIntervalSince1970: 1),
+                                  isUnread: false, hasAttachments: false, labelIDs: [])
+
+        app.openFromSearch(archived)
+
+        // Search can return archived mail; pretending to open it would be worse
+        // than going back to the list.
+        #expect(app.route == .list)
+    }
 }
 
 private final class StubProvider: LLMProvider, @unchecked Sendable {

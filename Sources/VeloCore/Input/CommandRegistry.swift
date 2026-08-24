@@ -36,6 +36,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Previous Thread", action: .moveSelectionUp),
         Command(title: "Back", action: .back),
         Command(title: "Command Palette", action: .openCommandPalette),
+        Command(title: "Search", action: .openSearch),
         Command(title: "Summarise Thread", action: .summarizeThread),
         Command(title: "Suggest Replies", action: .suggestReplies),
         Command(title: "Triage Thread", action: .triageThread),

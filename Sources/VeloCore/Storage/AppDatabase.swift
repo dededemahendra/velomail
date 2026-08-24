@@ -98,6 +98,59 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v9_create_message_search") { db in
+            // Standalone FTS5 table, kept in sync by triggers rather than by
+            // application code: backfill, incremental sync, optimistic send and
+            // revert all write through the same upsert, and none of them should
+            // have to know search exists. Triggers make drift impossible.
+            //
+            // Body comes from bodyText only. Indexing HTML would produce hits
+            // on "div" and "span".
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE messageSearch USING fts5(
+                    id UNINDEXED,
+                    threadID UNINDEXED,
+                    sender,
+                    subject,
+                    body,
+                    tokenize='porter unicode61'
+                )
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER message_search_insert AFTER INSERT ON message BEGIN
+                    INSERT INTO messageSearch(id, threadID, sender, subject, body)
+                    VALUES (new.id, new.threadID, new.sender, new.subject,
+                            coalesce(new.bodyText, ''));
+                END
+                """)
+
+            // Delete-then-insert rather than UPDATE: sync re-upserts the same
+            // message constantly, and an index that duplicates on every write
+            // would rot within a day.
+            try db.execute(sql: """
+                CREATE TRIGGER message_search_update AFTER UPDATE ON message BEGIN
+                    DELETE FROM messageSearch WHERE id = old.id;
+                    INSERT INTO messageSearch(id, threadID, sender, subject, body)
+                    VALUES (new.id, new.threadID, new.sender, new.subject,
+                            coalesce(new.bodyText, ''));
+                END
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER message_search_delete AFTER DELETE ON message BEGIN
+                    DELETE FROM messageSearch WHERE id = old.id;
+                END
+                """)
+
+            // Backfill what is already stored. Without this, search silently
+            // returns nothing for every message that arrived before the upgrade.
+            try db.execute(sql: """
+                INSERT INTO messageSearch(id, threadID, sender, subject, body)
+                SELECT id, threadID, sender, subject, coalesce(bodyText, '') FROM message
+                """)
+        }
+
         return migrator
     }
 }

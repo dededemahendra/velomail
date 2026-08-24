@@ -73,6 +73,8 @@ public struct KeyboardEngine {
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,
         KeyInput(.character("k"), [.command]): .openCommandPalette,
+        KeyInput(.character("/")): .openSearch,
+        KeyInput(.character("f"), [.command]): .openSearch,
     ]
 
     private static let chords: [Chord: MailAction] = [

@@ -15,6 +15,11 @@ public struct RootView: View {
                 SetupView(clientIDHint: app.setupHint)
             case .signIn:
                 SignInView(state: app.authState, onSignIn: app.signIn)
+            case .search:
+                SearchView(model: app.search,
+                           isAIEnabled: app.assistant.isAvailable,
+                           onOpen: { app.openFromSearch($0) },
+                           onCancel: { app.perform(.back) })
             case .compose:
                 ComposeView(model: app.compose,
                             assistant: app.assistant,

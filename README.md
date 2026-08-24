@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-443 tests, no XCTest, no `.xcodeproj`.
+499 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -121,12 +121,13 @@ untouched.
 | `Cmd+Enter` | send |
 | `g` `i` | go to inbox |
 | `Cmd+K` | command palette |
+| `/` or `Cmd+F` | search |
 | `Esc` | back, or cancel a half-typed chord |
 
 ## Development
 
 ```bash
-swift test          # 443 tests; offline and deterministic
+swift test          # 499 tests; offline and deterministic
 swift build
 ```
 
@@ -150,8 +151,24 @@ The suite is offline by default. To exercise the real Ollama wire format:
 VELOMAIL_LIVE_OLLAMA=1 VELOMAIL_OLLAMA_MODEL="your-model" swift test --filter OllamaLiveTests
 ```
 
+## Search
+
+`/` opens search. Plain keywords work with no setup — full-text over sender,
+subject and body, with stemming, so "meeting" finds "meet".
+
+With an AI provider configured you can also describe what you want:
+
+```
+unread emails from natalie last week about the open day
+```
+
+That gets translated into a structured query (terms, sender, unread, date range)
+and run against the same index. **The model only ever sees your query string —
+never your mail.** With no provider, or if translation fails, the text is used as
+plain search terms.
+
 ## Not done yet
 
-Attachments, server-side drafts, scheduled/undo send, search, multiple accounts,
+Attachments, server-side drafts, scheduled/undo send, multiple accounts,
 threaded transcripts with quote collapsing, reply-body quoting, code signing and
 notarisation.

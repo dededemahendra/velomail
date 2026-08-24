@@ -48,8 +48,9 @@ struct KeyMonitor: NSViewRepresentable {
         case 36, 76: return KeyInput(.enter, modifiers)     // Return, keypad Enter
         case 53: return KeyInput(.escape, modifiers)
         default:
+            // "/" opens search, so punctuation cannot be filtered out wholesale.
             guard let character = event.charactersIgnoringModifiers?.first,
-                  character.isLetter || character.isNumber else { return nil }
+                  character.isLetter || character.isNumber || character == "/" else { return nil }
             return KeyInput(.character(character), modifiers)
         }
     }

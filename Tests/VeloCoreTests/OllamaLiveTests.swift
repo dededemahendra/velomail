@@ -60,4 +60,27 @@ private let liveModel = ProcessInfo.processInfo.environment["VELOMAIL_OLLAMA_MOD
         #expect(!rewritten.isEmpty)
         print("[live] rewrite: \(rewritten)")
     }
+
+    @Test func translatesNaturalLanguageSearchThroughARealModel() async throws {
+        let translator = QueryTranslator(assistant: makeAssistant(),
+                                         now: { Date(timeIntervalSince1970: 1_756_000_000) })
+
+        let query = await translator.translate("unread emails from natalie last week about the open day")
+
+        print("[live] query: terms=\(query.terms) from=\(String(describing: query.from)) "
+              + "unread=\(String(describing: query.isUnread)) after=\(String(describing: query.after))")
+
+        // Not asserting exact wording -- that is the model's business. Asserting
+        // it produced something more useful than the raw sentence.
+        #expect(query.from?.lowercased().contains("natalie") == true)
+        #expect(query.isUnread == true)
+        #expect(!query.terms.lowercased().contains("unread"))   // filters extracted, not left in terms
+    }
+
+    @Test func aPlainKeywordSearchSurvivesTranslation() async throws {
+        let translator = QueryTranslator(assistant: makeAssistant())
+        let query = await translator.translate("plot map")
+        print("[live] plain: terms=\(query.terms)")
+        #expect(query.terms.lowercased().contains("plot") || query.terms.lowercased().contains("map"))
+    }
 }
