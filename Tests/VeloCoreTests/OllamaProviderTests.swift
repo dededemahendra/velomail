@@ -123,4 +123,36 @@ private struct Boom: Error {}
         let (provider, _) = makeProvider(.success((ok, httpResponse(200))), model: "qwen2.5")
         #expect(provider.displayName.contains("qwen2.5"))
     }
+
+    // MARK: - Reasoning models
+
+    @Test func disablesThinkingSoTheBudgetBuysAnAnswerNotReasoning() async throws {
+        let (provider, client) = makeProvider(.success((ok, httpResponse(200))))
+
+        _ = try await provider.complete(LLMRequest(prompt: "hi"))
+
+        // A reasoning model spends the token budget on chain-of-thought and
+        // returns empty content -- which silently turns every AI feature into a
+        // no-op.
+        #expect(client.bodyJSON["think"] as? Bool == false)
+    }
+
+    @Test func emptyContentIsMalformedRatherThanASilentBlank() async throws {
+        let json = Data(#"{"message":{"role":"assistant","content":"","thinking":"Let me think..."},"done":true}"#.utf8)
+        let (provider, _) = makeProvider(.success((json, httpResponse(200))))
+
+        // Returning "" would show the user a blank summary and look like success.
+        await #expect(throws: LLMError.malformedResponse) {
+            _ = try await provider.complete(LLMRequest(prompt: "hi"))
+        }
+    }
+
+    @Test func whitespaceOnlyContentIsAlsoMalformed() async throws {
+        let json = Data(#"{"message":{"role":"assistant","content":"  \n "},"done":true}"#.utf8)
+        let (provider, _) = makeProvider(.success((json, httpResponse(200))))
+
+        await #expect(throws: LLMError.malformedResponse) {
+            _ = try await provider.complete(LLMRequest(prompt: "hi"))
+        }
+    }
 }

@@ -25,7 +25,8 @@ public enum Composition {
     }
 
     @MainActor
-    public static func make(config: AppConfig = .resolve()) throws -> Assembly {
+    public static func make(config: AppConfig = .resolve(),
+                            llm: LLMConfig = .resolve()) throws -> Assembly {
         // Demo runs in memory: it exists to be looked at, not to persist.
         let database = config.isDemo
             ? try AppDatabase.makeInMemory()
@@ -44,13 +45,18 @@ public enum Composition {
 
         if config.isDemo { try DemoData.seed(into: store) }
 
+        // AI is entirely optional: with nothing configured the provider is nil
+        // and the app is exactly what it was before AI existed.
+        let assistant = MailAssistant(provider: llm.makeProvider(httpClient: URLSessionHTTPClient(session: LLMConfig.makeHTTPClientSession())))
+
         guard let clientID = config.clientID else {
             // Unconfigured: still a fully working local app, just with nothing
             // to sync. A local-only writer keeps the queue honest.
             let outbound = OutboundService(writer: LocalOnlyWriter(), store: store,
                                            mutations: mutations, identity: resolver.identity)
             return Assembly(app: AppViewModel(config: config, store: store,
-                                              outbound: outbound, identity: resolver.identity),
+                                              outbound: outbound, identity: resolver.identity,
+                                              assistant: assistant),
                             sync: nil, store: store, auth: nil)
         }
 
@@ -72,7 +78,8 @@ public enum Composition {
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,
-                               identity: resolver.identity, isSignedIn: auth.state == .signedIn)
+                               identity: resolver.identity, isSignedIn: auth.state == .signedIn,
+                               assistant: assistant)
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }

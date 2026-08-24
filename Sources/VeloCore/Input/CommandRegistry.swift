@@ -36,6 +36,9 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Previous Thread", action: .moveSelectionUp),
         Command(title: "Back", action: .back),
         Command(title: "Command Palette", action: .openCommandPalette),
+        Command(title: "Summarise Thread", action: .summarizeThread),
+        Command(title: "Suggest Replies", action: .suggestReplies),
+        Command(title: "Triage Thread", action: .triageThread),
     ])
 
     /// Commands matching `query`, best first. An empty query is everything, in

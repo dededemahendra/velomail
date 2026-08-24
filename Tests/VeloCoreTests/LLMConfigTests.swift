@@ -133,4 +133,10 @@ import Foundation
 
         #expect(config.anthropicModel == "m-env")
     }
+
+    @Test func theLLMSessionAllowsLongerThanTheDefaultTimeout() {
+        // A local model loading 9GB of weights can take well over URLSession's
+        // 60s default, which surfaces as "could not reach the model".
+        #expect(LLMConfig.makeHTTPClientSession().configuration.timeoutIntervalForRequest >= 120)
+    }
 }

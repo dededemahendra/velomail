@@ -16,4 +16,18 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// Leave the current view; also cancels a half-typed chord.
     case back
     case openCommandPalette
+
+    // AI. Present only when a provider is configured -- an action that is
+    // visible and always errors is worse than one that is not offered.
+    case summarizeThread
+    case suggestReplies
+    case triageThread
+
+    /// True for actions that need an LLM provider.
+    public var isAI: Bool {
+        switch self {
+        case .summarizeThread, .suggestReplies, .triageThread: return true
+        default: return false
+        }
+    }
 }

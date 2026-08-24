@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-300 tests, no XCTest, no `.xcodeproj`.
+443 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -51,6 +51,62 @@ header on anything you send).
 
 Launch, click **Sign in with Google**, and the inbox backfills.
 
+## AI (optional)
+
+Velo Mail can summarise threads, suggest replies, draft, rewrite, fix grammar,
+translate and write subject lines. It runs against **either** a hosted API key
+**or** a local model through Ollama — the same features, your choice of where
+your mail goes.
+
+With nothing configured, AI is simply off: the commands are not offered and the
+app is exactly what it is without them.
+
+### Local, via Ollama (nothing leaves your machine)
+
+```bash
+ollama serve
+ollama pull llama3.2                      # or any chat model you prefer
+
+export VELOMAIL_OLLAMA_MODEL="llama3.2"   # this alone turns AI on
+export VELOMAIL_OLLAMA_URL="http://localhost:11434"   # optional
+```
+
+### Hosted, via an API key
+
+```bash
+export VELOMAIL_ANTHROPIC_API_KEY="sk-..."
+export VELOMAIL_ANTHROPIC_MODEL="claude-sonnet-5"     # optional
+```
+
+Or put any of these in `~/.config/velomail/config.json`:
+
+```json
+{
+  "clientID": "...apps.googleusercontent.com",
+  "provider": "ollama",
+  "ollamaModel": "llama3.2",
+  "anthropicAPIKey": "sk-..."
+}
+```
+
+With both configured the API key wins; set `VELOMAIL_LLM_PROVIDER` to `ollama`,
+`anthropic` or `none` to choose explicitly.
+
+**Note for reasoning models.** Velo Mail sends `think: false` to Ollama. Without
+it a reasoning model spends the whole token budget on chain-of-thought and
+returns empty content, which silently turns every AI feature into a no-op.
+
+### AI keys
+
+| Key | Action |
+|---|---|
+| `s` | summarise the open thread |
+| `d` | suggest replies (click one to open a pre-filled draft) |
+
+Compose has a toolbar for tone, grammar, shortening, translation and subject
+lines. Every one of those replaces the body, and a failure leaves what you wrote
+untouched.
+
 ## Keys
 
 | Key | Action |
@@ -60,6 +116,8 @@ Launch, click **Sign in with Google**, and the inbox backfills.
 | `e` | archive and advance |
 | `r` | reply |
 | `c` | compose |
+| `s` | summarise thread (AI) |
+| `d` | suggest replies (AI) |
 | `Cmd+Enter` | send |
 | `g` `i` | go to inbox |
 | `Cmd+K` | command palette |
@@ -68,7 +126,7 @@ Launch, click **Sign in with Google**, and the inbox backfills.
 ## Development
 
 ```bash
-swift test          # 300 tests
+swift test          # 443 tests; offline and deterministic
 swift build
 ```
 
@@ -83,6 +141,14 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 Design docs and per-increment build plans live in `docs/superpowers/`. Each plan
 ends with a completion record listing what the post-implementation review found.
+
+### Live model tests
+
+The suite is offline by default. To exercise the real Ollama wire format:
+
+```bash
+VELOMAIL_LIVE_OLLAMA=1 VELOMAIL_OLLAMA_MODEL="your-model" swift test --filter OllamaLiveTests
+```
 
 ## Not done yet
 

@@ -44,7 +44,11 @@ public struct OllamaProvider: LLMProvider {
             let message = (try? JSONDecoder().decode(ErrorResponse.self, from: data))?.error
             throw LLMError.server(status: response.statusCode, message: message)
         }
-        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else {
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
+              !decoded.message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            // Empty content means the model produced only reasoning, or was cut
+            // off. Returning "" would render a blank summary and look like it
+            // worked.
             throw LLMError.malformedResponse
         }
         return decoded.message.content
@@ -59,6 +63,10 @@ public struct OllamaProvider: LLMProvider {
         let model: String
         let messages: [Message]
         let stream: Bool
+        /// Reasoning models otherwise spend the whole token budget on
+        /// chain-of-thought and return empty content -- which silently turns
+        /// every AI feature into a no-op. We want the answer, not the working.
+        let think: Bool
         let options: Options?
 
         struct Message: Encodable {
@@ -80,6 +88,7 @@ public struct OllamaProvider: LLMProvider {
             messages.append(Message(role: "user", content: request.prompt))
             self.messages = messages
             self.stream = false
+            self.think = false
             self.options = Options(num_predict: request.maxTokens, temperature: request.temperature)
         }
     }

@@ -62,6 +62,18 @@ public struct LLMConfig: Equatable, Sendable {
                 ?? OllamaProvider.defaultBaseURL)
     }
 
+    /// A URL session tolerant of local models.
+    ///
+    /// A 9GB model loading from disk on first use can take well past
+    /// `URLSession`'s 60s default, and that surfaces to the user as "could not
+    /// reach the model" -- a confusing lie when it is simply still loading.
+    public static func makeHTTPClientSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 180
+        configuration.timeoutIntervalForResource = 300
+        return URLSession(configuration: configuration)
+    }
+
     /// Builds the provider, or nil when AI is off.
     public func makeProvider(httpClient: HTTPClient) -> LLMProvider? {
         guard isEnabled else { return nil }

@@ -17,6 +17,7 @@ public struct RootView: View {
                 SignInView(state: app.authState, onSignIn: app.signIn)
             case .compose:
                 ComposeView(model: app.compose,
+                            assistant: app.assistant,
                             onSend: { app.perform(.send) },
                             onCancel: { app.perform(.back) })
             default:
@@ -51,10 +52,14 @@ public struct RootView: View {
 
             Group {
                 if let thread = app.inbox.selectedThread {
-                    ThreadView(thread: thread,
+                    VStack(spacing: 0) {
+                        AssistantPanel(model: app.assistant,
+                                       onUseSuggestion: { app.startReply(with: $0) })
+                        ThreadView(thread: thread,
                                messages: app.inbox.selectedMessages,
-                               isExpanded: { app.inbox.isExpanded($0) },
-                               onToggle: { app.inbox.toggleExpansion($0) })
+                                   isExpanded: { app.inbox.isExpanded($0) },
+                                   onToggle: { app.inbox.toggleExpansion($0) })
+                    }
                 } else {
                     VStack(spacing: 6) {
                         Text("Inbox zero").font(.title3.weight(.medium))
