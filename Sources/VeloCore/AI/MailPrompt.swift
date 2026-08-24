@@ -133,6 +133,32 @@ public enum MailPrompt {
             maxTokens: 16)
     }
 
+    /// Translates a natural-language search into the structured query.
+    ///
+    /// Strict JSON here, unlike everything else in this file, because the output
+    /// is consumed by code rather than read by a person. `today` is supplied
+    /// because the model has no clock and cannot resolve "last week" without it.
+    public static func translateQuery(_ text: String, today: String) -> LLMRequest {
+        LLMRequest(
+            system: "You convert email search requests into JSON. "
+                + "Output only a JSON object, with no explanation.",
+            prompt: """
+            Today is \(today).
+
+            Convert this email search request into a JSON object with these             optional keys:
+              "terms"    - keywords to full-text search for (string, no operators)
+              "from"     - part of a sender name or address (string)
+              "isUnread" - true if the request asks for unread mail (boolean)
+              "after"    - earliest date, "YYYY-MM-DD"
+              "before"   - latest date, "YYYY-MM-DD"
+
+            Omit any key that does not apply. Resolve relative dates against             today. Put only meaningful keywords in "terms" -- drop words like             "email", "message", "find" and "show me".
+
+            Request: \(text)
+            """,
+            maxTokens: 200)
+    }
+
     // MARK: - Internals
 
     /// Each tone gets wording of its own; a tone that reads like another is a
