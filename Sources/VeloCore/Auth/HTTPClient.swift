@@ -1,6 +1,9 @@
 import Foundation
 
-public protocol HTTPClient {
+/// `Sendable` because clients are held by `Sendable` types (the API client, the
+/// LLM providers) and crossed between tasks; without it that is a warning today
+/// and an error under Swift 6.
+public protocol HTTPClient: Sendable {
     func post(url: URL, headers: [String: String], body: Data) async throws -> (Data, HTTPURLResponse)
     func get(url: URL, headers: [String: String]) async throws -> (Data, HTTPURLResponse)
 }

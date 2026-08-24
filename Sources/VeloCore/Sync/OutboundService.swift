@@ -74,7 +74,11 @@ public struct OutboundService {
     /// this is a fresh compose. `drain()` later swaps it for the real message or
     /// rolls it back. The draft itself is persisted in the payload, so nothing
     /// the user typed is lost if the send fails.
-    public func send(_ draft: Draft) throws {
+    /// - Parameter after: seconds to hold the message back. Non-zero gives the
+    ///   undo window (or a scheduled send); the local apply still happens now.
+    /// - Returns: the queued mutation's id, so it can be cancelled.
+    @discardableResult
+    public func send(_ draft: Draft, after delay: TimeInterval = 0) throws -> Int64? {
         let placeholderMessageID = "local:\(newID())"
         let messageID = "<\(newID())@\(identityDomain)>"
         let createdThread = draft.threadID == nil
@@ -99,9 +103,25 @@ public struct OutboundService {
             draft: draft, messageID: messageID,
             placeholderMessageID: placeholderMessageID,
             threadID: threadID, createdThread: createdThread)
-        _ = try mutations.enqueue(PendingMutation(
+        return try mutations.enqueue(PendingMutation(
             kind: .send, payload: try JSONEncoder().encode(payload),
-            createdAt: now(), status: .pending))
+            createdAt: now(), status: .pending,
+            dueAt: delay > 0 ? now().addingTimeInterval(delay) : nil)).id
+    }
+
+    /// Undoes a queued send that has not gone out: removes the optimistic rows
+    /// and the queue entry.
+    ///
+    /// Refuses anything that is not a send. Decoding an archive payload as a
+    /// send would throw, and deleting it regardless would silently lose the
+    /// archive.
+    public func cancelSend(mutationID: Int64) throws {
+        guard let mutation = try mutations.all().first(where: { $0.id == mutationID }),
+              mutation.kind == .send,
+              let payload = try? JSONDecoder().decode(OutboundSendPayload.self,
+                                                      from: mutation.payload) else { return }
+        try rollBackSend(payload)
+        try mutations.delete(id: mutationID)
     }
 
     /// The domain half of the sending identity, for minting a `Message-ID`.
@@ -122,6 +142,31 @@ public struct OutboundService {
 
     public func markRead(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .markRead, add: [], remove: ["UNREAD"])
+    }
+
+    /// Hides a thread until `date`.
+    ///
+    /// Removing INBOX goes through the queue like any other label change, so the
+    /// thread disappears on every device; the wake time stays local because
+    /// Gmail has no public snooze.
+    public func snooze(threadID: String, until date: Date) throws {
+        guard try store.thread(id: threadID) != nil else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .snooze, add: [], remove: ["INBOX"])
+        try store.setSnoozedUntil(date, onThread: threadID)
+    }
+
+    /// Returns any thread whose snooze has expired to the inbox.
+    /// - Returns: the ids that woke.
+    @discardableResult
+    public func wakeSnoozed(now moment: Date) throws -> [String] {
+        let due = try store.snoozedThreadsDue(now: moment)
+        for thread in due {
+            try enqueueLabelChange(threadID: thread.id, kind: .unsnooze, add: ["INBOX"], remove: [])
+            // Cleared after re-labelling, so a failure mid-way leaves it asleep
+            // rather than awake-but-unlabelled.
+            try store.setSnoozedUntil(nil, onThread: thread.id)
+        }
+        return due.map(\.id)
     }
 
     public func markUnread(threadID: String) throws {
@@ -192,7 +237,7 @@ extension OutboundService {
     /// failed, then continue. Never rethrows an API failure; only genuine DB/decode
     /// faults propagate.
     public func drain() async throws {
-        for mutation in try queue.pending() {
+        for mutation in try queue.pending(due: now()) {
             guard let id = mutation.id else { continue }
             if mutation.kind == .send {
                 try await drainSend(mutation, id: id)
@@ -285,7 +330,7 @@ extension OutboundService {
     }
 
     /// Undoes the optimistic apply of a failed send.
-    private func rollBackSend(_ payload: OutboundSendPayload) throws {
+    func rollBackSend(_ payload: OutboundSendPayload) throws {
         try mailStore.deleteMessage(id: payload.placeholderMessageID)
         if payload.createdThread {
             try mailStore.deleteThread(id: payload.threadID)

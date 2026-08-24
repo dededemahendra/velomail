@@ -17,6 +17,9 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case back
     case openCommandPalette
     case openSearch
+    case snoozeSelected
+    case undoSend
+    case showFollowUps
 
     // AI. Present only when a provider is configured -- an action that is
     // visible and always errors is worse than one that is not offered.

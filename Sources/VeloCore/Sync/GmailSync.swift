@@ -106,6 +106,10 @@ public actor GmailSync {
         // for the user to touch the thread again.
         try outbound.retryFailed(maxAttempts: maxMutationAttempts)
 
+        // Wake before pulling, so a thread whose snooze expired is back in the
+        // inbox in the same pass rather than a tick later.
+        try outbound.wakeSnoozed(now: now())
+
         let state = try syncState.load(accountID: accountID)
         if state?.backfillComplete != true {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)

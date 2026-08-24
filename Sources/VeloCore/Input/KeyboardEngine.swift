@@ -70,6 +70,8 @@ public struct KeyboardEngine {
         KeyInput(.character("c")): .compose,
         KeyInput(.character("s")): .summarizeThread,
         KeyInput(.character("d")): .suggestReplies,
+        KeyInput(.character("h")): .snoozeSelected,
+        KeyInput(.character("z"), [.command]): .undoSend,
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,
         KeyInput(.character("k"), [.command]): .openCommandPalette,
@@ -79,6 +81,7 @@ public struct KeyboardEngine {
 
     private static let chords: [Chord: MailAction] = [
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("i"))): .goToInbox,
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("f"))): .showFollowUps,
     ]
 
     /// Unmodified `g` only — `Cmd+g` is a different keystroke and not a prefix.

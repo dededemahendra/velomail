@@ -25,6 +25,12 @@ public final class AppViewModel: ObservableObject {
     public let assistant: AssistantViewModel
     public let search: SearchViewModel
 
+    /// The still-cancellable send, if any. Drives the undo banner.
+    @Published public private(set) var undoableSend: Int64?
+    /// Threads you are waiting on, shown by `g f`.
+    @Published public private(set) var followUps: [MailThread] = []
+    @Published public private(set) var isShowingFollowUps = false
+
     /// AI commands are filtered out when no provider is configured, so the
     /// palette never offers an action that can only fail.
     public var palette: CommandRegistry {
@@ -34,6 +40,9 @@ public final class AppViewModel: ObservableObject {
     }
 
     private let config: AppConfig
+    private let outbound: OutboundService
+    private let followUp: FollowUpService
+    private let resolveIdentity: () -> String
     private var keyboard = KeyboardEngine()
     private var isSignedIn: Bool
 
@@ -62,6 +71,9 @@ public final class AppViewModel: ObservableObject {
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
         self.compose = ComposeViewModel(outbound: outbound, identity: identity)
+        self.outbound = outbound
+        self.followUp = FollowUpService(store)
+        self.resolveIdentity = identity
         self.assistant = AssistantViewModel(assistant: assistant)
         self.search = search ?? SearchViewModel(
             search: SearchService(store.database),
@@ -174,6 +186,9 @@ public final class AppViewModel: ObservableObject {
         case .back: goBack()
         case .openCommandPalette: route = .palette
         case .openSearch: route = .search
+        case .snoozeSelected: snoozeSelected(hours: 4)
+        case .undoSend: undoLastSend()
+        case .showFollowUps: loadFollowUps()
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
         case .triageThread: runAssistant { await $0.triage(messages: $1) }
@@ -206,10 +221,50 @@ public final class AppViewModel: ObservableObject {
     }
 
     private func send() {
-        guard (try? compose.send()) != nil else { return }
+        guard let queued = try? compose.send() else { return }
+        // Held back briefly so it can be taken back. There is no unsending
+        // mail; a visible window is the honest version of "undo send".
+        undoableSend = queued
         route = .list
         try? inbox.reload()
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(AppViewModel.undoWindow * 1_000_000_000))
+            await MainActor.run { self?.expireUndo(queued) }
+        }
     }
+
+    /// How long a send can be taken back.
+    public static let undoWindow: TimeInterval = 10
+
+    public func undoLastSend() {
+        guard let id = undoableSend else { return }
+        try? outbound.cancelSend(mutationID: id)
+        undoableSend = nil
+        try? inbox.reload()
+    }
+
+    /// Clears the banner only if it still refers to *this* send; a newer one
+    /// must not have its window cut short.
+    private func expireUndo(_ id: Int64) {
+        if undoableSend == id { undoableSend = nil }
+    }
+
+    public func snoozeSelected(hours: Double) {
+        guard let thread = inbox.selectedThread else { return }
+        try? outbound.snooze(threadID: thread.id, until: Date().addingTimeInterval(hours * 3_600))
+        try? inbox.reload()
+    }
+
+    public func loadFollowUps() {
+        followUps = (try? followUp.awaitingReply(identity: resolveIdentity(),
+                                                 after: AppViewModel.followUpWindow)) ?? []
+        isShowingFollowUps = true
+    }
+
+    public func hideFollowUps() { isShowingFollowUps = false }
+
+    /// How long silence counts as needing a nudge.
+    public static let followUpWindow: TimeInterval = 3 * 86_400
 
     /// Escape backs out one level; from the list it does nothing, because there
     /// is nowhere further to go.

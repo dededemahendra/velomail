@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-499 tests, no XCTest, no `.xcodeproj`.
+538 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -122,12 +122,15 @@ untouched.
 | `g` `i` | go to inbox |
 | `Cmd+K` | command palette |
 | `/` or `Cmd+F` | search |
+| `h` | snooze for 4 hours |
+| `Cmd+Z` | undo send (10s window) |
+| `g` `f` | threads awaiting a reply |
 | `Esc` | back, or cancel a half-typed chord |
 
 ## Development
 
 ```bash
-swift test          # 499 tests; offline and deterministic
+swift test          # 538 tests; offline and deterministic
 swift build
 ```
 
@@ -151,6 +154,21 @@ The suite is offline by default. To exercise the real Ollama wire format:
 VELOMAIL_LIVE_OLLAMA=1 VELOMAIL_OLLAMA_MODEL="your-model" swift test --filter OllamaLiveTests
 ```
 
+## Time
+
+**Undo send.** Sending holds the message for 10 seconds; `Cmd+Z` takes it back.
+It is a delay, not a recall — there is no unsending mail, and every client
+offering "undo send" is doing exactly this.
+
+**Snooze** (`h`) removes the thread from the inbox and puts it back later.
+Removing the label syncs to every device; the wake time is local, because Gmail's
+own snooze is not in the public API. A snoozed thread wakes on the machine that
+snoozed it, while the app is running.
+
+**Awaiting reply** (`g` `f`) lists threads where you spoke last and heard nothing
+back for three days. It is derived rather than flagged, so a reply makes a thread
+disappear from the list on its own.
+
 ## Search
 
 `/` opens search. Plain keywords work with no setup — full-text over sender,
@@ -169,6 +187,6 @@ plain search terms.
 
 ## Not done yet
 
-Attachments, server-side drafts, scheduled/undo send, multiple accounts,
+Attachments, server-side drafts, multiple accounts,
 threaded transcripts with quote collapsing, reply-body quoting, code signing and
 notarisation.

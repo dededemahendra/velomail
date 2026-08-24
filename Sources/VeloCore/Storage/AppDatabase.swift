@@ -151,6 +151,18 @@ public final class AppDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v10_add_mutation_dueAt") { db in
+            try db.alter(table: "pendingMutation") { t in
+                t.add(column: "dueAt", .datetime)
+            }
+        }
+
+        migrator.registerMigration("v11_add_thread_snoozedUntil") { db in
+            try db.alter(table: "thread") { t in
+                t.add(column: "snoozedUntil", .datetime)
+            }
+        }
+
         return migrator
     }
 }

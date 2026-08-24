@@ -142,4 +142,45 @@ import GRDB
         #expect(try store.all().first?.attempts == 0)
         #expect(try store.pending().count == 1)
     }
+
+    // MARK: - Scheduling (M1)
+
+    private var epoch: Date { Date(timeIntervalSince1970: 1_000) }
+
+    @Test func mutationsWithNoDueDateAreDueImmediately() throws {
+        let store = try makeStore()
+        _ = try store.enqueue(mutation())
+        // Archive and mark-read never schedule; they must be unaffected.
+        #expect(try store.pending(due: epoch).count == 1)
+    }
+
+    @Test func aFutureMutationIsNotYetDue() throws {
+        let store = try makeStore()
+        _ = try store.enqueue(PendingMutation(kind: .send, payload: Data("{}".utf8),
+                                              createdAt: epoch, dueAt: epoch.addingTimeInterval(10)))
+        #expect(try store.pending(due: epoch).isEmpty)
+    }
+
+    @Test func aMutationBecomesDueWhenItsTimeArrives() throws {
+        let store = try makeStore()
+        _ = try store.enqueue(PendingMutation(kind: .send, payload: Data("{}".utf8),
+                                              createdAt: epoch, dueAt: epoch.addingTimeInterval(10)))
+        #expect(try store.pending(due: epoch.addingTimeInterval(10)).count == 1)
+    }
+
+    @Test func dueMutationsStillComeOutOldestFirst() throws {
+        let store = try makeStore()
+        let first = try store.enqueue(PendingMutation(kind: .archive, payload: Data("{}".utf8),
+                                                      createdAt: epoch, dueAt: nil))
+        let second = try store.enqueue(PendingMutation(kind: .send, payload: Data("{}".utf8),
+                                                       createdAt: epoch, dueAt: epoch))
+        #expect(try store.pending(due: epoch).map(\.id) == [first.id, second.id])
+    }
+
+    @Test func dueAtSurvivesARoundTrip() throws {
+        let store = try makeStore()
+        let saved = try store.enqueue(PendingMutation(kind: .send, payload: Data("{}".utf8),
+                                                      createdAt: epoch, dueAt: epoch.addingTimeInterval(600)))
+        #expect(try store.all().first?.dueAt == saved.dueAt)
+    }
 }

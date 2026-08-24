@@ -61,8 +61,10 @@ import VeloCore
 
         try model.send()
 
-        #expect(try mutations.pending().count == 1)
-        #expect(try mutations.pending().first?.kind == .send)
+        // Queued, but deliberately not yet due -- that gap is the undo window.
+        #expect(try mutations.all().count == 1)
+        #expect(try mutations.all().first?.kind == .send)
+        #expect(try mutations.pending().isEmpty)
         #expect(model.to.isEmpty)          // cleared, ready for the next one
     }
 
@@ -99,7 +101,7 @@ import VeloCore
         try model.send()
 
         let queued = try JSONDecoder().decode(
-            QueuedSend.self, from: try #require(try mutations.pending().first).payload)
+            QueuedSend.self, from: try #require(try mutations.all().first).payload)
         let occurrences = queued.draft.bodyText.components(separatedBy: "wrote:").count - 1
         #expect(occurrences == 1)
     }
@@ -115,7 +117,7 @@ import VeloCore
         try model.send()
 
         let queued = try JSONDecoder().decode(
-            QueuedSend.self, from: try #require(try mutations.pending().first).payload)
+            QueuedSend.self, from: try #require(try mutations.all().first).payload)
         #expect(queued.draft.threadID == nil)       // a new thread, not the reply's
         #expect(!queued.draft.bodyText.contains("wrote:"))
     }

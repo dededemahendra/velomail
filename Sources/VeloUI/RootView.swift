@@ -1,6 +1,7 @@
 import SwiftUI
 import VeloCore
 
+
 /// Routes to whichever surface the app state says is focused, and hosts the
 /// single key monitor that drives the whole app.
 public struct RootView: View {
@@ -29,6 +30,12 @@ public struct RootView: View {
                 mailSurface
             }
         }
+        .overlay(alignment: .bottom) {
+            if app.undoableSend != nil {
+                UndoBanner(onUndo: { app.undoLastSend() })
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: app.undoableSend)
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
@@ -46,6 +53,12 @@ public struct RootView: View {
     private var mailSurface: some View {
         HSplitView {
             VStack(spacing: 0) {
+                if app.isShowingFollowUps {
+                    FollowUpBar(threads: app.followUps,
+                                onDismiss: { app.hideFollowUps() },
+                                onOpen: { app.openFromSearch($0) })
+                    Divider()
+                }
                 MessageListView(threads: app.inbox.threads,
                                 selectedIndex: app.inbox.selectedIndex,
                                 onSelect: { app.inbox.select(index: $0) },

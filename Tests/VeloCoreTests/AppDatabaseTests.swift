@@ -53,4 +53,12 @@ import GRDB
             #expect(columns.contains("emailAddress"))
         }
     }
+
+    @Test func pendingMutationTableHasADueAtColumn() throws {
+        let db = try AppDatabase.makeInMemory()
+        try db.dbQueue.read { db in
+            let columns = try db.columns(in: "pendingMutation").map(\.name)
+            #expect(columns.contains("dueAt"))
+        }
+    }
 }
