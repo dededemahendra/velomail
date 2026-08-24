@@ -39,7 +39,10 @@ public final class ComposeViewModel: ObservableObject {
         let draft = Draft.reply(to: message, from: identity)
         to = draft.to.joined(separator: ", ")
         subject = draft.subject
-        body = ""
+        // The quote goes in the editor, not on at send time: what the user sees
+        // is what gets sent, and they can trim it like in any other client.
+        // Two blank lines first so the cursor has room above it.
+        body = "\n\n" + QuotedReply.text(quoting: message)
         isReply = true
         replyContext = message
     }

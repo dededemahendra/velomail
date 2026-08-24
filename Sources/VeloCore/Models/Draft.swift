@@ -38,22 +38,27 @@ public struct Draft: Codable, Equatable, Sendable {
     ///
     /// Sets recipients, subject and threading headers only — quoting the parent
     /// body is the caller's job, so `bodyText` is whatever it passes.
+    /// - Parameter quoting: append the parent, quoted. Opt-in, because the
+    ///   engine should not impose composition policy on every caller.
     public static func reply(to message: Message, from _: String,
-                             bodyText: String = "", bodyHTML: String? = nil) -> Draft {
-        Draft(to: [message.sender],
-              subject: replySubject(message.subject),
-              bodyText: bodyText,
-              bodyHTML: bodyHTML,
-              threadID: message.threadID,
-              inReplyTo: message.messageIDHeader,
-              references: chainedReferences(of: message))
+                             bodyText: String = "", bodyHTML: String? = nil,
+                             quoting: Bool = false) -> Draft {
+        let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
+        return Draft(to: [message.sender],
+                     subject: replySubject(message.subject),
+                     bodyText: text,
+                     bodyHTML: html,
+                     threadID: message.threadID,
+                     inReplyTo: message.messageIDHeader,
+                     references: chainedReferences(of: message))
     }
 
     /// A reply to the sender plus everyone else on the message, minus the
     /// sending identity. Matching is by bare address, case-insensitively; alias
     /// and `+tag` forms are deliberately not resolved.
     public static func replyAll(to message: Message, from sender: String,
-                                bodyText: String = "", bodyHTML: String? = nil) -> Draft {
+                                bodyText: String = "", bodyHTML: String? = nil,
+                                quoting: Bool = false) -> Draft {
         let excluded = Set([normalizedAddress(sender), normalizedAddress(message.sender)])
         var seen = excluded
         let others = (message.recipients + message.cc).filter { address in
@@ -63,17 +68,30 @@ public struct Draft: Codable, Equatable, Sendable {
             return true
         }
 
+        let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
         return Draft(to: [message.sender],
                      cc: others,
                      subject: replySubject(message.subject),
-                     bodyText: bodyText,
-                     bodyHTML: bodyHTML,
+                     bodyText: text,
+                     bodyHTML: html,
                      threadID: message.threadID,
                      inReplyTo: message.messageIDHeader,
                      references: chainedReferences(of: message))
     }
 
     // MARK: - Internals
+
+    /// Composes the reply body: what the user wrote, then the quoted parent.
+    /// The HTML half is only produced when the parent had HTML, so a plain
+    /// conversation stays plain.
+    private static func body(_ text: String, _ html: String?,
+                             quoting: Bool, parent: Message) -> (String, String?) {
+        guard quoting else { return (text, html) }
+        let quotedText = "\(text)\n\n\(QuotedReply.text(quoting: parent))"
+        guard parent.bodyHTML != nil else { return (quotedText, html) }
+        let written = html ?? "<p>\(text)</p>"
+        return (quotedText, "\(written)\n\(QuotedReply.html(quoting: parent))")
+    }
 
     /// Prefixes `Re: ` unless the subject already carries one, in any case form.
     private static func replySubject(_ subject: String) -> String {
