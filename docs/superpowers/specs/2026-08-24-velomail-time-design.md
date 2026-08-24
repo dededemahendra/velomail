@@ -76,3 +76,37 @@ testable at all.
   not at the scheduled minute.
 - Snooze wakes only on the machine that set it, and only while the app runs.
 - Follow-up windows are global, not per-thread or per-recipient.
+
+---
+
+## Completion record
+
+499 → 538 tests, clean build, no warnings.
+
+Three mechanisms covering six roadmap items, as designed: `dueAt` gave Undo Send
+and Send Later together, snooze is a label plus a local date, and follow-up is a
+query rather than a state.
+
+**Found while building:**
+
+- `FollowUpService` originally looked up each thread's newest sender through
+  `MailStore`, from inside a `dbQueue.read` — which re-enters the connection and
+  makes GRDB trap. The sender is fetched in the same query now.
+- Adding a default argument to `MutationStore.pending()` changed its mangled
+  symbol, so incremental builds failed to link against stale test objects. A
+  clean build fixes it; worth knowing, because the error names a missing symbol
+  rather than the real cause.
+- Making the send window non-zero broke three compose tests that asserted on
+  `pending()`. They were right to fail — a queued send is deliberately *not due*
+  for ten seconds — so they now assert on `all()`, which is what they meant.
+- `HTTPClient` was not `Sendable`, which the AI providers surfaced as a warning
+  that is an error under Swift 6. Fixed at the protocol rather than silenced.
+
+**Verified by launching:** the app runs and renders correctly on a fresh launch.
+One capture showed the list selection and the thread pane disagreeing; a clean
+relaunch was correct both before and after window activation, so that frame was
+a stale instance from repeated launches rather than a defect.
+
+**Not verified:** the undo banner and follow-up bar appearing, since triggering
+them needs key input that macOS will not synthesise without Accessibility
+permission.

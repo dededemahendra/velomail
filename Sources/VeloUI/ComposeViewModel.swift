@@ -47,8 +47,10 @@ public final class ComposeViewModel: ObservableObject {
         replyContext = message
     }
 
-    public func send() throws {
-        guard canSend else { return }
+    /// - Returns: the queued mutation id, so the caller can offer an undo.
+    @discardableResult
+    public func send() throws -> Int64? {
+        guard canSend else { return nil }
         let draft: Draft
         if let message = replyContext {
             var reply = Draft.reply(to: message, from: identity, bodyText: body)
@@ -58,8 +60,9 @@ public final class ComposeViewModel: ObservableObject {
         } else {
             draft = Draft(to: recipients, subject: subject, bodyText: body)
         }
-        try outbound.send(draft)
+        let queued = try outbound.send(draft, after: AppViewModel.undoWindow)
         startNew()
+        return queued
     }
 
     // MARK: - Internals

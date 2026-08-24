@@ -317,6 +317,65 @@ import VeloCore
         // than going back to the list.
         #expect(app.route == .list)
     }
+
+    // MARK: - Time-based actions
+
+    @Test func sendingOffersAnUndoWindow() throws {
+        let app = try makeApp()
+        app.perform(.compose)
+        app.compose.to = "a@b.com"
+        app.compose.subject = "s"
+        app.compose.body = "b"
+
+        app.perform(.send)
+
+        #expect(app.undoableSend != nil)
+        #expect(app.route == .list)
+    }
+
+    @Test func undoingASendRemovesItBeforeItLeaves() throws {
+        let app = try makeApp()
+        app.perform(.compose)
+        app.compose.to = "a@b.com"
+        app.compose.subject = "s"
+        app.compose.body = "b"
+        app.perform(.send)
+
+        app.perform(.undoSend)
+
+        #expect(app.undoableSend == nil)
+    }
+
+    @Test func undoingWithNothingToUndoIsHarmless() throws {
+        let app = try makeApp()
+        app.perform(.undoSend)
+        #expect(app.undoableSend == nil)
+    }
+
+    @Test func snoozingHidesTheThreadFromTheList() throws {
+        let app = try makeApp()
+        let target = try #require(app.inbox.selectedThread).id
+
+        app.handle(KeyInput(.character("h")))
+
+        #expect(!app.inbox.threads.contains { $0.id == target })
+    }
+
+    @Test func snoozingWithNoSelectionIsHarmless() throws {
+        let app = try makeApp(threadCount: 0)
+        app.handle(KeyInput(.character("h")))
+        #expect(app.inbox.threads.isEmpty)
+    }
+
+    @Test func theFollowUpChordLoadsThreadsAwaitingAReply() throws {
+        let app = try makeApp()
+        app.handle(KeyInput(.character("g")))
+        app.handle(KeyInput(.character("f")))
+
+        // The seeded threads are all inbound, so nothing is awaiting a reply --
+        // the point is that the action ran rather than being unbound.
+        #expect(app.followUps.isEmpty)
+    }
 }
 
 private final class StubProvider: LLMProvider, @unchecked Sendable {
