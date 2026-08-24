@@ -34,23 +34,37 @@ public struct OutboundService {
     private let writer: GmailWriting
     private let store: MailStore
     private let mutations: MutationStore
-    private let identity: String
+    private let resolveIdentity: () -> String
     private let now: () -> Date
     private let newID: () -> String
 
     /// - Parameters:
-    ///   - identity: the account's own address, used as the `From` of anything sent.
+    ///   - identity: resolves the account's own address, used as the `From` of
+    ///     anything sent. A closure rather than a value because the real
+    ///     address arrives with the first backfill, long after this is built.
     ///   - newID: opaque unique-id source, injected so tests get stable ids.
     public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
-                identity: String, now: @escaping () -> Date = { Date() },
+                identity: @escaping () -> String, now: @escaping () -> Date = { Date() },
                 newID: @escaping () -> String = { UUID().uuidString }) {
         self.writer = writer
         self.store = store
         self.mutations = mutations
-        self.identity = identity
+        self.resolveIdentity = identity
         self.now = now
         self.newID = newID
     }
+
+    /// Convenience for callers that genuinely know their address up front
+    /// (tests, and the demo path).
+    public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
+                identity: String, now: @escaping () -> Date = { Date() },
+                newID: @escaping () -> String = { UUID().uuidString }) {
+        self.init(writer: writer, store: store, mutations: mutations,
+                  identity: { identity }, now: now, newID: newID)
+    }
+
+    /// The account's own address, resolved now rather than at construction.
+    private var identity: String { resolveIdentity() }
 
     /// Applies a draft locally at once and queues the real send.
     ///

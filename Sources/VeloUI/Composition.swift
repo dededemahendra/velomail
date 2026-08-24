@@ -34,7 +34,13 @@ public enum Composition {
         let store = MailStore(database)
         let mutations = MutationStore(database)
         let syncState = SyncStateStore(database)
-        let identity = ProcessInfo.processInfo.environment[identityKey] ?? "me@example.com"
+        // The account id is stable and local; the *address* is discovered from
+        // Gmail's profile on first backfill. Keeping them separate is what lets
+        // the app be built before it knows who it is.
+        let accountID = "primary"
+        let configuredIdentity = ProcessInfo.processInfo.environment[identityKey]
+        let resolver = IdentityResolver(syncState: syncState, accountID: accountID,
+                                        configured: configuredIdentity)
 
         if config.isDemo { try DemoData.seed(into: store) }
 
@@ -42,9 +48,9 @@ public enum Composition {
             // Unconfigured: still a fully working local app, just with nothing
             // to sync. A local-only writer keeps the queue honest.
             let outbound = OutboundService(writer: LocalOnlyWriter(), store: store,
-                                           mutations: mutations, identity: identity)
+                                           mutations: mutations, identity: resolver.identity)
             return Assembly(app: AppViewModel(config: config, store: store,
-                                              outbound: outbound, identity: identity),
+                                              outbound: outbound, identity: resolver.identity),
                             sync: nil, store: store, auth: nil)
         }
 
@@ -55,9 +61,10 @@ public enum Composition {
         let tokenProvider = AccessTokenProvider(store: tokenStore, service: tokenService)
         let api = GmailAPIClient(httpClient: httpClient, tokenProvider: tokenProvider)
 
-        let outbound = OutboundService(writer: api, store: store, mutations: mutations, identity: identity)
+        let outbound = OutboundService(writer: api, store: store, mutations: mutations,
+                                       identity: resolver.identity)
         let sync = GmailSync(
-            accountID: identity,
+            accountID: accountID,
             backfill: BackfillService(source: api, store: store, syncState: syncState),
             incremental: IncrementalSyncService(source: api, store: store, syncState: syncState),
             outbound: outbound,
@@ -65,7 +72,7 @@ public enum Composition {
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,
-                               identity: identity, isSignedIn: auth.state == .signedIn)
+                               identity: resolver.identity, isSignedIn: auth.state == .signedIn)
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }

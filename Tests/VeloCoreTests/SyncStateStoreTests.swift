@@ -33,4 +33,12 @@ import GRDB
 
         #expect(loaded?.historyId == "2000")
     }
+
+    @Test func syncStateRoundTripsEmailAddress() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = SyncStateStore(db)
+        try store.save(SyncState(accountID: "a", historyId: "1", backfillComplete: true,
+                                 emailAddress: "real@example.com"))
+        #expect(try store.load(accountID: "a")?.emailAddress == "real@example.com")
+    }
 }

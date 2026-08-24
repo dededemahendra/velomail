@@ -51,7 +51,10 @@ public struct RootView: View {
 
             Group {
                 if let thread = app.inbox.selectedThread {
-                    ThreadView(thread: thread, messages: app.inbox.selectedMessages)
+                    ThreadView(thread: thread,
+                               messages: app.inbox.selectedMessages,
+                               isExpanded: { app.inbox.isExpanded($0) },
+                               onToggle: { app.inbox.toggleExpansion($0) })
                 } else {
                     VStack(spacing: 6) {
                         Text("Inbox zero").font(.title3.weight(.medium))

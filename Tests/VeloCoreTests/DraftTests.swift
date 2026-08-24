@@ -78,4 +78,32 @@ private func parent(
         #expect(draft.references == [])
         #expect(draft.bcc == [])
     }
+
+    @Test func quotingIsOptInAndOffByDefault() {
+        // The engine should not impose composition policy on every caller.
+        #expect(Draft.reply(to: parent(), from: "me@example.com").bodyText == "")
+    }
+
+    @Test func replyCanQuoteTheParent() {
+        let draft = Draft.reply(to: parent(), from: "me@example.com",
+                                bodyText: "Sure.", quoting: true)
+        #expect(draft.bodyText.hasPrefix("Sure."))
+        #expect(draft.bodyText.contains("wrote:"))
+        #expect(draft.bodyText.contains("> hi"))
+    }
+
+    @Test func replyAllCanQuoteTheParentToo() {
+        let draft = Draft.replyAll(to: parent(), from: "me@example.com", quoting: true)
+        #expect(draft.bodyText.contains("wrote:"))
+    }
+
+    @Test func quotingAlsoBuildsAnHTMLBodyWhenTheParentHasOne() {
+        let html = Message(id: "m", threadID: "t", sender: "a@b.com", recipients: [],
+                           subject: "s", date: Date(timeIntervalSince1970: 100),
+                           bodyHTML: "<p>rich</p>", bodyText: "rich",
+                           isUnread: false, labelIDs: [], messageIDHeader: "<p@x>")
+        let draft = Draft.reply(to: html, from: "me@example.com", bodyText: "ok", quoting: true)
+        #expect(draft.bodyHTML?.contains("<blockquote") == true)
+        #expect(draft.bodyHTML?.contains("<p>rich</p>") == true)
+    }
 }

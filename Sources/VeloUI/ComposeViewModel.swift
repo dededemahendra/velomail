@@ -12,12 +12,17 @@ public final class ComposeViewModel: ObservableObject {
     @Published public private(set) var isReply = false
 
     private let outbound: OutboundService
-    private let identity: String
+    private let resolveIdentity: () -> String
+    private var identity: String { resolveIdentity() }
     private var replyContext: Message?
 
-    public init(outbound: OutboundService, identity: String) {
+    public init(outbound: OutboundService, identity: @escaping () -> String) {
         self.outbound = outbound
-        self.identity = identity
+        self.resolveIdentity = identity
+    }
+
+    public convenience init(outbound: OutboundService, identity: String) {
+        self.init(outbound: outbound, identity: { identity })
     }
 
     /// A send with no recipient is the one mistake worth blocking in the UI;
@@ -34,7 +39,10 @@ public final class ComposeViewModel: ObservableObject {
         let draft = Draft.reply(to: message, from: identity)
         to = draft.to.joined(separator: ", ")
         subject = draft.subject
-        body = ""
+        // The quote goes in the editor, not on at send time: what the user sees
+        // is what gets sent, and they can trim it like in any other client.
+        // Two blank lines first so the cursor has room above it.
+        body = "\n\n" + QuotedReply.text(quoting: message)
         isReply = true
         replyContext = message
     }

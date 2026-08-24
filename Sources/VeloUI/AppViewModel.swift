@@ -36,8 +36,14 @@ public final class AppViewModel: ObservableObject {
     /// genuinely unconfigured launch goes to setup.
     private var canShowMail: Bool { config.isDemo || (config.isConfigured && isSignedIn) }
 
+    public convenience init(config: AppConfig, store: MailStore, outbound: OutboundService,
+                            identity: String, isSignedIn: Bool = false) {
+        self.init(config: config, store: store, outbound: outbound,
+                  identity: { identity }, isSignedIn: isSignedIn)
+    }
+
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
-                identity: String, isSignedIn: Bool = false) {
+                identity: @escaping () -> String, isSignedIn: Bool = false) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
