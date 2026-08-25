@@ -8,27 +8,35 @@ enum DemoData {
         let now = Date()
         // `extra` carries STARRED / IMPORTANT so the split inbox has both
         // sections to show without an account.
+        //
+        // `unsubscribe` carries a List-Unsubscribe header, so `u` has something
+        // to act on without an account.
         let samples: [(id: String, from: String, subject: String, snippet: String, body: String,
-                       unread: Bool, extra: [String])] = [
+                       unread: Bool, extra: [String], unsubscribe: String?)] = [
             ("t1", "Natalie Roberts <natalie@sistercreatives.co>", "Mornington Green open day",
              "Numbers for Saturday are in, and we are close to capacity.",
              "<p>Numbers for Saturday are in, and we are close to capacity.</p><p>Do we open a second session?</p>",
-             true, ["STARRED"]),
+             true, ["STARRED"], nil),
             ("t2", "Gede Mahendra <gede@sistercreatives.co>", "Sanity schema migration",
              "Pushed the memorial-tree schema change to preview.",
              "<p>Pushed the memorial-tree schema change to preview. Have a look before I promote it.</p>",
-             true, []),
+             true, [], nil),
             ("t3", "Peta Bilston <peta@wellingtondam.org.au>", "Wellington Dam plantings",
              "Confirming the two-ashes-per-tree cap in the new brochure.",
              "<p>Confirming the two-ashes-per-tree cap is stated clearly in the new brochure.</p>",
-             false, []),
+             false, [], nil),
             ("t4", "Luke Roberts <luke@livinglegacyforest.com>", "Patent renewal",
              "The AU renewal is due next quarter.",
              "<p>The AU renewal is due next quarter. Forwarding the attorney's note.</p>",
-             false, ["IMPORTANT"]),
+             false, ["IMPORTANT"], nil),
             ("t5", "Stripe <receipts@stripe.com>", "Your receipt",
              "Receipt for the monthly subscription.",
-             "<p>Receipt for the monthly subscription.</p>", false, []),
+             "<p>Receipt for the monthly subscription.</p>", false, [], nil),
+            ("t6", "Forest Weekly <news@forestweekly.example>", "This week in conservation",
+             "Seven stories on regeneration, and one on soil carbon.",
+             "<p>Seven stories on regeneration, and one on soil carbon.</p>",
+             false, [],
+             "<https://forestweekly.example/u/abc123>, <mailto:leave@forestweekly.example?subject=unsubscribe>"),
         ]
 
         // A multi-message thread, so the transcript (newest expanded, older
@@ -65,7 +73,8 @@ enum DemoData {
                                      subject: sample.subject, date: date,
                                      bodyHTML: sample.body, bodyText: sample.snippet,
                                      isUnread: sample.unread, labelIDs: labels,
-                                     messageIDHeader: "<\(sample.id)@demo.velomail>"))
+                                     messageIDHeader: "<\(sample.id)@demo.velomail>",
+                                     listUnsubscribe: sample.unsubscribe))
         }
     }
 }

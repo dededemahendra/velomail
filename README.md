@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-607 tests, no XCTest, no `.xcodeproj`.
+686 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -127,6 +127,7 @@ untouched.
 | `Cmd+K` | command palette |
 | `/` or `Cmd+F` | search |
 | `h` | snooze for 4 hours |
+| `u` | unsubscribe from the open thread |
 | `Cmd+Z` | undo send (10s window) |
 | `g` `f` | threads awaiting a reply |
 | `a` `s` / `a` `r` / `a` `t` | summarise / suggest replies / triage (AI) |
@@ -137,7 +138,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 607 tests; offline and deterministic
+swift test          # 686 tests; offline and deterministic
 swift build
 ```
 
@@ -204,6 +205,63 @@ important, there are no headers and the inbox looks exactly like the flat list
 it was. `j`/`k` walk straight across a section boundary without noticing one.
 
 Empty it, and the list says so.
+
+## Snippets, templates and signature
+
+Drop a file at `~/.config/velomail/snippets.json`:
+
+```json
+{
+  "signature": "Warren Roberts\nLiving Legacy Forest",
+  "snippets": [
+    { "name": "Thanks", "shortcut": "thx", "body": "Thanks so much — I'll come back to you today." },
+    { "name": "Intro call", "shortcut": "intro", "subject": "Intro call?",
+      "body": "Would twenty minutes this week suit?" }
+  ]
+}
+```
+
+In the composer, type `;` then a shortcut then a **space** (or tab, or newline)
+and it expands. The space is eaten; a snippet ends with its own punctuation more
+often than it wants a trailing one.
+
+A **template is just a snippet with a subject**. Expanding one also fills the
+subject — but only when the subject is empty, so expanding a template into a
+reply cannot silently rewrite `Re: …`.
+
+The **signature** goes into the draft when you start it, not onto the message
+when you send it: two blank lines then your name on a new message, and above the
+quote on a reply. What you see is what gets sent, and you can edit or delete it
+like any other text. With no signature configured, drafts are exactly what they
+were before.
+
+The `;` must start a word, matching is case-insensitive and exact, and an
+unknown shortcut is left alone rather than guessed at. A paste never triggers an
+expansion — only a character you typed.
+
+`VELOMAIL_SIGNATURE` overrides the file's signature. A missing or malformed
+snippets file leaves you with no snippets rather than a failed launch. There is
+no in-app editor yet.
+
+## Unsubscribe
+
+`u` acts on the sender's own `List-Unsubscribe` header, and does nothing at all
+on mail that has none — which is nearly all of it. The thread view shows the
+button only when there is something to press.
+
+Given both a `mailto:` and an `https:` link, Velo Mail sends the **mailto**. It
+is a channel the sender declared, it works without a browser, and it goes out
+through the same outbound queue as everything else — so it survives a restart,
+retries with backoff, and `Cmd+Z` takes it back for ten seconds. With only a web
+link, that opens in your browser, because filling in someone's unsubscribe form
+is not something a mail client should do on your behalf.
+
+RFC 8058 one-click POST is deliberately not implemented: it is an
+unauthenticated HTTP write to a URL taken out of untrusted mail.
+
+**Unsubscribing does not archive.** They are different decisions — you often
+want off a list and still want to read this issue — and coupling them would make
+`Cmd+Z` ambiguous about which half it took back. `e` is the next key over.
 
 ## Search
 

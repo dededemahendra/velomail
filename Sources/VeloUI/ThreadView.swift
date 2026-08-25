@@ -145,6 +145,14 @@ struct ThreadView: View {
     let messages: [Message]
     let isExpanded: (String) -> Bool
     let onToggle: (String) -> Void
+    let onUnsubscribe: () -> Void
+
+    /// Whether this thread can be left. Parsed rather than merely present: a
+    /// header we cannot act on must not put a button on screen that does
+    /// nothing when pressed.
+    static func canUnsubscribe(from messages: [Message]) -> Bool {
+        messages.contains { Unsubscribe.preferred(in: $0.listUnsubscribe ?? "") != nil }
+    }
 
     var body: some View {
         if messages.isEmpty {
@@ -155,11 +163,24 @@ struct ThreadView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // The subject belongs to the thread, not to each message, so it
                 // sits above the transcript rather than repeating in every card.
-                Text(subject)
-                    .font(.title3.weight(.semibold))
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(subject)
+                        .font(.title3.weight(.semibold))
+                    Spacer(minLength: 0)
+                    // Only when the sender said how to leave. An always-visible
+                    // button that usually does nothing is worse than none.
+                    if Self.canUnsubscribe(from: messages) {
+                        Button(action: onUnsubscribe) {
+                            Label("Unsubscribe", systemImage: "hand.raised")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Unsubscribe (u)")
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
                 Divider()
 
                 ScrollView {

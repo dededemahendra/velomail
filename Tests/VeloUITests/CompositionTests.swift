@@ -12,7 +12,7 @@ import VeloCore
 
         // The wiring the app actually launches with: seeded store → view model.
         #expect(assembly.app.route == .list)
-        #expect(assembly.app.inbox.threads.count == 6)
+        #expect(assembly.app.inbox.threads.count == 7)
         #expect(assembly.app.inbox.selectedThread != nil)
         #expect(!assembly.app.inbox.selectedMessages.isEmpty)
     }
@@ -40,7 +40,7 @@ import VeloCore
 
         app.handle(KeyInput(.character("e")))     // archive + auto-advance
 
-        #expect(app.inbox.threads.count == 5)
+        #expect(app.inbox.threads.count == 6)
         #expect(app.inbox.selectedThread?.id == second)
     }
 
@@ -60,7 +60,7 @@ import VeloCore
         // Optimistically applied: the sent thread is in the store immediately.
         #expect(app.route == .list)
         let sent = try assembly.store.inboxThreads().count
-        #expect(sent == 6)                        // demo threads unchanged; a sent thread is not in INBOX
+        #expect(sent == 7)                        // demo threads unchanged; a sent thread is not in INBOX
     }
 
     @Test func demoIsUsableEvenThoughItHasNoClientID() throws {

@@ -79,9 +79,10 @@ public struct RootView: View {
                         AssistantPanel(model: app.assistant,
                                        onUseSuggestion: { app.startReply(with: $0) })
                         ThreadView(thread: thread,
-                               messages: app.inbox.selectedMessages,
+                                   messages: app.inbox.selectedMessages,
                                    isExpanded: { app.inbox.isExpanded($0) },
-                                   onToggle: { app.inbox.toggleExpansion($0) })
+                                   onToggle: { app.inbox.toggleExpansion($0) },
+                                   onUnsubscribe: { app.unsubscribeSelected() })
                     }
                 } else {
                     // Whatever there is to say about an empty inbox, the list
