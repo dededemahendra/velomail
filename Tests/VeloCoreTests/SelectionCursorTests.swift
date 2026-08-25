@@ -124,4 +124,148 @@ import Testing
         cursor.select(0)
         #expect(cursor.index == nil)
     }
+
+    // MARK: - Marks
+
+    @Test func nothingIsMarkedInitially() {
+        #expect(SelectionCursor(count: 3).marked.isEmpty)
+    }
+
+    @Test func targetsIsTheCursorRowWhenNothingIsMarked() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.moveDown()
+        // The single-thread path is not a special case of the bulk path; it is
+        // the bulk path with one element.
+        #expect(cursor.targets == [1])
+    }
+
+    @Test func targetsIsEmptyWhenTheListIsEmpty() {
+        #expect(SelectionCursor(count: 0).targets.isEmpty)
+    }
+
+    @Test func toggleMarkMarksTheCurrentRow() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.moveDown()
+        cursor.toggleMark()
+        #expect(cursor.marked == [1])
+    }
+
+    @Test func toggleMarkTwiceUnmarksIt() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.toggleMark()
+        cursor.toggleMark()
+        #expect(cursor.marked.isEmpty)
+        #expect(cursor.targets == [0])   // back to the cursor row
+    }
+
+    @Test func targetsAreTheMarkedRowsInAscendingOrder() {
+        var cursor = SelectionCursor(count: 4)
+        cursor.select(3)
+        cursor.toggleMark()
+        cursor.select(1)
+        cursor.toggleMark()
+
+        #expect(cursor.targets == [1, 3])
+    }
+
+    @Test func markingDoesNotMoveTheCursor() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.moveDown()
+        cursor.toggleMark()
+        #expect(cursor.index == 1)
+    }
+
+    @Test func removeTargetsRemovesEveryMarkedRow() {
+        var cursor = SelectionCursor(count: 5)
+        cursor.toggleMark()              // 0
+        cursor.select(2)
+        cursor.toggleMark()              // 2
+
+        cursor.removeTargets()
+
+        #expect(cursor.count == 3)
+    }
+
+    @Test func removeTargetsLandsSelectionOnTheLowestRemovedIndex() {
+        var cursor = SelectionCursor(count: 5)
+        cursor.select(1)
+        cursor.toggleMark()
+        cursor.select(3)
+        cursor.toggleMark()
+
+        cursor.removeTargets()
+
+        // Index 1 is where the first gap was, so whatever slid up into it is
+        // now selected — the same rule a single archive follows.
+        #expect(cursor.index == 1)
+    }
+
+    @Test func removeTargetsClampsWhenTheTailWasRemoved() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.select(1)
+        cursor.toggleMark()
+        cursor.select(2)
+        cursor.toggleMark()
+
+        cursor.removeTargets()
+
+        #expect(cursor.count == 1)
+        #expect(cursor.index == 0)
+    }
+
+    @Test func removeTargetsClearsTheSelectionWhenTheListEmpties() {
+        var cursor = SelectionCursor(count: 2)
+        cursor.toggleMark()
+        cursor.select(1)
+        cursor.toggleMark()
+
+        cursor.removeTargets()
+
+        #expect(cursor.count == 0)
+        #expect(cursor.index == nil)
+    }
+
+    @Test func removeTargetsClearsTheMarks() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.toggleMark()
+
+        cursor.removeTargets()
+
+        #expect(cursor.marked.isEmpty)
+    }
+
+    @Test func removeTargetsWithNothingMarkedBehavesLikeRemoveCurrent() {
+        var marked = SelectionCursor(count: 3)
+        var single = SelectionCursor(count: 3)
+        marked.moveDown()
+        single.moveDown()
+
+        marked.removeTargets()
+        single.removeCurrent()
+
+        #expect(marked == single)
+    }
+
+    @Test func resetClearsMarksBecauseIndicesNoLongerMeanAnything() {
+        var cursor = SelectionCursor(count: 5)
+        cursor.toggleMark()
+
+        cursor.reset(count: 5)
+
+        // Sync can move a row out from under a mark, and silently archiving the
+        // wrong mail is far worse than losing a selection.
+        #expect(cursor.marked.isEmpty)
+    }
+
+    @Test func clearMarksLeavesTheCursorWhereItIs() {
+        var cursor = SelectionCursor(count: 3)
+        cursor.moveDown()
+        cursor.toggleMark()
+
+        cursor.clearMarks()
+
+        #expect(cursor.marked.isEmpty)
+        #expect(cursor.index == 1)
+        #expect(cursor.count == 3)
+    }
 }
