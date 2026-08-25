@@ -405,3 +405,96 @@ revert it.
   `snippet(forShortcut:)`, `SnippetExpansion.Expansion.text/.snippet`,
   `Unsubscribe.preferred(in:)`, `Unsubscribe.draft(for:)`,
   `Message.listUnsubscribe`, `AppViewModel.openURL`, `holdUndo(_:)`.
+
+---
+
+## Completion record
+
+**Done.** 607 → 691 tests, all passing. Migration ledger at **v12**, exactly the
+one the spec claimed; snippets took none.
+
+One commit per task, in order: O1 `442d537`, O2 `0b09329`, O3 `41cb260`,
+O4 `c5a6f54`, O5 `02f29fc`, O6 `207a8d4`, O7 `1ab2c30`, plus three from the
+review below: `cf9df3c`, `288c14e`, `b9e2b8e`.
+
+### What the review found
+
+Three things, all real, all committed as their own red→green fix.
+
+**One bad snippet cost you the whole file — including the signature.**
+`FileValues` decoded `snippets` as `[Snippet]`, so a single malformed entry
+failed the array, which failed the object, which resolved the whole library to
+`.empty`. The user's signature would vanish because of a typo three snippets
+below it, silently. Each entry now decodes on its own through a `Tolerant<Value>`
+wrapper, and a missing `name` falls back to the shortcut rather than dropping the
+snippet — the name is only ever shown to the user, so leaving it out of a
+hand-edited file should not make the snippet disappear. This is the same class of
+bug the spec's §3 tolerance rules were written to prevent; the rules were there
+and the decoder went around them.
+
+**`u` did nothing while the button said it would do something.**
+`unsubscribeSelected` took the newest message *carrying* a header and then parsed
+it; `ThreadView.canUnsubscribe` offers the button when *any* message parses. A
+newsletter whose newest message carried an unparseable header therefore rendered
+a button that did nothing when pressed. Both now ask the same question — the
+newest message whose header parses — and a test asserts the two agree.
+
+**The one seam unit tests could not reach.** `ComposeViewModel` rewrites `body`
+from inside its own `didSet` while SwiftUI's `TextEditor` is mid-write to that
+same binding. Whether a re-entrant change to a binding survives is SwiftUI's
+business, not ours, and no view-model test can answer it. It is now driven
+against a real hosted `NSHostingView`, typing through `insertText` on the live
+`NSTextView` — the same text system a keystroke goes through, needing no
+Accessibility permission and no synthetic events. It works: both the model and
+the visible editor end up holding the expanded text. The unknown-shortcut case is
+kept as the control, so the expansion test cannot pass vacuously.
+
+### What the plan did not anticipate
+
+**Nothing structural.** The three mechanisms landed as designed: a file-backed
+library, a pure expander with a diff-recovered cursor, and a parser feeding the
+existing outbound queue. The deviations were all small:
+
+- `Snippet` gained a custom `init(from:)` (see above).
+- `AppViewModel.holdUndo` was extracted from `send()` so compose and unsubscribe
+  cannot drift on how long the undo promise lasts — the plan called for this and
+  it was worth more than expected, since it is now the single definition of the
+  window.
+- `ThreadView.canUnsubscribe(from:)` is a static helper rather than an inline
+  condition, so the affordance's rule is testable. `ThreadViewTests` is new.
+- `CompositionTests` needed its three demo-thread counts bumped, because O7 seeds
+  a sixth sample thread (the newsletter).
+
+### The O7 gate, honestly
+
+`screencapture` is still unavailable here — no Screen Recording permission — so
+the gate was a launch plus an **offscreen** render, as in increment N.
+
+The app builds, launches in demo mode and runs with a silent console. Three views
+were rendered offscreen and looked at: the newsletter thread (Unsubscribe in the
+header), ordinary mail (no button at all), and a composer holding an expanded
+`;thx` above the signature. All three were right. The render harness was
+**deleted rather than committed** — it asserts nothing and tripled the suite's
+runtime; it was the gate, not a deliverable. What it was checking that mattered
+is covered by `ThreadViewTests` and `ComposeEditorExpansionTests`, which do
+assert.
+
+The `WKWebView` message body renders blank offscreen. That is the documented
+occlusion throttle, not a bug, and it was not chased.
+
+### Known limits, recorded rather than fixed
+
+- **Pressing `u` twice queues two unsubscribe mails**, and the second overwrites
+  `undoableSend` so the first becomes uncancellable. The harm is one duplicate
+  mail to a list server. Guarding it means holding per-thread state that nothing
+  else needs.
+- **Expansion is boundary-triggered, not cursor-triggered.** Typing a shortcut
+  and then clicking elsewhere without typing a boundary leaves `;thx` in the
+  text. Fixing it properly means replacing `TextEditor` with an `NSTextView`,
+  which is a larger change than the feature.
+
+### Not done, deliberately
+
+In-app snippet editor, RFC 8058 one-click POST, bulk unsubscribe across a
+sender, attachments in snippets, per-sender signatures — all out of scope per
+§10, and none of them started.
