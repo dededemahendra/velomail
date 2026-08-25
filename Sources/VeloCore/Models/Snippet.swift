@@ -20,6 +20,16 @@ public struct Snippet: Codable, Equatable, Sendable {
         self.subject = subject
         self.body = body
     }
+
+    /// The name is only ever shown to the user, so leaving it out of the file
+    /// should not make the snippet disappear — it falls back to the shortcut.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        shortcut = try container.decode(String.self, forKey: .shortcut)
+        body = try container.decode(String.self, forKey: .body)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? shortcut
+    }
 }
 
 /// The snippets and signature available to the composer.
@@ -84,14 +94,23 @@ public struct SnippetLibrary: Equatable, Sendable {
 
     private struct FileValues: Decodable {
         let signature: String?
-        let snippets: [Snippet]?
+        let snippets: [Tolerant<Snippet>]?
 
         static func load(_ url: URL?) -> (signature: String?, snippets: [Snippet])? {
             guard let url, let data = try? Data(contentsOf: url),
                   let values = try? JSONDecoder().decode(FileValues.self, from: data)
             else { return nil }
-            return (values.signature, values.snippets ?? [])
+            return (values.signature, (values.snippets ?? []).compactMap(\.value))
         }
+    }
+
+    /// Decodes each array element on its own, so one bad entry costs you that
+    /// entry rather than the whole file — including the signature beside it,
+    /// which is exactly the failure a hand-edited file is most likely to
+    /// produce.
+    private struct Tolerant<Value: Decodable>: Decodable {
+        let value: Value?
+        init(from decoder: Decoder) throws { value = try? Value(from: decoder) }
     }
 
     private static func nonBlank(_ value: String?) -> String? {

@@ -88,6 +88,34 @@ import Foundation
         #expect(library.snippet(forShortcut: "intro")?.subject == "Intro call?")
     }
 
+    @Test func oneBadSnippetDoesNotCostYouTheRestOfTheFile() throws {
+        // Decoding the array as a whole means a single typo silently discards
+        // every snippet *and* the signature, which is exactly the failure a
+        // hand-edited file is most likely to produce.
+        let file = try write("""
+            {"signature":"Warren",
+             "snippets":[{"shortcut":"broken","body":42},
+                         {"name":"Ok","shortcut":"ok","body":"Ok."}]}
+            """)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let library = SnippetLibrary.resolve(environment: [:], file: file)
+
+        #expect(library.signature == "Warren")
+        #expect(library.snippets.map(\.shortcut) == ["ok"])
+    }
+
+    @Test func aSnippetWithNoNameIsNamedAfterItsShortcut() throws {
+        // The name is only ever shown to the user; not writing one should not
+        // make the snippet disappear.
+        let file = try write(#"{"snippets":[{"shortcut":"thx","body":"Thanks."}]}"#)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let library = SnippetLibrary.resolve(environment: [:], file: file)
+
+        #expect(library.snippet(forShortcut: "thx")?.name == "thx")
+    }
+
     @Test func aMissingFileResolvesToAnEmptyLibrary() {
         let absent = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("velomail-absent-\(UUID().uuidString).json")
