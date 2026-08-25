@@ -43,7 +43,8 @@ public enum GmailMessageMapper {
             labelIDs: dto.labelIds ?? [],
             messageIDHeader: header("Message-ID"),
             inReplyTo: header("In-Reply-To"),
-            references: references)
+            references: references,
+            listUnsubscribe: header("List-Unsubscribe"))
     }
 
     /// Derives the thread record from all of a thread's messages. Returns `nil`

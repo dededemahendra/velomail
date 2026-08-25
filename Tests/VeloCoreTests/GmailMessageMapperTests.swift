@@ -184,6 +184,33 @@ private let threadNewerJSON = """
         #expect(message.references == ["<root@mail.example.com>"])
     }
 
+    @Test func theListUnsubscribeHeaderIsMapped() throws {
+        let dto = try decodeDTO("""
+        {
+          "id": "m12", "threadId": "t12", "internalDate": "1719900000000",
+          "payload": { "mimeType": "text/plain", "headers": [
+            {"name": "From", "value": "news@example.com"},
+            {"name": "List-Unsubscribe", "value": "<https://example.com/u/1>, <mailto:leave@example.com>"}
+          ] }
+        }
+        """)
+        // Stored raw. Parsing it is Unsubscribe's job, not the mapper's.
+        #expect(GmailMessageMapper.message(from: dto).listUnsubscribe
+                == "<https://example.com/u/1>, <mailto:leave@example.com>")
+    }
+
+    @Test func aMessageWithoutTheHeaderHasNoListUnsubscribe() throws {
+        let dto = try decodeDTO("""
+        {
+          "id": "m13", "threadId": "t13", "internalDate": "1719900000000",
+          "payload": { "mimeType": "text/plain", "headers": [
+            {"name": "From", "value": "alice@example.com"}
+          ] }
+        }
+        """)
+        #expect(GmailMessageMapper.message(from: dto).listUnsubscribe == nil)
+    }
+
     @Test func mapperParsesMultipleReferencesSeparatedByWhitespace() throws {
         let dto = try decodeDTO("""
         {

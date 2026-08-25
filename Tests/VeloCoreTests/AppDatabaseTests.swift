@@ -54,6 +54,14 @@ import GRDB
         }
     }
 
+    @Test func messageTableHasAListUnsubscribeColumn() throws {
+        let db = try AppDatabase.makeInMemory()
+        try db.dbQueue.read { db in
+            let columns = try db.columns(in: "message").map(\.name)
+            #expect(columns.contains("listUnsubscribe"))
+        }
+    }
+
     @Test func pendingMutationTableHasADueAtColumn() throws {
         let db = try AppDatabase.makeInMemory()
         try db.dbQueue.read { db in

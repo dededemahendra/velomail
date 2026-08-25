@@ -21,6 +21,10 @@ public struct Message: Codable, FetchableRecord, PersistableRecord, Identifiable
     public var inReplyTo: String?
     /// The `References` header, split into individual message ids, oldest first.
     public var references: [String]
+    /// RFC 2369 `List-Unsubscribe`, raw. Its presence is also the sender's own
+    /// admission that this is a bulk mailing, which is newsletter detection
+    /// without a classifier.
+    public var listUnsubscribe: String?
 
     public static let databaseTableName = "message"
 
@@ -29,7 +33,7 @@ public struct Message: Codable, FetchableRecord, PersistableRecord, Identifiable
                 bodyHTML: String?, bodyText: String?,
                 isUnread: Bool, labelIDs: [String],
                 messageIDHeader: String? = nil, inReplyTo: String? = nil,
-                references: [String] = []) {
+                references: [String] = [], listUnsubscribe: String? = nil) {
         self.id = id
         self.threadID = threadID
         self.sender = sender
@@ -44,5 +48,6 @@ public struct Message: Codable, FetchableRecord, PersistableRecord, Identifiable
         self.messageIDHeader = messageIDHeader
         self.inReplyTo = inReplyTo
         self.references = references
+        self.listUnsubscribe = listUnsubscribe
     }
 }

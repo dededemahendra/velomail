@@ -163,6 +163,14 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        // The raw header, not a parsed link: the database stays dumb, and the
+        // parsing in `Unsubscribe` can improve without a migration.
+        migrator.registerMigration("v12_add_message_listUnsubscribe") { db in
+            try db.alter(table: "message") { t in
+                t.add(column: "listUnsubscribe", .text)
+            }
+        }
+
         return migrator
     }
 }

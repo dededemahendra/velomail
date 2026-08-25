@@ -22,6 +22,18 @@ import Foundation
         #expect(inbox.map(\.id) == ["new", "old"])
     }
 
+    @Test func theListUnsubscribeHeaderSurvivesAStoreRoundTrip() throws {
+        let store = try makeStore()
+        try store.upsert(thread("t", date: 0, labels: ["INBOX"]))
+        try store.upsert(Message(id: "m", threadID: "t", sender: "news@example.com",
+                                 recipients: [], subject: "Weekly",
+                                 date: Date(timeIntervalSince1970: 10),
+                                 bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: [],
+                                 listUnsubscribe: "<mailto:leave@example.com>"))
+
+        #expect(try store.message(id: "m")?.listUnsubscribe == "<mailto:leave@example.com>")
+    }
+
     @Test func upsertReplacesExistingThread() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))

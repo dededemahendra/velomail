@@ -36,6 +36,24 @@ import GRDB
         #expect(fetched?.labelIDs == ["INBOX", "UNREAD"])
     }
 
+    @Test func aMessageRoundTripsItsListUnsubscribeHeader() throws {
+        let db = try AppDatabase.makeInMemory()
+        let thread = MailThread(id: "t1", snippet: "", lastMessageDate: Date(timeIntervalSince1970: 0),
+                                isUnread: false, hasAttachments: false, labelIDs: [])
+        try db.dbQueue.write { try thread.insert($0) }
+        let header = "<https://x.example/u/1>, <mailto:leave@x.example>"
+        let msg = Message(id: "m1", threadID: "t1", sender: "a@b.com", recipients: [],
+                          subject: "", date: Date(timeIntervalSince1970: 10),
+                          bodyHTML: nil, bodyText: nil, isUnread: false, labelIDs: [],
+                          listUnsubscribe: header)
+        try db.dbQueue.write { try msg.insert($0) }
+
+        let fetched = try db.dbQueue.read { try Message.fetchOne($0, key: "m1") }
+        // The raw header, not a parsed link: the database stays dumb and the
+        // parser can improve without a migration.
+        #expect(fetched?.listUnsubscribe == header)
+    }
+
     @Test func messageRoundTripsReplyHeaders() throws {
         let db = try AppDatabase.makeInMemory()
         let thread = MailThread(id: "t1", snippet: "", lastMessageDate: Date(timeIntervalSince1970: 0),
