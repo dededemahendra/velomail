@@ -553,6 +553,39 @@ import VeloCore
         #expect(app.inbox.threads.map(\.id).contains("n"))
     }
 
+    @Test func anUnusableNewerHeaderFallsBackToAnOlderUsableOne() throws {
+        // The thread view offers the button when *any* message parses, so the
+        // action has to agree -- otherwise the button appears and does nothing.
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let mutations = MutationStore(db)
+        try store.upsert(MailThread(id: "n", snippet: "Weekly",
+                                    lastMessageDate: Date(timeIntervalSince1970: 200),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
+        for (id, seconds, header) in [("old", 100.0, "<mailto:leave@example.com>"),
+                                      ("new", 200.0, "<ftp://example.com/u>")] {
+            try store.upsert(Message(id: id, threadID: "n", sender: "news@example.com",
+                                     recipients: ["me@x.com"], subject: "Weekly",
+                                     date: Date(timeIntervalSince1970: seconds),
+                                     bodyHTML: nil, bodyText: "news", isUnread: false,
+                                     labelIDs: ["INBOX"], listUnsubscribe: header))
+        }
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: mutations, identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+        #expect(ThreadView.canUnsubscribe(from: app.inbox.selectedMessages))
+
+        press(app, "u")
+
+        let payload = try JSONDecoder().decode(
+            QueuedSendRecipients.self, from: try #require(try mutations.all().first).payload)
+        #expect(payload.draft.to == ["leave@example.com"])
+    }
+
     @Test func unsubscribeUsesTheNewestMessageCarryingAHeader() throws {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)

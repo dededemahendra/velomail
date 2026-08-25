@@ -271,10 +271,13 @@ public final class AppViewModel: ObservableObject {
     /// this issue -- and coupling them would make `Cmd+Z` ambiguous about which
     /// half it takes back.
     public func unsubscribeSelected() {
-        // `selectedMessages` is oldest first, so this is the newest message
-        // that carries a header.
-        guard let header = inbox.selectedMessages.reversed().compactMap(\.listUnsubscribe).first,
-              let link = Unsubscribe.preferred(in: header) else { return }
+        // The newest message whose header *parses*, not merely the newest that
+        // has one: the thread view offers the button when any message parses,
+        // and a button that appears and does nothing is worse than none.
+        // `selectedMessages` is oldest first, hence the reverse.
+        guard let link = inbox.selectedMessages.reversed().lazy
+            .compactMap({ Unsubscribe.preferred(in: $0.listUnsubscribe ?? "") })
+            .first else { return }
         switch link {
         case .mailto:
             guard let draft = Unsubscribe.draft(for: link),
