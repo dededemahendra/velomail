@@ -24,6 +24,30 @@ public final class InboxViewModel: ObservableObject {
 
     public var selectedIndex: Int? { cursor.index }
 
+    /// The rows explicitly marked for a bulk action, for the list to indicate.
+    public var markedIndices: Set<Int> { cursor.marked }
+
+    public func isMarked(index: Int) -> Bool { cursor.marked.contains(index) }
+
+    public var markedThreadIDs: [String] {
+        cursor.marked.sorted().compactMap { threads.indices.contains($0) ? threads[$0].id : nil }
+    }
+
+    /// The threads an action applies to: everything marked, or the selected
+    /// thread when nothing is.
+    public var targetThreads: [MailThread] {
+        cursor.targets.compactMap { threads.indices.contains($0) ? threads[$0] : nil }
+    }
+
+    /// Marks or unmarks the row under the cursor.
+    ///
+    /// Nothing `@Published` changes, so the notification is sent by hand —
+    /// otherwise the indicator would not appear until the next reload.
+    public func toggleMark() {
+        objectWillChange.send()
+        cursor.toggleMark()
+    }
+
     public var selectedThread: MailThread? {
         guard let index = cursor.index, threads.indices.contains(index) else { return nil }
         return threads[index]
@@ -52,13 +76,36 @@ public final class InboxViewModel: ObservableObject {
         try? refreshSelectedMessages()
     }
 
-    /// Archives the selection and advances onto the thread that takes its place.
+    /// Archives every target and advances onto the thread that takes the place
+    /// of the first one. With nothing marked that is the selected thread, so
+    /// this is also the single-row archive — there is no bulk variant.
     public func archiveSelected() throws {
-        guard let thread = selectedThread, let index = cursor.index else { return }
-        try outbound.archive(threadID: thread.id)
-        threads.remove(at: index)
-        cursor.removeCurrent()
+        let indices = cursor.targets
+        guard !indices.isEmpty else { return }
+        for index in indices { try outbound.archive(threadID: threads[index].id) }
+        // Highest index first, so removing one does not shift the next.
+        for index in indices.reversed() { threads.remove(at: index) }
+        cursor.removeTargets()
         try refreshSelectedMessages()
+    }
+
+    /// Stars the targets, or unstars them when every one is already starred.
+    ///
+    /// Toggling each thread independently would leave a mixed selection *more*
+    /// mixed, which is never what the gesture meant; Gmail resolves it the same
+    /// way.
+    public func toggleStarSelected() throws {
+        let targets = targetThreads
+        guard !targets.isEmpty else { return }
+        let allStarred = targets.allSatisfy { $0.labelIDs.contains("STARRED") }
+        for thread in targets {
+            if allStarred {
+                try outbound.unstar(threadID: thread.id)
+            } else if !thread.labelIDs.contains("STARRED") {
+                try outbound.star(threadID: thread.id)
+            }
+        }
+        try refreshTargetRows()
     }
 
     public func markSelectedRead() throws {
@@ -68,6 +115,15 @@ public final class InboxViewModel: ObservableObject {
     }
 
     // MARK: - Internals
+
+    /// Re-reads just the rows an action touched. A star does not change the
+    /// length of the list, so refreshing in place keeps both the cursor and the
+    /// marks — a full reload would drop them (see `SelectionCursor.reset`).
+    private func refreshTargetRows() throws {
+        for index in cursor.targets where threads.indices.contains(index) {
+            if let refreshed = try store.thread(id: threads[index].id) { threads[index] = refreshed }
+        }
+    }
 
     private func reloadPreservingSelection() throws {
         let previous = cursor.index

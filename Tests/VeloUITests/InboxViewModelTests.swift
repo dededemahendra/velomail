@@ -105,6 +105,120 @@ import VeloCore
         #expect(model.selectedMessages.map(\.id) == ["m1"])
     }
 
+    // MARK: - Marks and bulk triage
+
+    @Test func archiveWithNothingMarkedArchivesTheCursorRow() throws {
+        let (model, store) = try makeContext(threadCount: 3)
+
+        try model.archiveSelected()
+
+        #expect(model.threads.map(\.id) == ["t1", "t2"])
+        #expect(try store.inboxThreads().map(\.id) == ["t1", "t2"])
+    }
+
+    @Test func archiveArchivesEveryMarkedThread() throws {
+        let (model, store) = try makeContext(threadCount: 4)
+        model.toggleMark()                 // t0
+        model.select(index: 2)
+        model.toggleMark()                 // t2
+
+        try model.archiveSelected()
+
+        #expect(model.threads.map(\.id) == ["t1", "t3"])
+        #expect(try store.inboxThreads().map(\.id) == ["t1", "t3"])
+    }
+
+    @Test func bulkArchiveClearsTheMarks() throws {
+        let (model, _) = try makeContext(threadCount: 3)
+        model.toggleMark()
+        model.select(index: 2)
+        model.toggleMark()
+
+        try model.archiveSelected()
+
+        #expect(model.markedThreadIDs.isEmpty)
+    }
+
+    @Test func bulkArchiveLeavesSelectionOnTheFirstGap() throws {
+        let (model, _) = try makeContext(threadCount: 4)
+        model.select(index: 1)
+        model.toggleMark()                 // t1
+        model.select(index: 3)
+        model.toggleMark()                 // t3
+
+        try model.archiveSelected()
+
+        // Whatever slid up into the first gap is selected — the same rule a
+        // single archive follows.
+        #expect(model.selectedThread?.id == "t2")
+    }
+
+    @Test func toggleStarStarsTheCursorRowWhenNothingIsMarked() throws {
+        let (model, store) = try makeContext(threadCount: 3)
+
+        try model.toggleStarSelected()
+
+        #expect(try store.thread(id: "t0")?.labelIDs.contains("STARRED") == true)
+        #expect(try store.thread(id: "t1")?.labelIDs.contains("STARRED") == false)
+        #expect(model.threads[0].labelIDs.contains("STARRED"))   // the list row updated too
+    }
+
+    @Test func toggleStarAppliesToEveryMarkedThread() throws {
+        let (model, store) = try makeContext(threadCount: 3)
+        model.toggleMark()                 // t0
+        model.select(index: 2)
+        model.toggleMark()                 // t2
+
+        try model.toggleStarSelected()
+
+        #expect(try store.thread(id: "t0")?.labelIDs.contains("STARRED") == true)
+        #expect(try store.thread(id: "t2")?.labelIDs.contains("STARRED") == true)
+        #expect(try store.thread(id: "t1")?.labelIDs.contains("STARRED") == false)
+
+        try model.toggleStarSelected()     // all starred, so the gesture unstars
+
+        #expect(try store.thread(id: "t0")?.labelIDs.contains("STARRED") == false)
+        #expect(try store.thread(id: "t2")?.labelIDs.contains("STARRED") == false)
+    }
+
+    @Test func toggleStarOnAMixedSelectionStarsRatherThanTogglingEachIndependently() throws {
+        let (model, store) = try makeContext(threadCount: 3)
+        model.select(index: 1)
+        try model.toggleStarSelected()     // t1 alone is starred
+
+        model.toggleMark()                 // t1
+        model.select(index: 2)
+        model.toggleMark()                 // t2
+        try model.toggleStarSelected()
+
+        // Toggling each independently would leave the set *more* mixed, which
+        // is never what the gesture meant.
+        #expect(try store.thread(id: "t1")?.labelIDs.contains("STARRED") == true)
+        #expect(try store.thread(id: "t2")?.labelIDs.contains("STARRED") == true)
+    }
+
+    @Test func markedThreadIDsReportsWhatIsMarked() throws {
+        let (model, _) = try makeContext(threadCount: 3)
+        model.select(index: 2)
+        model.toggleMark()
+        model.select(index: 0)
+        model.toggleMark()
+
+        #expect(model.markedThreadIDs == ["t0", "t2"])
+        #expect(model.isMarked(index: 0))
+        #expect(!model.isMarked(index: 1))
+    }
+
+    @Test func reloadClearsTheMarks() throws {
+        let (model, _) = try makeContext(threadCount: 3)
+        model.toggleMark()
+
+        try model.reload()
+
+        // Sync can move a row out from under a mark, so the marks go with it.
+        #expect(model.markedThreadIDs.isEmpty)
+    }
+
     @Test func markingReadClearsUnreadOnTheSelectedThread() throws {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
