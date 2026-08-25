@@ -133,9 +133,9 @@ Rules, all of which are tests:
   `;th` into whatever `;thx` holds, which is guessing.
 - No match returns nil and the typed character stands. Expansion never eats input
   it did not recognise.
-- A boundary is a space, a tab or a newline, and it is **consumed**. A snippet
-  ends with its own punctuation far more often than it wants a trailing space,
-  and "the trigger disappears" is a rule you learn once.
+- A boundary is any whitespace — space, tab, newline — and it is **consumed**.
+  A snippet ends with its own punctuation far more often than it wants a
+  trailing space, and "the trigger disappears" is a rule you learn once.
 - Only `subject == nil` snippets leave the subject alone; a template fills it
   **only when it is empty**, so expanding a template into a reply cannot silently
   rewrite `Re: …`.
