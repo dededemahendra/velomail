@@ -472,6 +472,123 @@ import VeloCore
         // the point is that the action ran rather than being unbound.
         #expect(app.followUps.isEmpty)
     }
+
+    // MARK: - Unsubscribe
+
+    /// A one-thread inbox whose only message carries `header`.
+    private func makeNewsletterApp(header: String?) throws -> (AppViewModel, MutationStore) {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let mutations = MutationStore(db)
+        try store.upsert(MailThread(id: "n", snippet: "Weekly",
+                                    lastMessageDate: Date(timeIntervalSince1970: 100),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
+        try store.upsert(Message(id: "mn", threadID: "n", sender: "news@example.com",
+                                 recipients: ["me@x.com"], subject: "Weekly",
+                                 date: Date(timeIntervalSince1970: 100),
+                                 bodyHTML: nil, bodyText: "news", isUnread: false,
+                                 labelIDs: ["INBOX"], listUnsubscribe: header))
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: mutations, identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        app.openURL = { _ in }
+        try app.start()
+        return (app, mutations)
+    }
+
+    @Test func unsubscribeQueuesTheMailto() throws {
+        let (app, mutations) = try makeNewsletterApp(
+            header: "<https://example.com/u/1>, <mailto:leave@example.com?subject=off>")
+        press(app, "u")
+
+        let queued = try #require(try mutations.all().first)
+        #expect(queued.kind == .send)
+        // Held back, not sent: that gap is what Cmd+Z takes back.
+        #expect(try mutations.pending().isEmpty)
+        #expect(app.undoableSend == queued.id)
+    }
+
+    @Test func unsubscribeOpensTheWebLinkWhenThereIsNoMailto() throws {
+        let (app, mutations) = try makeNewsletterApp(header: "<https://example.com/u/1>")
+        var opened: URL?
+        app.openURL = { opened = $0 }
+
+        press(app, "u")
+
+        #expect(opened == URL(string: "https://example.com/u/1"))
+        // Nothing was sent on the user's behalf.
+        #expect(try mutations.all().isEmpty)
+    }
+
+    @Test func unsubscribeDoesNothingWithoutTheHeader() throws {
+        let (app, mutations) = try makeNewsletterApp(header: nil)
+        var opened: URL?
+        app.openURL = { opened = $0 }
+
+        press(app, "u")
+
+        #expect(opened == nil)
+        #expect(try mutations.all().isEmpty)
+    }
+
+    @Test func aQueuedUnsubscribeCanBeUndone() throws {
+        let (app, mutations) = try makeNewsletterApp(header: "<mailto:leave@example.com>")
+        press(app, "u")
+        #expect(try mutations.all().count == 1)
+
+        app.undoLastSend()
+
+        #expect(try mutations.all().isEmpty)
+        #expect(app.undoableSend == nil)
+    }
+
+    @Test func unsubscribeDoesNotArchiveTheThread() throws {
+        // Unsubscribing and archiving are different decisions, and coupling
+        // them would make Cmd+Z ambiguous about which half it takes back.
+        let (app, _) = try makeNewsletterApp(header: "<mailto:leave@example.com>")
+        press(app, "u")
+        #expect(app.inbox.threads.map(\.id).contains("n"))
+    }
+
+    @Test func unsubscribeUsesTheNewestMessageCarryingAHeader() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let mutations = MutationStore(db)
+        try store.upsert(MailThread(id: "n", snippet: "Weekly",
+                                    lastMessageDate: Date(timeIntervalSince1970: 200),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
+        for (id, seconds, header) in [("old", 100.0, "<mailto:old@example.com>"),
+                                      ("new", 200.0, "<mailto:new@example.com>")] {
+            try store.upsert(Message(id: id, threadID: "n", sender: "news@example.com",
+                                     recipients: ["me@x.com"], subject: "Weekly",
+                                     date: Date(timeIntervalSince1970: seconds),
+                                     bodyHTML: nil, bodyText: "news", isUnread: false,
+                                     labelIDs: ["INBOX"], listUnsubscribe: header))
+        }
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: mutations, identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+
+        press(app, "u")
+
+        let payload = try JSONDecoder().decode(
+            QueuedSendRecipients.self, from: try #require(try mutations.all().first).payload)
+        #expect(payload.draft.to == ["new@example.com"])
+    }
+}
+
+/// Mirrors the queue payload's shape, so `OutboundSendPayload` stays internal
+/// to VeloCore rather than widening its API for a test.
+private struct QueuedSendRecipients: Decodable {
+    struct QueuedDraft: Decodable { let to: [String] }
+    let draft: QueuedDraft
 }
 
 private final class StubProvider: LLMProvider, @unchecked Sendable {

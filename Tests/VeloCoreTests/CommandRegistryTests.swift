@@ -64,6 +64,11 @@ import Testing
         #expect(registry.commands.contains { $0.action == .toggleMark })
     }
 
+    @Test func unsubscribeIsInThePalette() {
+        #expect(registry.commands.contains { $0.action == .unsubscribe })
+        #expect(titles("unsub").contains("Unsubscribe"))
+    }
+
     @Test func everyV1ActionIsReachableFromThePalette() {
         // The palette is the discoverability net for the keymap, so nothing
         // should be keyboard-only.

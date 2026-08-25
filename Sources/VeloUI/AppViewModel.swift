@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import SwiftUI
@@ -20,6 +21,10 @@ public final class AppViewModel: ObservableObject {
 
     /// Set by `AppHost`, which owns the coordinator; the view model only routes.
     public var onSignInRequested: (() -> Void)?
+
+    /// How a web unsubscribe link is opened. Injected so a test never launches
+    /// a browser.
+    public var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
     public let inbox: InboxViewModel
     public let compose: ComposeViewModel
@@ -62,20 +67,22 @@ public final class AppViewModel: ObservableObject {
     public convenience init(config: AppConfig, store: MailStore, outbound: OutboundService,
                             identity: String, isSignedIn: Bool = false,
                             assistant: MailAssistant = MailAssistant(provider: nil),
-                            search: SearchViewModel? = nil) {
+                            search: SearchViewModel? = nil,
+                            snippets: SnippetLibrary = .empty) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
-                  search: search)
+                  search: search, snippets: snippets)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
                 identity: @escaping () -> String, isSignedIn: Bool = false,
                 assistant: MailAssistant = MailAssistant(provider: nil),
-                search: SearchViewModel? = nil) {
+                search: SearchViewModel? = nil,
+                snippets: SnippetLibrary = .empty) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
-        self.compose = ComposeViewModel(outbound: outbound, identity: identity)
+        self.compose = ComposeViewModel(outbound: outbound, identity: identity, library: snippets)
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.resolveIdentity = identity
@@ -200,6 +207,7 @@ public final class AppViewModel: ObservableObject {
         case .openSearch: route = .search
         case .toggleStar: try? inbox.toggleStarSelected()
         case .toggleMark: inbox.toggleMark()
+        case .unsubscribe: unsubscribeSelected()
         case .snoozeSelected: snoozeSelected(hours: 4)
         case .undoSend: undoLastSend()
         case .showFollowUps: loadFollowUps()
@@ -236,14 +244,45 @@ public final class AppViewModel: ObservableObject {
 
     private func send() {
         guard let queued = try? compose.send() else { return }
-        // Held back briefly so it can be taken back. There is no unsending
-        // mail; a visible window is the honest version of "undo send".
-        undoableSend = queued
+        holdUndo(queued)
         route = .list
         try? inbox.reload()
+    }
+
+    /// Opens the undo window on a queued send. Held back briefly so it can be
+    /// taken back: there is no unsending mail, and a visible window is the
+    /// honest version of "undo send".
+    ///
+    /// Shared by compose and unsubscribe so the two cannot drift on how long
+    /// the promise lasts.
+    private func holdUndo(_ queued: Int64) {
+        undoableSend = queued
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(AppViewModel.undoWindow * 1_000_000_000))
             await MainActor.run { self?.expireUndo(queued) }
+        }
+    }
+
+    /// Acts on the open thread's `List-Unsubscribe`, sending the mailto the
+    /// sender declared or opening their web link.
+    ///
+    /// It deliberately does **not** archive. Unsubscribing and archiving are
+    /// different decisions -- you often want off the list and still want to read
+    /// this issue -- and coupling them would make `Cmd+Z` ambiguous about which
+    /// half it takes back.
+    public func unsubscribeSelected() {
+        // `selectedMessages` is oldest first, so this is the newest message
+        // that carries a header.
+        guard let header = inbox.selectedMessages.reversed().compactMap(\.listUnsubscribe).first,
+              let link = Unsubscribe.preferred(in: header) else { return }
+        switch link {
+        case .mailto:
+            guard let draft = Unsubscribe.draft(for: link),
+                  let queued = try? outbound.send(draft, after: AppViewModel.undoWindow)
+            else { return }
+            holdUndo(queued)
+        case let .web(url):
+            openURL(url)
         }
     }
 

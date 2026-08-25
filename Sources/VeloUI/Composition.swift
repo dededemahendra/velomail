@@ -26,7 +26,8 @@ public enum Composition {
 
     @MainActor
     public static func make(config: AppConfig = .resolve(),
-                            llm: LLMConfig = .resolve()) throws -> Assembly {
+                            llm: LLMConfig = .resolve(),
+                            snippets: SnippetLibrary = .resolve()) throws -> Assembly {
         // Demo runs in memory: it exists to be looked at, not to persist.
         let database = config.isDemo
             ? try AppDatabase.makeInMemory()
@@ -56,7 +57,7 @@ public enum Composition {
                                            mutations: mutations, identity: resolver.identity)
             return Assembly(app: AppViewModel(config: config, store: store,
                                               outbound: outbound, identity: resolver.identity,
-                                              assistant: assistant),
+                                              assistant: assistant, snippets: snippets),
                             sync: nil, store: store, auth: nil)
         }
 
@@ -79,7 +80,7 @@ public enum Composition {
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,
                                identity: resolver.identity, isSignedIn: auth.state == .signedIn,
-                               assistant: assistant)
+                               assistant: assistant, snippets: snippets)
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }

@@ -92,6 +92,13 @@ import Testing
         #expect(action([KeyInput(.character("x"))]) == .toggleMark)
     }
 
+    @Test func uUnsubscribes() {
+        // Safe as a single key: it is a no-op on any thread whose messages
+        // carry no List-Unsubscribe, and the mailto goes through the undo
+        // window.
+        #expect(action([KeyInput(.character("u"))]) == .unsubscribe)
+    }
+
     @Test func aThenSSummarisesTheThread() {
         #expect(action([KeyInput(.character("a")), KeyInput(.character("s"))]) == .summarizeThread)
     }

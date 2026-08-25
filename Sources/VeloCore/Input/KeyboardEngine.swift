@@ -71,6 +71,7 @@ public struct KeyboardEngine {
         KeyInput(.character("s")): .toggleStar,
         KeyInput(.character("x")): .toggleMark,
         KeyInput(.character("h")): .snoozeSelected,
+        KeyInput(.character("u")): .unsubscribe,
         KeyInput(.character("z"), [.command]): .undoSend,
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,

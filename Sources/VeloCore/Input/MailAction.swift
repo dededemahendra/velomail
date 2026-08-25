@@ -25,6 +25,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case toggleStar
     /// Mark or unmark the row, widening what the next action applies to.
     case toggleMark
+    /// Act on the sender's own `List-Unsubscribe` instruction.
+    case unsubscribe
 
     // AI. Present only when a provider is configured -- an action that is
     // visible and always errors is worse than one that is not offered.
