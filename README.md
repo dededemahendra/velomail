@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-538 tests, no XCTest, no `.xcodeproj`.
+607 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -98,10 +98,14 @@ returns empty content, which silently turns every AI feature into a no-op.
 
 ### AI keys
 
+AI lives behind an `a` prefix, because it is optional and off by default: a
+single key belongs to something that works on every launch.
+
 | Key | Action |
 |---|---|
-| `s` | summarise the open thread |
-| `d` | suggest replies (click one to open a pre-filled draft) |
+| `a` `s` | summarise the open thread |
+| `a` `r` | suggest replies (click one to open a pre-filled draft) |
+| `a` `t` | triage the open thread |
 
 Compose has a toolbar for tone, grammar, shortening, translation and subject
 lines. Every one of those replaces the body, and a failure leaves what you wrote
@@ -116,8 +120,8 @@ untouched.
 | `e` | archive and advance |
 | `r` | reply |
 | `c` | compose |
-| `s` | summarise thread (AI) |
-| `d` | suggest replies (AI) |
+| `s` | star / unstar |
+| `x` | mark the row for a bulk action |
 | `Cmd+Enter` | send |
 | `g` `i` | go to inbox |
 | `Cmd+K` | command palette |
@@ -125,12 +129,15 @@ untouched.
 | `h` | snooze for 4 hours |
 | `Cmd+Z` | undo send (10s window) |
 | `g` `f` | threads awaiting a reply |
+| `a` `s` / `a` `r` / `a` `t` | summarise / suggest replies / triage (AI) |
 | `Esc` | back, or cancel a half-typed chord |
+
+Every key is also in the command palette, so nothing is keyboard-only.
 
 ## Development
 
 ```bash
-swift test          # 538 tests; offline and deterministic
+swift test          # 607 tests; offline and deterministic
 swift build
 ```
 
@@ -168,6 +175,35 @@ snoozed it, while the app is running.
 **Awaiting reply** (`g` `f`) lists threads where you spoke last and heard nothing
 back for three days. It is derived rather than flagged, so a reply makes a thread
 disappear from the list on its own.
+
+## Triage
+
+**Star** (`s`) is Gmail's own `STARRED` label, not a local flag, so a thread you
+star here is starred everywhere. It rides the same outbound queue as archive:
+applied locally at once, pushed in the background, rolled back if Gmail refuses
+it. There is deliberately no separate "pin" — a pin that exists in Velo Mail and
+nowhere else is a promise the app cannot keep on your phone.
+
+**Marking** (`x`) widens what the next action applies to. It is not a separate
+set of bulk commands: archive, star and snooze all run over the marked rows, or
+over the row under the cursor when nothing is marked. Star on a mixed selection
+stars rather than toggling each thread independently, because toggling would
+leave the selection more mixed than it found it.
+
+Marks are cleared whenever the list changes underneath them. A background sync
+can drop a thread and slide another into its place, and silently archiving the
+wrong mail is far worse than losing a selection.
+
+**The split inbox** groups the same rows rather than running a second query:
+starred or `IMPORTANT` first, then everything else. Importance is Gmail's own
+server-side judgement, arriving with every message for free — when Gmail is
+wrong about a thread, Velo Mail is wrong in the same way, and starring it is the
+override. The grouping is taken when the list loads, so starring something does
+not make it jump out from under the cursor mid-keystroke. With nothing
+important, there are no headers and the inbox looks exactly like the flat list
+it was. `j`/`k` walk straight across a section boundary without noticing one.
+
+Empty it, and the list says so.
 
 ## Search
 

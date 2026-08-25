@@ -8,10 +8,38 @@ import VeloCore
 /// `List` degrades on large mailboxes, and an inbox that stays instant while
 /// scrolling is the whole point of v1.
 struct MessageListView: NSViewRepresentable {
-    let threads: [MailThread]
+    /// The inbox, grouped. A contiguous partition of the flat list, so a row's
+    /// running position *is* its cursor index.
+    let sections: [ThreadSection]
     let selectedIndex: Int?
+    let markedIndices: Set<Int>
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
+
+    /// A table row: either a section header or a thread that knows its flat
+    /// index. Headers are rows in AppKit but not in the cursor, so the index
+    /// travels with the thread rather than being inferred from the row number.
+    enum Row {
+        case header(String)
+        case thread(MailThread, index: Int)
+    }
+
+    /// One header per section, unless there is only one — a lone "Other" above
+    /// an ordinary inbox is noise, and the split is meant to disappear when
+    /// nothing is important.
+    var rows: [Row] {
+        var rows: [Row] = []
+        var flat = 0
+        let showHeaders = sections.count > 1
+        for section in sections {
+            if showHeaders { rows.append(.header(section.title)) }
+            for thread in section.threads {
+                rows.append(.thread(thread, index: flat))
+                flat += 1
+            }
+        }
+        return rows
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -38,40 +66,77 @@ struct MessageListView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let table = scroll.documentView as? NSTableView else { return }
         context.coordinator.parent = self
+        context.coordinator.rows = rows
         table.reloadData()
 
-        guard let index = selectedIndex, threads.indices.contains(index) else {
+        guard let index = selectedIndex, let row = context.coordinator.row(forThread: index) else {
             table.deselectAll(nil)
             return
         }
-        if table.selectedRow != index {
-            table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        if table.selectedRow != row {
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
         // Keyboard navigation must drag the viewport with it, or j/k walks the
         // selection off-screen.
-        table.scrollRowToVisible(index)
+        table.scrollRowToVisible(row)
     }
 
     final class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource {
         var parent: MessageListView
+        /// Cached so the data source and the delegate see the same rows during
+        /// one `reloadData`.
+        var rows: [Row] = []
         /// Guards against the selection change we just applied bouncing back.
         private var isApplyingSelection = false
 
-        init(_ parent: MessageListView) { self.parent = parent }
+        init(_ parent: MessageListView) {
+            self.parent = parent
+            self.rows = parent.rows
+        }
 
-        func numberOfRows(in tableView: NSTableView) -> Int { parent.threads.count }
+        func row(forThread index: Int) -> Int? {
+            rows.firstIndex { if case let .thread(_, i) = $0 { return i == index } else { return false } }
+        }
+
+        private func threadIndex(atRow row: Int) -> Int? {
+            guard rows.indices.contains(row), case let .thread(_, index) = rows[row] else { return nil }
+            return index
+        }
+
+        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard parent.threads.indices.contains(row) else { return nil }
-            return ThreadRowView(thread: parent.threads[row])
+            guard rows.indices.contains(row) else { return nil }
+            switch rows[row] {
+            case let .header(title):
+                return SectionHeaderView(title: title)
+            case let .thread(thread, index):
+                return ThreadRowView(thread: thread, isMarked: parent.markedIndices.contains(index))
+            }
+        }
+
+        func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+            if case .header = rows[row] { return 24 }
+            return 64
+        }
+
+        func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+            if case .header = rows[row] { return true }
+            return false
+        }
+
+        /// A header is a label, not a destination: selecting it would give the
+        /// cursor an index that means nothing.
+        func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+            threadIndex(atRow: row) != nil
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !isApplyingSelection,
                   let table = notification.object as? NSTableView,
-                  table.selectedRow >= 0 else { return }
+                  let index = threadIndex(atRow: table.selectedRow) else { return }
             isApplyingSelection = true
-            parent.onSelect(table.selectedRow)
+            parent.onSelect(index)
             isApplyingSelection = false
         }
 
@@ -79,10 +144,35 @@ struct MessageListView: NSViewRepresentable {
     }
 }
 
-/// One row: sender, subject, snippet, date, and an unread dot.
-private final class ThreadRowView: NSView {
-    init(thread: MailThread) {
+/// A section header: quiet, because the mail is the content and this is a label.
+private final class SectionHeaderView: NSView {
+    init(title: String) {
         super.init(frame: .zero)
+
+        let label = NSTextField(labelWithString: title.uppercased())
+        label.font = .systemFont(ofSize: 10, weight: .semibold)
+        label.textColor = .tertiaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+}
+
+/// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
+private final class ThreadRowView: NSView {
+    init(thread: MailThread, isMarked: Bool) {
+        super.init(frame: .zero)
+
+        // Fixed width whether or not it is showing, so marking a row does not
+        // shuffle the text next to it.
+        let mark = NSTextField(labelWithString: isMarked ? "✓" : "")
+        mark.font = .systemFont(ofSize: 11, weight: .bold)
+        mark.textColor = .controlAccentColor
 
         let dot = NSTextField(labelWithString: thread.isUnread ? "●" : "")
         dot.font = .systemFont(ofSize: 9)
@@ -91,6 +181,10 @@ private final class ThreadRowView: NSView {
         let sender = NSTextField(labelWithString: MailFormatting.displayName(thread.sender))
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.lineBreakMode = .byTruncatingTail
+
+        let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
+        star.font = .systemFont(ofSize: 12)
+        star.textColor = .systemYellow
 
         let date = NSTextField(labelWithString: MailFormatting.shortDate(thread.lastMessageDate))
         date.font = .systemFont(ofSize: 11)
@@ -101,7 +195,7 @@ private final class ThreadRowView: NSView {
         snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
 
-        let top = NSStackView(views: [dot, sender, NSView(), date])
+        let top = NSStackView(views: [mark, dot, sender, NSView(), star, date])
         top.orientation = .horizontal
         top.spacing = 6
 
@@ -115,6 +209,7 @@ private final class ThreadRowView: NSView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            mark.widthAnchor.constraint(equalToConstant: 10),
         ])
     }
 

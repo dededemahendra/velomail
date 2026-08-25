@@ -59,10 +59,15 @@ public struct RootView: View {
                                 onOpen: { app.openFromSearch($0) })
                     Divider()
                 }
-                MessageListView(threads: app.inbox.threads,
-                                selectedIndex: app.inbox.selectedIndex,
-                                onSelect: { app.inbox.select(index: $0) },
-                                onOpen: { app.perform(.openSelected) })
+                if app.inbox.threads.isEmpty {
+                    InboxZeroView()
+                } else {
+                    MessageListView(sections: app.sections,
+                                    selectedIndex: app.inbox.selectedIndex,
+                                    markedIndices: app.inbox.markedIndices,
+                                    onSelect: { app.inbox.select(index: $0) },
+                                    onOpen: { app.perform(.openSelected) })
+                }
                 Divider()
                 StatusBar(status: app.syncStatus, count: app.inbox.threads.count)
             }
@@ -79,15 +84,32 @@ public struct RootView: View {
                                    onToggle: { app.inbox.toggleExpansion($0) })
                     }
                 } else {
-                    VStack(spacing: 6) {
-                        Text("Inbox zero").font(.title3.weight(.medium))
-                        Text("Nothing left to triage.").foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Whatever there is to say about an empty inbox, the list
+                    // says it; repeating it here would just be it twice.
+                    Color.clear
                 }
             }
             .frame(minWidth: 420)
         }
+    }
+}
+
+/// What an empty inbox says for itself.
+///
+/// An empty table reads as a loading failure rather than as success, and
+/// finishing is the thing this app is for.
+struct InboxZeroView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("Inbox zero").font(.title3.weight(.medium))
+            Text("Nothing left to triage.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
