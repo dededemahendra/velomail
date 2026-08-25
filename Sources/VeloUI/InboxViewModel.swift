@@ -10,11 +10,22 @@ import VeloCore
 @MainActor
 public final class InboxViewModel: ObservableObject {
     @Published public private(set) var threads: [MailThread] = []
+    /// `threads`, grouped. A contiguous partition of the same array, so
+    /// `sections.flatMap(\.threads) == threads` always holds and a flat row
+    /// index means the same thread in both.
+    @Published public private(set) var sections: [ThreadSection] = []
     @Published public private(set) var selectedMessages: [Message] = []
 
     private let store: MailStore
     private let outbound: OutboundService
     private var cursor = SelectionCursor(count: 0)
+    /// The section each row was assigned, parallel to `threads`.
+    ///
+    /// Frozen at reload rather than recomputed: starring a thread must not make
+    /// it jump out from under the cursor mid-keystroke, and a live re-group
+    /// would break the invariant that a flat index means the same row on screen
+    /// as in `threads`. The next reload lifts it into Important.
+    private var sectionIDs: [String] = []
     @Published private var transcript = ThreadTranscript()
 
     public init(store: MailStore, outbound: OutboundService) {
@@ -56,7 +67,7 @@ public final class InboxViewModel: ObservableObject {
     /// Re-reads the inbox. Selection clamps rather than dangling, because
     /// background sync can shrink the list under the cursor at any moment.
     public func reload() throws {
-        threads = try store.inboxThreads()
+        regroup(try store.inboxThreads())
         cursor.reset(count: threads.count)
         try refreshSelectedMessages()
     }
@@ -84,7 +95,11 @@ public final class InboxViewModel: ObservableObject {
         guard !indices.isEmpty else { return }
         for index in indices { try outbound.archive(threadID: threads[index].id) }
         // Highest index first, so removing one does not shift the next.
-        for index in indices.reversed() { threads.remove(at: index) }
+        for index in indices.reversed() {
+            threads.remove(at: index)
+            sectionIDs.remove(at: index)
+        }
+        sections = InboxSections.group(threads, by: sectionIDs)
         cursor.removeTargets()
         try refreshSelectedMessages()
     }
@@ -123,11 +138,21 @@ public final class InboxViewModel: ObservableObject {
         for index in cursor.targets where threads.indices.contains(index) {
             if let refreshed = try store.thread(id: threads[index].id) { threads[index] = refreshed }
         }
+        // `sectionIDs` deliberately untouched: the row keeps its place.
+        sections = InboxSections.group(threads, by: sectionIDs)
+    }
+
+    /// Takes a freshly fetched inbox, puts it in section order, and records
+    /// which section each row landed in.
+    private func regroup(_ fetched: [MailThread]) {
+        threads = InboxSections.ordered(fetched)
+        sectionIDs = threads.map(InboxSections.sectionID(for:))
+        sections = InboxSections.group(threads, by: sectionIDs)
     }
 
     private func reloadPreservingSelection() throws {
         let previous = cursor.index
-        threads = try store.inboxThreads()
+        regroup(try store.inboxThreads())
         cursor.reset(count: threads.count)
         if let previous { cursor.select(min(previous, max(threads.count - 1, 0))) }
         try refreshSelectedMessages()

@@ -30,21 +30,56 @@ public enum InboxSections {
     /// order within each group and omitting a group that would be empty — so a
     /// mailbox with nothing important looks like the flat list it did before.
     public static func split(_ threads: [MailThread]) -> [ThreadSection] {
-        var important: [MailThread] = []
-        var other: [MailThread] = []
-        for thread in threads {
-            // A thread that is both starred and important appears once: this is
-            // a partition, not two filters.
-            if thread.labelIDs.contains(where: importantLabels.contains) {
-                important.append(thread)
-            } else {
-                other.append(thread)
-            }
-        }
-        return [ThreadSection(id: "important", title: "Important", threads: important),
-                ThreadSection(id: "other", title: "Other", threads: other)]
+        // A thread that is both starred and important appears once: this is a
+        // partition, not two filters.
+        let grouped = Dictionary(grouping: threads, by: sectionID(for:))
+        return order
+            .map { ThreadSection(id: $0, title: title(forSection: $0), threads: grouped[$0] ?? []) }
             .filter { !$0.threads.isEmpty }
     }
+
+    /// Which section a thread belongs to.
+    public static func sectionID(for thread: MailThread) -> String {
+        thread.labelIDs.contains(where: importantLabels.contains) ? important : other
+    }
+
+    public static func title(forSection id: String) -> String {
+        id == important ? "Important" : "Other"
+    }
+
+    /// Groups rows into runs of a given section assignment, preserving the
+    /// order it is handed.
+    ///
+    /// For callers that decided the grouping earlier and must not recompute it:
+    /// the list maps a flat row index straight into the same array, so
+    /// re-grouping live would move a row out from under the cursor and make a
+    /// click select the wrong thread.
+    public static func group(_ threads: [MailThread], by sectionIDs: [String]) -> [ThreadSection] {
+        var sections: [ThreadSection] = []
+        var run: [MailThread] = []
+        var runID: String?
+        for (index, thread) in threads.enumerated() {
+            let id = index < sectionIDs.count ? sectionIDs[index] : sectionID(for: thread)
+            if id != runID {
+                if let runID, !run.isEmpty {
+                    sections.append(ThreadSection(id: runID, title: title(forSection: runID), threads: run))
+                }
+                run = []
+                runID = id
+            }
+            run.append(thread)
+        }
+        if let runID, !run.isEmpty {
+            sections.append(ThreadSection(id: runID, title: title(forSection: runID), threads: run))
+        }
+        return sections
+    }
+
+    public static let important = "important"
+    public static let other = "other"
+
+    /// Section order, and the only place it is written down.
+    private static let order = [important, other]
 
     /// The flat display order the sections concatenate into — what the cursor
     /// walks, so `j`/`k` cross a section boundary without knowing one exists.

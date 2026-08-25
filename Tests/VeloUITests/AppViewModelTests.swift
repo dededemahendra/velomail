@@ -28,6 +28,31 @@ import VeloCore
         return app
     }
 
+    /// An inbox where t1 is starred, so the split has both sections.
+    private func makeStarredApp() throws -> AppViewModel {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        for i in 0..<3 {
+            let labels = i == 1 ? ["INBOX", "STARRED"] : ["INBOX"]
+            try store.upsert(MailThread(id: "t\(i)", snippet: "s\(i)",
+                                        lastMessageDate: Date(timeIntervalSince1970: TimeInterval(100 - i)),
+                                        isUnread: false, hasAttachments: false, labelIDs: labels))
+            try store.upsert(Message(id: "m\(i)", threadID: "t\(i)", sender: "a@b.com",
+                                     recipients: ["me@x.com"], subject: "subject \(i)",
+                                     date: Date(timeIntervalSince1970: TimeInterval(100 - i)),
+                                     bodyHTML: nil, bodyText: "body \(i)", isUnread: false,
+                                     labelIDs: labels))
+        }
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: NoopWriter(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+        return app
+    }
+
     private func press(_ app: AppViewModel, _ key: Character) {
         app.handle(KeyInput(.character(key)))
     }
@@ -240,7 +265,7 @@ import VeloCore
         #expect(app.assistant.state == .result("A short summary."))
     }
 
-    @Test func aiKeysDoNothingWhenNoProviderIsConfigured() async throws {
+    @Test func aiChordStillDoesNothingWithoutAProvider() async throws {
         let app = try makeAIApp(provider: nil)
 
         app.handle(KeyInput(.character("a")))
@@ -367,6 +392,75 @@ import VeloCore
         let app = try makeApp(threadCount: 0)
         app.handle(KeyInput(.character("h")))
         #expect(app.inbox.threads.isEmpty)
+    }
+
+    // MARK: - Triage
+
+    @Test func starActionStarsTheSelection() throws {
+        let app = try makeApp()
+
+        press(app, "s")
+
+        #expect(app.inbox.threads[0].labelIDs.contains("STARRED"))
+    }
+
+    @Test func markActionMarksTheRow() throws {
+        let app = try makeApp()
+        press(app, "j")
+
+        press(app, "x")
+
+        #expect(app.inbox.markedThreadIDs == ["t1"])
+    }
+
+    @Test func snoozeAppliesToEveryMarkedThread() throws {
+        let app = try makeApp(threadCount: 4)
+        press(app, "x")            // t0
+        press(app, "j")
+        press(app, "j")
+        press(app, "x")            // t2
+
+        press(app, "h")
+
+        #expect(app.inbox.threads.map(\.id) == ["t1", "t3"])
+    }
+
+    @Test func snoozeWithNothingMarkedSnoozesTheCursorRow() throws {
+        let app = try makeApp(threadCount: 3)
+
+        press(app, "h")
+
+        #expect(app.inbox.threads.map(\.id) == ["t1", "t2"])
+    }
+
+    @Test func sectionsFollowTheInbox() throws {
+        let app = try makeStarredApp()
+
+        #expect(app.sections.map(\.title) == ["Important", "Other"])
+        #expect(app.sections[0].threads.map(\.id) == ["t1"])
+        #expect(app.sections[1].threads.map(\.id) == ["t0", "t2"])
+    }
+
+    @Test func sectionsAreAContiguousPartitionOfTheFlatList() throws {
+        let app = try makeStarredApp()
+
+        // The list view maps a flat row index into `inbox.threads`, so the
+        // sections must concatenate back into exactly that order or a click
+        // would select the wrong thread.
+        #expect(app.sections.flatMap(\.threads).map(\.id) == app.inbox.threads.map(\.id))
+    }
+
+    @Test func starringDoesNotMakeTheRowJumpUnderTheCursor() throws {
+        let app = try makeStarredApp()
+        press(app, "j")            // t0, the first unimportant row
+        let target = try #require(app.inbox.selectedThread).id
+
+        press(app, "s")
+
+        // The grouping is taken at reload. Re-grouping live would move the row
+        // out from under the cursor mid-keystroke.
+        #expect(app.inbox.selectedThread?.id == target)
+        #expect(app.sections.flatMap(\.threads).map(\.id) == app.inbox.threads.map(\.id))
     }
 
     @Test func theFollowUpChordLoadsThreadsAwaitingAReply() throws {

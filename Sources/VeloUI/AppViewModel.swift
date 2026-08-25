@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 import VeloCore
@@ -45,6 +46,10 @@ public final class AppViewModel: ObservableObject {
     private let resolveIdentity: () -> String
     private var keyboard = KeyboardEngine()
     private var isSignedIn: Bool
+    /// The inbox is its own `ObservableObject`, and the views observe this one.
+    /// Without forwarding, a mark or a star would not appear until something
+    /// else — a sync tick — happened to redraw the surface.
+    private var inboxChanges: AnyCancellable?
 
     public var setupHint: String { AppConfig.setupInstructions }
     public var isConfigured: Bool { config.isConfigured }
@@ -80,7 +85,14 @@ public final class AppViewModel: ObservableObject {
             translator: QueryTranslator(assistant: assistant))
         self.route = .setup
         self.route = landingRoute
+        self.inboxChanges = inbox.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
+
+    /// The inbox, grouped. Derived from the rows the list already holds, so
+    /// there is no second query and nothing to keep in sync.
+    public var sections: [ThreadSection] { inbox.sections }
 
     public func start() throws {
         guard canShowMail else {
@@ -252,8 +264,12 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func snoozeSelected(hours: Double) {
-        guard let thread = inbox.selectedThread else { return }
-        try? outbound.snooze(threadID: thread.id, until: Date().addingTimeInterval(hours * 3_600))
+        let targets = inbox.targetThreads
+        guard !targets.isEmpty else { return }
+        // One wake time for the whole gesture, so a bulk snooze comes back
+        // together rather than trickling in.
+        let wake = Date().addingTimeInterval(hours * 3_600)
+        for thread in targets { try? outbound.snooze(threadID: thread.id, until: wake) }
         try? inbox.reload()
     }
 
