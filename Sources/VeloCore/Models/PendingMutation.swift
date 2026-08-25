@@ -13,6 +13,11 @@ public enum MutationKind: String, Codable, Equatable {
     case snooze
     /// Puts INBOX back when the thread wakes.
     case unsnooze
+    /// Adds Gmail's own `STARRED` label. A star is a label, not a local flag,
+    /// so it is the same queue, the same push and the same revert as an archive.
+    case star
+    /// Removes `STARRED`.
+    case unstar
 }
 
 /// Lifecycle of a queued mutation. Success removes the row (there is no `done`).

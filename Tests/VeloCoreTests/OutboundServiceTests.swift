@@ -675,6 +675,110 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         #expect(writer.sendCalls.isEmpty)
         #expect(try mutations.all().count == 1)   // still queued, still waiting
     }
+
+    // MARK: - Star
+
+    @Test func starAddsTheStarredLabelOptimistically() async throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1", "m2"])
+
+        try service.star(threadID: "t")
+
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
+        #expect(try store.message(id: "m2")?.labelIDs.contains("STARRED") == true)
+        let pending = try mutations.pending()
+        #expect(pending.count == 1)
+        #expect(pending.first?.kind == .star)
+        let p = try payload(pending[0])
+        #expect(p.addLabelIDs == ["STARRED"])
+        #expect(p.removeLabelIDs == [])
+        #expect(p.messageIDs == ["m1", "m2"])
+    }
+
+    @Test func unstarRemovesTheStarredLabel() async throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX", "STARRED"], unread: false, messageIDs: ["m1"])
+
+        try service.unstar(threadID: "t")
+
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == false)
+        #expect(try store.thread(id: "t")?.labelIDs.contains("INBOX") == true)   // only the star goes
+        let p = try payload(try mutations.pending()[0])
+        #expect(try mutations.pending()[0].kind == .unstar)
+        #expect(p.removeLabelIDs == ["STARRED"])
+        #expect(p.addLabelIDs == [])
+    }
+
+    @Test func toggleStarStarsAnUnstarredThread() async throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        try service.toggleStar(threadID: "t")
+
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
+        #expect(try mutations.pending()[0].kind == .star)
+    }
+
+    @Test func toggleStarUnstarsAStarredThread() async throws {
+        let (service, store, mutations) = try makeContext()
+        try seedThread(store, id: "t", labels: ["INBOX", "STARRED"], unread: false, messageIDs: ["m1"])
+
+        try service.toggleStar(threadID: "t")
+
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == false)
+        #expect(try mutations.pending()[0].kind == .unstar)
+    }
+
+    @Test func starringAnUnknownThreadIsANoOp() async throws {
+        let (service, _, mutations) = try makeContext()
+
+        try service.star(threadID: "nope")
+        try service.unstar(threadID: "nope")
+        try service.toggleStar(threadID: "nope")
+
+        #expect(try mutations.all().isEmpty)
+    }
+
+    @Test func drainPushesAStarToGmail() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1", "m2"])
+        try service.star(threadID: "t")
+
+        try await service.drain()
+
+        #expect(writer.batchCalls.count == 1)
+        #expect(writer.batchCalls.first?.ids == ["m1", "m2"])
+        #expect(writer.batchCalls.first?.add == ["STARRED"])
+        #expect(try mutations.all().isEmpty)
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
+    }
+
+    @Test func aFailedStarRevertsToUnstarred() async throws {
+        let writer = ScriptedWriter(failing: ["m1"])
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.star(threadID: "t")
+
+        try await service.drain()
+
+        // A toggle that reverts to the wrong state is a bug archive could never
+        // have exposed, so both directions are asserted.
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == false)
+        #expect(try mutations.all().first?.status == .failed)
+    }
+
+    @Test func aFailedUnstarRevertsToStarred() async throws {
+        let writer = ScriptedWriter(failing: ["m1"])
+        let (service, store, mutations) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX", "STARRED"], unread: false, messageIDs: ["m1"])
+        try service.unstar(threadID: "t")
+
+        try await service.drain()
+
+        #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
+        #expect(try mutations.all().first?.status == .failed)
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.

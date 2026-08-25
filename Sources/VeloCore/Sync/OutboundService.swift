@@ -169,6 +169,29 @@ public struct OutboundService {
         return due.map(\.id)
     }
 
+    /// Stars a thread. `STARRED` is a real Gmail label, so this needs no new
+    /// machinery: the same queue that archives pushes it and reverts it.
+    public func star(threadID: String) throws {
+        try enqueueLabelChange(threadID: threadID, kind: .star, add: ["STARRED"], remove: [])
+    }
+
+    public func unstar(threadID: String) throws {
+        try enqueueLabelChange(threadID: threadID, kind: .unstar, add: [], remove: ["STARRED"])
+    }
+
+    /// Stars or unstars depending on where the thread is now.
+    ///
+    /// The direction is decided from the stored labels *before* anything is
+    /// enqueued; deciding afterwards would make a double-tap enqueue two adds.
+    public func toggleStar(threadID: String) throws {
+        guard let thread = try store.thread(id: threadID) else { return }
+        if thread.labelIDs.contains("STARRED") {
+            try unstar(threadID: threadID)
+        } else {
+            try star(threadID: threadID)
+        }
+    }
+
     public func markUnread(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .markUnread, add: ["UNREAD"], remove: [])
     }

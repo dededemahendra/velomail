@@ -39,6 +39,28 @@ import GRDB
         #expect(row?["status"] == "pending")
     }
 
+    @Test func starAndUnstarRoundTripThroughTheMutationKindCoding() throws {
+        let db = try AppDatabase.makeInMemory()
+        var star = sample(kind: .star)
+        var unstar = sample(kind: .unstar)
+        try db.dbQueue.write { db in
+            try star.insert(db)
+            try unstar.insert(db)
+        }
+
+        let kinds = try db.dbQueue.read {
+            try PendingMutation.fetchAll($0).map(\.kind)
+        }
+        #expect(kinds == [.star, .unstar])
+
+        // Stored as raw text like every other kind, so a queue written by this
+        // version is still readable by anything that reads the column.
+        let raw = try db.dbQueue.read {
+            try String.fetchAll($0, sql: "SELECT kind FROM pendingMutation ORDER BY id")
+        }
+        #expect(raw == ["star", "unstar"])
+    }
+
     @Test func sequentialInsertsGetAscendingIDs() throws {
         let db = try AppDatabase.makeInMemory()
         var first = sample()
