@@ -5,14 +5,23 @@ import VeloCore
 
 @MainActor
 @Suite struct ComposeViewModelTests {
-    private func makeContext() throws -> (ComposeViewModel, MailStore, MutationStore) {
+    private func makeContext(library: SnippetLibrary = .empty)
+        throws -> (ComposeViewModel, MailStore, MutationStore) {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
         let mutations = MutationStore(db)
         let outbound = OutboundService(writer: NoopWriter(), store: store,
                                        mutations: mutations, identity: "me@example.com")
-        return (ComposeViewModel(outbound: outbound, identity: "me@example.com"), store, mutations)
+        return (ComposeViewModel(outbound: outbound, identity: "me@example.com",
+                                 library: library), store, mutations)
     }
+
+    private static let library = SnippetLibrary(
+        signature: "Warren\nLiving Legacy Forest",
+        snippets: [
+            Snippet(name: "Thanks", shortcut: "thx", body: "Thanks so much."),
+            Snippet(name: "Intro", shortcut: "intro", subject: "Intro call?", body: "Thursday?"),
+        ])
 
     private func parent(in store: MailStore) throws -> Message {
         try store.upsert(MailThread(id: "t", sender: "Alice <alice@example.com>", snippet: "s",
@@ -120,6 +129,87 @@ import VeloCore
             QueuedSend.self, from: try #require(try mutations.all().first).payload)
         #expect(queued.draft.threadID == nil)       // a new thread, not the reply's
         #expect(!queued.draft.bodyText.contains("wrote:"))
+    }
+
+    // MARK: - Signature
+
+    @Test func aNewMessageStartsWithTheSignature() throws {
+        let (model, _, _) = try makeContext(library: Self.library)
+        model.startNew()
+        // Below the cursor, which starts at the top: you write above your name.
+        #expect(model.body == "\n\nWarren\nLiving Legacy Forest")
+    }
+
+    @Test func aReplyPutsTheSignatureAboveTheQuote() throws {
+        let (model, store, _) = try makeContext(library: Self.library)
+        model.startReply(to: try parent(in: store))
+
+        let signature = try #require(model.body.range(of: "Living Legacy Forest"))
+        let quote = try #require(model.body.range(of: "wrote:"))
+        #expect(signature.lowerBound < quote.lowerBound)
+        #expect(model.body.hasPrefix("\n\n"))
+    }
+
+    @Test func theSignatureGoesOutWithTheDraft() throws {
+        let (model, _, mutations) = try makeContext(library: Self.library)
+        model.startNew()
+        model.to = "a@b.com"
+
+        try model.send()
+
+        let queued = try JSONDecoder().decode(
+            QueuedSend.self, from: try #require(try mutations.all().first).payload)
+        // In the draft, not bolted on at send time: what you saw is what went.
+        #expect(queued.draft.bodyText.contains("Living Legacy Forest"))
+    }
+
+    // MARK: - Expansion
+
+    @Test func typingABoundaryAfterAShortcutExpandsTheBody() throws {
+        let (model, _, _) = try makeContext(library: Self.library)
+        model.startNew()
+        model.body = ""
+        model.body = ";thx"
+        model.body = ";thx "
+        #expect(model.body == "Thanks so much.")
+    }
+
+    @Test func expandingATemplateFillsAnEmptySubject() throws {
+        let (model, _, _) = try makeContext(library: Self.library)
+        model.startNew()
+        model.body = ""
+        model.body = ";intro"
+        model.body = ";intro "
+        #expect(model.body == "Thursday?")
+        #expect(model.subject == "Intro call?")
+    }
+
+    @Test func expandingATemplateLeavesANonEmptySubjectAlone() throws {
+        let (model, store, _) = try makeContext(library: Self.library)
+        model.startReply(to: try parent(in: store))
+        model.body = ";intro"
+        model.body = ";intro "
+        // Expanding a template into a reply must not silently rewrite "Re: ...".
+        #expect(model.subject == "Re: Lunch")
+    }
+
+    @Test func expandingAPlainSnippetLeavesTheSubjectAlone() throws {
+        let (model, _, _) = try makeContext(library: Self.library)
+        model.startNew()
+        model.subject = ""
+        model.body = ""
+        model.body = ";thx"
+        model.body = ";thx "
+        #expect(model.subject.isEmpty)
+    }
+
+    @Test func anUnknownShortcutIsLeftAlone() throws {
+        let (model, _, _) = try makeContext(library: Self.library)
+        model.startNew()
+        model.body = ""
+        model.body = ";nope"
+        model.body = ";nope "
+        #expect(model.body == ";nope ")
     }
 }
 
