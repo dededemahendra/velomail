@@ -97,7 +97,7 @@ public final class InboxViewModel: ObservableObject {
         // Highest index first, so removing one does not shift the next.
         for index in indices.reversed() {
             threads.remove(at: index)
-            sectionIDs.remove(at: index)
+            if sectionIDs.indices.contains(index) { sectionIDs.remove(at: index) }
         }
         sections = InboxSections.group(threads, by: sectionIDs)
         cursor.removeTargets()

@@ -115,14 +115,16 @@ struct MessageListView: NSViewRepresentable {
             }
         }
 
+        // AppKit can ask about a row that a reload has already taken away, so
+        // both of these tolerate an index that is no longer there.
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            if case .header = rows[row] { return 24 }
-            return 64
+            guard rows.indices.contains(row), case .header = rows[row] else { return 64 }
+            return 24
         }
 
         func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-            if case .header = rows[row] { return true }
-            return false
+            guard rows.indices.contains(row), case .header = rows[row] else { return false }
+            return true
         }
 
         /// A header is a label, not a destination: selecting it would give the
@@ -134,7 +136,11 @@ struct MessageListView: NSViewRepresentable {
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !isApplyingSelection,
                   let table = notification.object as? NSTableView,
-                  let index = threadIndex(atRow: table.selectedRow) else { return }
+                  let index = threadIndex(atRow: table.selectedRow),
+                  // The selection we just applied in `updateNSView` comes back
+                  // through here; reporting it would publish a change from
+                  // inside a view update for no gain.
+                  index != parent.selectedIndex else { return }
             isApplyingSelection = true
             parent.onSelect(index)
             isApplyingSelection = false
