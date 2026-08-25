@@ -37,6 +37,8 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Back", action: .back),
         Command(title: "Command Palette", action: .openCommandPalette),
         Command(title: "Search", action: .openSearch),
+        Command(title: "Star", action: .toggleStar),
+        Command(title: "Select", action: .toggleMark),
         Command(title: "Snooze", action: .snoozeSelected),
         Command(title: "Undo Send", action: .undoSend),
         Command(title: "Awaiting Reply", action: .showFollowUps),

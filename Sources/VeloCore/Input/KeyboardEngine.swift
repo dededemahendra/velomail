@@ -68,8 +68,8 @@ public struct KeyboardEngine {
         KeyInput(.character("e")): .archiveSelected,
         KeyInput(.character("r")): .reply,
         KeyInput(.character("c")): .compose,
-        KeyInput(.character("s")): .summarizeThread,
-        KeyInput(.character("d")): .suggestReplies,
+        KeyInput(.character("s")): .toggleStar,
+        KeyInput(.character("x")): .toggleMark,
         KeyInput(.character("h")): .snoozeSelected,
         KeyInput(.character("z"), [.command]): .undoSend,
         KeyInput(.escape): .back,
@@ -82,8 +82,18 @@ public struct KeyboardEngine {
     private static let chords: [Chord: MailAction] = [
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("i"))): .goToInbox,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("f"))): .showFollowUps,
+        // AI lives behind `a`, freeing `s` for star. AI is optional and off by
+        // default, so on most launches `s` and `d` were two of the best keys on
+        // the keyboard doing nothing at all; star works for every user, always.
+        Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("s"))): .summarizeThread,
+        Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("r"))): .suggestReplies,
+        Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("t"))): .triageThread,
     ]
 
-    /// Unmodified `g` only — `Cmd+g` is a different keystroke and not a prefix.
-    private static let chordPrefixes: Set<KeyInput> = [KeyInput(.character("g"))]
+    /// Unmodified `g` and `a` only — `Cmd+g` and `Cmd+A` (select-all in a text
+    /// field) are different keystrokes and must not open a chord.
+    private static let chordPrefixes: Set<KeyInput> = [
+        KeyInput(.character("g")),
+        KeyInput(.character("a")),
+    ]
 }

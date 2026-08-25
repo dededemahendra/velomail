@@ -55,6 +55,15 @@ import Testing
         #expect(registry.matches("rep").map(\.title) == ["Reply", "Reply All"])
     }
 
+    @Test func starIsInThePalette() {
+        #expect(registry.commands.contains { $0.action == .toggleStar })
+        #expect(titles("star").contains("Star"))
+    }
+
+    @Test func selectIsInThePalette() {
+        #expect(registry.commands.contains { $0.action == .toggleMark })
+    }
+
     @Test func everyV1ActionIsReachableFromThePalette() {
         // The palette is the discoverability net for the keymap, so nothing
         // should be keyboard-only.

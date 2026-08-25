@@ -186,6 +186,8 @@ public final class AppViewModel: ObservableObject {
         case .back: goBack()
         case .openCommandPalette: route = .palette
         case .openSearch: route = .search
+        case .toggleStar: try? inbox.toggleStarSelected()
+        case .toggleMark: inbox.toggleMark()
         case .snoozeSelected: snoozeSelected(hours: 4)
         case .undoSend: undoLastSend()
         case .showFollowUps: loadFollowUps()

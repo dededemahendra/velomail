@@ -80,6 +80,64 @@ import Testing
         #expect(action([KeyInput(.character("G")), KeyInput(.character("I"))]) == .goToInbox)
     }
 
+    // MARK: - Triage keys and the `a` chord
+
+    @Test func sStarsTheSelection() {
+        // A prime single key belongs to the action that works on every launch,
+        // not to one that is off by default.
+        #expect(action([KeyInput(.character("s"))]) == .toggleStar)
+    }
+
+    @Test func xTogglesTheMark() {
+        #expect(action([KeyInput(.character("x"))]) == .toggleMark)
+    }
+
+    @Test func aThenSSummarisesTheThread() {
+        #expect(action([KeyInput(.character("a")), KeyInput(.character("s"))]) == .summarizeThread)
+    }
+
+    @Test func aThenRSuggestsReplies() {
+        #expect(action([KeyInput(.character("a")), KeyInput(.character("r"))]) == .suggestReplies)
+    }
+
+    @Test func aThenTTriagesTheThread() {
+        #expect(action([KeyInput(.character("a")), KeyInput(.character("t"))]) == .triageThread)
+    }
+
+    @Test func aAloneIsPending() {
+        var engine = engine()
+        #expect(engine.handle(KeyInput(.character("a"))) == .pending)
+        #expect(engine.isAwaitingChord)
+    }
+
+    @Test func escapeCancelsAHalfTypedAChord() {
+        var engine = engine()
+        _ = engine.handle(KeyInput(.character("a")))
+
+        #expect(engine.handle(KeyInput(.escape)) == .pending)
+        #expect(!engine.isAwaitingChord)
+    }
+
+    @Test func aThenAnUnboundKeyIsSwallowed() {
+        var engine = engine()
+        _ = engine.handle(KeyInput(.character("a")))
+
+        // After "a", a "j" is a mistyped chord, not a request to scroll.
+        #expect(engine.handle(KeyInput(.character("j"))) == .unhandled)
+        #expect(!engine.isAwaitingChord)
+    }
+
+    @Test func dIsNoLongerBound() {
+        #expect(action([KeyInput(.character("d"))]) == nil)
+    }
+
+    @Test func commandAIsNotAChordPrefix() {
+        // Cmd+A is select-all in a text field and must not open a chord.
+        var engine = engine()
+        #expect(engine.handle(KeyInput(.character("a"), [.command])) == .unhandled)
+        #expect(!engine.isAwaitingChord)
+    }
+
     @Test func aChordIsNotConfusedWithAModifiedKey() {
         // Cmd+g is not the chord prefix.
         var engine = engine()

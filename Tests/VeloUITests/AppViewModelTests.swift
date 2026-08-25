@@ -230,9 +230,10 @@ import VeloCore
         #expect(app.palette.commands.contains { $0.action == .summarizeThread })
     }
 
-    @Test func summariseKeyRunsTheAssistant() async throws {
+    @Test func summariseChordRunsTheAssistant() async throws {
         let app = try makeAIApp(provider: StubProvider("A short summary."))
 
+        app.handle(KeyInput(.character("a")))
         app.handle(KeyInput(.character("s")))
         try await Task.sleep(nanoseconds: 200_000_000)
 
@@ -242,6 +243,7 @@ import VeloCore
     @Test func aiKeysDoNothingWhenNoProviderIsConfigured() async throws {
         let app = try makeAIApp(provider: nil)
 
+        app.handle(KeyInput(.character("a")))
         app.handle(KeyInput(.character("s")))
         try await Task.sleep(nanoseconds: 150_000_000)
 
