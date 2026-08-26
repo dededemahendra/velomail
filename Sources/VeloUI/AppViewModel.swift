@@ -555,7 +555,7 @@ public final class AppViewModel: ObservableObject {
 /// honestly instead of writing an empty file.
 struct UnavailableSource: GmailReading {
     func getProfile() async throws -> GmailProfile { throw AttachmentError.unavailable }
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         throw AttachmentError.unavailable
     }
     func getMessage(id: String) async throws -> GmailMessageDTO { throw AttachmentError.unavailable }

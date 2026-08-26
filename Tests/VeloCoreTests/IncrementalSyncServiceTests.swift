@@ -76,7 +76,7 @@ private final class HistorySource: GmailReading, @unchecked Sendable {
         return messages[id]!
     }
 
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         fatalError("list not used by incremental sync")
     }
 
@@ -99,7 +99,7 @@ private final class ThrowingFetchHistorySource: GmailReading, @unchecked Sendabl
         getCallCount += 1
         fatalError("getMessage should not be called on history-expired")
     }
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         fatalError("list not used")
     }
     func getProfile() async throws -> GmailProfile { fatalError("getProfile not used") }

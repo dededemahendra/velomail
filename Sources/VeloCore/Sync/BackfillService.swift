@@ -54,8 +54,14 @@ public struct BackfillService: Sendable {
         }
     }
 
-    /// Fetches up to `maxMessages` of the most recent INBOX messages, upserts
-    /// their threads/messages, then records the sync cursor for `accountID`.
+    /// The labels a first sync pulls down. Sent as well as Inbox, because a
+    /// Sent view holding only what this app itself sent would show three
+    /// messages against a mailbox of thousands.
+    public static let backfilledLabels = ["INBOX", "SENT"]
+
+    /// Fetches up to `maxMessages` of the most recent messages in each
+    /// backfilled label, upserts their threads/messages, then records the sync
+    /// cursor for `accountID`.
     public func backfillInbox(accountID: String, maxMessages: Int) async throws {
         // Capture the baseline BEFORE listing: messages arriving mid-backfill are
         // then re-delivered by history.list from this cursor (upserts make it idempotent).
@@ -63,13 +69,19 @@ public struct BackfillService: Sendable {
         let baseline = profile.historyId
 
         var ids: [String] = []
-        var pageToken: String?
-        repeat {
-            let page = try await source.listInboxMessageIDs(pageToken: pageToken)
-            ids.append(contentsOf: page.ids)
-            pageToken = page.nextPageToken
-        } while pageToken != nil && ids.count < maxMessages
-        ids = Array(ids.prefix(maxMessages))
+        var seen: Set<String> = []
+        for label in Self.backfilledLabels {
+            var pageToken: String?
+            var forLabel: [String] = []
+            repeat {
+                let page = try await source.listMessageIDs(labelID: label, pageToken: pageToken)
+                forLabel.append(contentsOf: page.ids)
+                pageToken = page.nextPageToken
+            } while pageToken != nil && forLabel.count < maxMessages
+            // A replied-to thread is listed under both labels; hydrating it
+            // twice would double the slowest part of a first sync.
+            ids.append(contentsOf: forLabel.prefix(maxMessages).filter { seen.insert($0).inserted })
+        }
 
         // Fetched in bounded-concurrency chunks and stored per chunk, which is
         // what the v1 design asked for: "store as we go so the inbox populates

@@ -4,7 +4,9 @@ import Foundation
 /// be driven by a scripted source in tests; `GmailAPIClient` is the live impl.
 public protocol GmailReading: Sendable {
     func getProfile() async throws -> GmailProfile
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
+    /// One page of message ids carrying `labelID`. Pass the returned
+    /// `nextPageToken` back in to page; nil means no more pages.
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
     func getMessage(id: String) async throws -> GmailMessageDTO
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
 
@@ -13,6 +15,11 @@ public protocol GmailReading: Sendable {
 }
 
 public extension GmailReading {
+    /// The inbox page, for callers that only ever wanted that one label.
+    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+        try await listMessageIDs(labelID: "INBOX", pageToken: pageToken)
+    }
+
     /// Default for sources that do not serve attachments. It throws rather than
     /// returning empty, so a source that should have implemented this fails
     /// loudly instead of producing a zero-byte file.
@@ -59,13 +66,12 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         return try checkedDecode(data, response)
     }
 
-    /// Lists INBOX message ids for one page. Pass the returned `nextPageToken`
-    /// back in to page; `nil` means no more pages.
-    public func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    /// Lists the message ids carrying one label, a page at a time.
+    public func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         var components = URLComponents(
             url: baseURL.appendingPathComponent("users/me/messages"),
             resolvingAgainstBaseURL: false)!
-        var items = [URLQueryItem(name: "labelIds", value: "INBOX")]
+        var items = [URLQueryItem(name: "labelIds", value: labelID)]
         if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
         components.queryItems = items
 

@@ -29,7 +29,10 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
     let historyPages: [GmailHistoryResponse]
     var failGetMessage: Bool
     private(set) var callLog: [String] = []
-    private(set) var listCallCount = 0
+    /// How many backfills ran. Counted off the INBOX pass, because a backfill
+    /// now lists each of `BackfillService.backfilledLabels` once and these
+    /// tests are about how often a backfill happens, not how many pages it took.
+    private(set) var backfillCount = 0
     /// Number of upcoming fetchHistory calls that should 404, which
     /// IncrementalSyncService maps to SyncError.historyExpired.
     var historyExpiredCalls = 0
@@ -50,9 +53,9 @@ private final class FakeGmail: GmailReading, GmailWriting, @unchecked Sendable {
         callLog.append("profile")
         return GmailProfile(emailAddress: "u@x.com", historyId: profileHistoryId)
     }
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         callLog.append("list")
-        listCallCount += 1
+        if labelID == "INBOX" { backfillCount += 1 }
         if pageToken == nil { backfillIndex = 0 }
         let page = backfillPages[backfillIndex]
         backfillIndex += 1
@@ -167,7 +170,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
         try await sync.syncNow()
 
-        #expect(source.listCallCount == 0)   // backfill skipped
+        #expect(source.backfillCount == 0)   // backfill skipped
         #expect(try syncStore.load(accountID: account)?.historyId == "5100")   // incremental advanced cursor
     }
 
@@ -193,7 +196,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         async let b: Void = sync.syncNow()
         _ = try await (a, b)
 
-        #expect(source.listCallCount == 1)   // second call coalesced
+        #expect(source.backfillCount == 1)   // second call coalesced
     }
 
     @Test func startPerformsOneSyncPass() async throws {
@@ -225,7 +228,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         try await sync.syncNow()
 
         // Recovered without the caller doing anything.
-        #expect(source.listCallCount == 1)                       // re-backfill ran
+        #expect(source.backfillCount == 1)                       // re-backfill ran
         let state = try syncStore.load(accountID: account)
         #expect(state?.backfillComplete == true)
         #expect(state?.historyId == "5100")                      // fresh cursor from history
@@ -241,7 +244,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         await #expect(throws: SyncError.historyExpired) {
             try await sync.syncNow()
         }
-        #expect(source.listCallCount == 1)                       // one attempt, not a spin
+        #expect(source.backfillCount == 1)                       // one attempt, not a spin
     }
 
     @Test func notInitializedAlsoTriggersABackfill() async throws {
@@ -252,7 +255,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
         try await sync.syncNow()
 
-        #expect(source.listCallCount == 1)
+        #expect(source.backfillCount == 1)
         #expect(try syncStore.load(accountID: account)?.historyId == "5100")
     }
 
@@ -263,7 +266,7 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
         try await sync.syncNow()
 
-        #expect(source.listCallCount == 0)                       // nothing to re-establish
+        #expect(source.backfillCount == 0)                       // nothing to re-establish
     }
 
     // MARK: - Status (F4)
