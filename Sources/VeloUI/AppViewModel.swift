@@ -92,8 +92,11 @@ public final class AppViewModel: ObservableObject {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
-        self.compose = ComposeViewModel(outbound: outbound, identity: identity,
-                                        library: snippets, drafts: drafts)
+        self.compose = ComposeViewModel(
+            outbound: outbound, identity: identity, library: snippets, drafts: drafts,
+            // Derived from mail already stored, so completion needs no contacts
+            // API and no extra permission on the account.
+            contacts: { try? AddressBook.build(from: store, identity: identity()) })
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.store = store

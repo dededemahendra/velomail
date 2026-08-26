@@ -26,7 +26,9 @@ struct ComposeView: View {
             Divider()
 
             VStack(spacing: 0) {
-                field("To", placeholder: "name@example.com", text: $model.to)
+                field("To", placeholder: "name@example.com", text: $model.to,
+                      onKey: handleRecipientKey)
+                if !model.suggestions.isEmpty { suggestionList }
                 Divider()
                 // Always present rather than revealed by a control: a hidden Cc
                 // is one people forget exists, and reply-all fills it.
@@ -53,6 +55,52 @@ struct ComposeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// People already written to, offered as the address is typed.
+    ///
+    /// The list sits under the field rather than floating over it: a popover
+    /// here would cover the Cc row the writer is about to reach for.
+    private var suggestionList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(model.suggestions.enumerated()), id: \.element.address) { index, contact in
+                Button {
+                    model.accept(contact)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(contact.name ?? contact.address)
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(1)
+                        if contact.name != nil {
+                            Text(contact.address)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                    }
+                    .padding(.horizontal, 20).padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .background(index == model.highlighted ? Color.accentColor.opacity(0.16) : .clear)
+            }
+        }
+        .padding(.bottom, 4)
+        .background(.quaternary.opacity(0.25))
+    }
+
+    /// Arrow keys and Return belong to the suggestion list while it is showing,
+    /// and to the composer the rest of the time.
+    private func handleRecipientKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !model.suggestions.isEmpty else { return .ignored }
+        switch press.key {
+        case .downArrow: model.moveHighlight(by: 1); return .handled
+        case .upArrow: model.moveHighlight(by: -1); return .handled
+        case .return, .tab: return model.acceptHighlighted() ? .handled : .ignored
+        case .escape: model.dismissSuggestions(); return .handled
+        default: return .ignored
+        }
     }
 
     /// Files on the outgoing message, with a chip each.
@@ -191,8 +239,9 @@ struct ComposeView: View {
     /// A bare `.plain` field with no placeholder renders as nothing at all --
     /// the label alone reads as grey placeholder text, and there is no sign of
     /// where to type.
-    private func field(_ label: String, placeholder: String,
-                       text: Binding<String>) -> some View {
+    private func field(_ label: String, placeholder: String, text: Binding<String>,
+                       onKey: @escaping (KeyPress) -> KeyPress.Result = { _ in .ignored })
+        -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.system(size: 12, weight: .medium))
@@ -201,6 +250,7 @@ struct ComposeView: View {
             TextField(placeholder, text: text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .onKeyPress(phases: .down, action: onKey)
                 .onChange(of: text.wrappedValue) { _, _ in model.autosave() }
         }
         .padding(.horizontal, 20).padding(.vertical, 11)
