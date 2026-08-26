@@ -77,3 +77,28 @@ the draft.
 - Drafts do not reach other devices.
 - One draft at a time; starting a new compose over an unsent one replaces it.
 - A discard cannot be undone.
+
+---
+
+## Completion record
+
+781 → 805 tests, clean build, no warnings. Migration v14.
+
+The increment forced a refactor worth having: `send()` and `autosave()` both
+need the composer as a `Draft`, so `currentDraft()` became the single builder.
+Without it the two would drift, and a draft that restored differently from what
+send would have sent is exactly the bug this feature exists to prevent.
+
+**The subtle case, and the test that pins it:** a resumed reply has no parent
+`Message` in memory — only what was stored. Threading therefore has to be
+restored from the draft itself, or resuming a reply silently produces a brand
+new message to the same person. That is worse than losing the draft, because it
+looks like it worked.
+
+**Also deliberate:** the signature is excluded from "has the user typed
+anything". It was put there by the app, so counting it would make every opened
+composer leave a phantom draft.
+
+**Not verified:** the resume-on-`c` flow on screen, since opening the composer
+needs key input. Every layer beneath it is covered, including through the
+assembled `AppViewModel`.
