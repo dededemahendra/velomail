@@ -131,6 +131,7 @@ public struct KeyboardEngine {
         Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("s"))): .summarizeThread,
         Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("r"))): .suggestReplies,
         Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("t"))): .triageThread,
+        Chord(prefix: KeyInput(.character("a")), second: KeyInput(.character("d"))): .draftReplyWithAI,
     ]
 
     /// Unmodified `g` and `a` only — `Cmd+g` and `Cmd+A` (select-all in a text

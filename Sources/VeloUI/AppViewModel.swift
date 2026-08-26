@@ -144,6 +144,8 @@ public final class AppViewModel: ObservableObject {
             perform(.openSelected)
         case "analytics":
             showAnalytics()
+        case "draft":
+            beginAssistantDraft()
         default:
             break
         }
@@ -262,6 +264,7 @@ public final class AppViewModel: ObservableObject {
         case .showAnalytics: showAnalytics()
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
+        case .draftReplyWithAI: beginAssistantDraft()
         case .triageThread: runAssistant { await $0.triage(messages: $1) }
         }
     }
@@ -283,6 +286,21 @@ public final class AppViewModel: ObservableObject {
         guard !messages.isEmpty else { return }
         if route == .palette { route = .list }
         Task { await operation(assistant, messages) }
+    }
+
+    /// Asks the assistant what the reply should say. Silently ignored without a
+    /// provider or an open thread -- both are states, not errors.
+    public func beginAssistantDraft() {
+        guard assistant.isAvailable, !inbox.selectedMessages.isEmpty else { return }
+        if route == .palette { route = .list }
+        assistant.beginDraft()
+    }
+
+    /// Runs the drafting the panel's field asked for.
+    public func runAssistantDraft() {
+        let messages = inbox.selectedMessages
+        guard !messages.isEmpty else { return }
+        Task { await assistant.runDraft(messages: messages) }
     }
 
     private func startReply(toEveryone: Bool = false) {

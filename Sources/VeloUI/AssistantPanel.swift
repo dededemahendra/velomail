@@ -9,6 +9,8 @@ import VeloCore
 struct AssistantPanel: View {
     @ObservedObject var model: AssistantViewModel
     let onUseSuggestion: (String) -> Void
+    let onRunDraft: () -> Void
+    @FocusState private var isPromptFocused: Bool
 
     var body: some View {
         if model.state != .idle {
@@ -56,6 +58,39 @@ struct AssistantPanel: View {
                 ProgressView().controlSize(.small)
                 Text("Thinking…").font(.callout).foregroundStyle(.secondary)
             }
+        case .prompting:
+            HStack(spacing: 8) {
+                TextField("What should the reply say? e.g. decline politely",
+                          text: $model.instruction)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .focused($isPromptFocused)
+                    .onSubmit(onRunDraft)
+                    .onAppear { isPromptFocused = true }
+                Button("Write it", action: onRunDraft)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .disabled(model.instruction.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
+
+        case let .draft(text):
+            VStack(alignment: .leading, spacing: 9) {
+                Text(text)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                // Offered for a draft and never for a summary -- one is meant to
+                // be sent, the other only read.
+                Button {
+                    onUseSuggestion(text)
+                } label: {
+                    Label("Use this reply", systemImage: "arrow.turn.down.left").font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+
         case let .result(text):
             Text(text)
                 .font(.callout)
@@ -91,6 +126,8 @@ struct AssistantPanel: View {
     private var title: String {
         switch model.state {
         case .suggestions: return "SUGGESTED REPLIES"
+        case .prompting: return "WRITE A REPLY"
+        case .draft: return "DRAFT"
         case .failed: return "ASSISTANT"
         default: return "SUMMARY"
         }

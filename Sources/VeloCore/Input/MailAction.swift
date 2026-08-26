@@ -39,6 +39,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     // visible and always errors is worse than one that is not offered.
     case summarizeThread
     case suggestReplies
+    case draftReplyWithAI
     case triageThread
 
     /// True for actions that need an LLM provider.
