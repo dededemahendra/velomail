@@ -2,14 +2,23 @@ import Foundation
 
 public struct AuthConfig: Equatable {
     public let clientID: String
+    /// Present for a Desktop-app client, absent for a native/iOS one.
+    ///
+    /// Google calls it a secret, but for an installed app it ships inside the
+    /// binary and is not confidential in any real sense -- which is why PKCE
+    /// carries the actual security here. It is required at the token endpoint
+    /// regardless: without it the exchange fails with "client_secret is
+    /// missing".
+    public let clientSecret: String?
     public let redirectURI: String
     public let scopes: [String]
     public let authEndpoint: URL
     public let tokenEndpoint: URL
 
-    public init(clientID: String, redirectURI: String, scopes: [String],
-                authEndpoint: URL, tokenEndpoint: URL) {
+    public init(clientID: String, clientSecret: String? = nil, redirectURI: String,
+                scopes: [String], authEndpoint: URL, tokenEndpoint: URL) {
         self.clientID = clientID
+        self.clientSecret = AuthConfig.nonBlank(clientSecret)
         self.redirectURI = redirectURI
         self.scopes = scopes
         self.authEndpoint = authEndpoint
@@ -35,13 +44,21 @@ public struct AuthConfig: Equatable {
         return "com.googleusercontent.apps.\(identifier):/oauth2redirect"
     }
 
+    static func nonBlank(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
     private static let googleClientSuffix = ".apps.googleusercontent.com"
 
     /// - Parameter redirectURI: defaults to the one derived from `clientID`,
     ///   which is what a native client needs.
-    public static func gmail(clientID: String, redirectURI: String? = nil) -> AuthConfig {
+    public static func gmail(clientID: String, clientSecret: String? = nil,
+                             redirectURI: String? = nil) -> AuthConfig {
         AuthConfig(
             clientID: clientID,
+            clientSecret: clientSecret,
             redirectURI: redirectURI ?? nativeRedirectURI(clientID: clientID),
             scopes: [
                 "https://www.googleapis.com/auth/gmail.modify",

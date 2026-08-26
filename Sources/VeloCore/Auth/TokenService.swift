@@ -12,7 +12,7 @@ public struct TokenService {
     }
 
     public func exchange(code: String, verifier: String) async throws -> TokenSet {
-        let body = formBody([
+        let body = formBody(withSecret: [
             "grant_type": "authorization_code",
             "code": code,
             "code_verifier": verifier,
@@ -24,7 +24,9 @@ public struct TokenService {
 
     public func refresh(refreshToken: String) async throws -> TokenSet {
         guard !refreshToken.isEmpty else { throw AuthError.missingRefreshToken }
-        let body = formBody([
+        // The secret belongs here too: omitting it would work at sign-in and
+        // fail an hour later when the first refresh comes due.
+        let body = formBody(withSecret: [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
             "client_id": config.clientID,
@@ -33,6 +35,14 @@ public struct TokenService {
     }
 
     // MARK: - Internals
+
+    /// Adds `client_secret` when the client has one. A public (iOS) client has
+    /// none, and sending an empty value would be rejected.
+    private func formBody(withSecret fields: [String: String]) -> Data {
+        var fields = fields
+        if let secret = config.clientSecret { fields["client_secret"] = secret }
+        return formBody(fields)
+    }
 
     private struct TokenResponse: Decodable {
         let access_token: String

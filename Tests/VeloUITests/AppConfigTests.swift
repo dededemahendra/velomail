@@ -55,4 +55,37 @@ import Foundation
         #expect(!AppConfig.resolve(environment: [:], configFile: nil).isDemo)
         #expect(AppConfig.resolve(environment: ["VELOMAIL_DEMO": "1"], configFile: nil).isDemo)
     }
+
+    // MARK: - Client secret
+
+    @Test func theClientSecretIsReadFromTheEnvironment() {
+        let config = AppConfig.resolve(
+            environment: ["VELOMAIL_CLIENT_ID": "cid", "VELOMAIL_CLIENT_SECRET": "GOCSPX-abc"],
+            configFile: nil)
+        #expect(config.clientSecret == "GOCSPX-abc")
+    }
+
+    @Test func theClientSecretIsReadFromTheConfigFile() throws {
+        let file = try tempConfig(#"{"clientID":"cid","clientSecret":"GOCSPX-file"}"#)
+        #expect(AppConfig.resolve(environment: [:], configFile: file).clientSecret == "GOCSPX-file")
+    }
+
+    @Test func aMissingSecretIsNilNotEmpty() {
+        // A native client has none, and sending "" would be rejected.
+        let config = AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "cid"], configFile: nil)
+        #expect(config.clientSecret == nil)
+    }
+
+    @Test func aBlankSecretCountsAsMissing() {
+        let config = AppConfig.resolve(
+            environment: ["VELOMAIL_CLIENT_ID": "cid", "VELOMAIL_CLIENT_SECRET": "  "],
+            configFile: nil)
+        #expect(config.clientSecret == nil)
+    }
+
+    @Test func aSecretAloneDoesNotCountAsConfigured() {
+        // Without a client id there is nothing to authenticate.
+        let config = AppConfig.resolve(environment: ["VELOMAIL_CLIENT_SECRET": "s"], configFile: nil)
+        #expect(!config.isConfigured)
+    }
 }

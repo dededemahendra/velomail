@@ -7,6 +7,8 @@ import Foundation
 /// no credentials is worse than one that explains itself.
 public struct AppConfig: Equatable, Sendable {
     public let clientID: String?
+    /// Only a Desktop-app client has one; a native client does not.
+    public let clientSecret: String?
     public let isDemo: Bool
 
     public var isConfigured: Bool { clientID != nil }
@@ -19,8 +21,11 @@ public struct AppConfig: Equatable, Sendable {
 
     public static func resolve(environment: [String: String] = ProcessInfo.processInfo.environment,
                                configFile: URL? = defaultConfigFile) -> AppConfig {
-        AppConfig(clientID: nonBlank(environment["VELOMAIL_CLIENT_ID"]) ?? clientIDFromFile(configFile),
-                  isDemo: nonBlank(environment["VELOMAIL_DEMO"]) != nil)
+        let file = fileValues(configFile)
+        return AppConfig(
+            clientID: nonBlank(environment["VELOMAIL_CLIENT_ID"]) ?? nonBlank(file?.clientID),
+            clientSecret: nonBlank(environment["VELOMAIL_CLIENT_SECRET"]) ?? nonBlank(file?.clientSecret),
+            isDemo: nonBlank(environment["VELOMAIL_DEMO"]) != nil)
     }
 
     public static let setupInstructions = """
@@ -32,6 +37,8 @@ public struct AppConfig: Equatable, Sendable {
 
           • export VELOMAIL_CLIENT_ID="…apps.googleusercontent.com"
           • or ~/.config/velomail/config.json  →  {"clientID": "…"}
+
+        A Desktop-app client also has a secret. Add it as VELOMAIL_CLIENT_SECRET,         or "clientSecret" in the same file. An iOS client has none.
 
         Restart Velo Mail once it is set.
 
@@ -47,11 +54,15 @@ public struct AppConfig: Equatable, Sendable {
         return trimmed
     }
 
+    private struct FileValues: Decodable {
+        let clientID: String?
+        let clientSecret: String?
+    }
+
     /// A malformed or absent file resolves to "unconfigured" rather than
     /// throwing: the setup screen is a better answer than a crash on launch.
-    private static func clientIDFromFile(_ url: URL?) -> String? {
+    private static func fileValues(_ url: URL?) -> FileValues? {
         guard let url, let data = try? Data(contentsOf: url) else { return nil }
-        struct File: Decodable { let clientID: String? }
-        return nonBlank(try? JSONDecoder().decode(File.self, from: data).clientID)
+        return try? JSONDecoder().decode(FileValues.self, from: data)
     }
 }
