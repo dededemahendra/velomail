@@ -304,7 +304,8 @@ public final class AppViewModel: ObservableObject {
             compose.resumeDraft()
             route = .compose
         case .send: send()
-        case .goToInbox: route = .list
+        case .goToInbox: show(.inbox)
+        case .goToSent: show(.sent)
         case .back: goBack()
         case .openCommandPalette: route = .palette
         case .openSearch: route = .search
@@ -423,6 +424,12 @@ public final class AppViewModel: ObservableObject {
         case let .web(url):
             openURL(url)
         }
+    }
+
+    /// Switches which list is on screen and puts the focus back on it.
+    private func show(_ scope: MailScope) {
+        try? inbox.show(scope)
+        route = .list
     }
 
     // MARK: - Failures

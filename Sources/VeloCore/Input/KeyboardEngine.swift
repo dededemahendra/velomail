@@ -122,6 +122,7 @@ public struct KeyboardEngine {
 
     private static let chords: [Chord: MailAction] = [
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("i"))): .goToInbox,
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("s"))): .goToSent,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("f"))): .showFollowUps,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("d"))): .toggleFocus,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("a"))): .showAnalytics,

@@ -44,6 +44,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Star", action: .toggleStar),
         Command(title: "Select", action: .toggleMark),
         Command(title: "Snooze", action: .snoozeSelected),
+        Command(title: "Go to Sent", action: .goToSent),
         Command(title: "Undo", action: .undo),
         Command(title: "Awaiting Reply", action: .showFollowUps),
         Command(title: "Focus Mode", action: .toggleFocus),

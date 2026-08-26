@@ -13,6 +13,9 @@ struct MessageListView: NSViewRepresentable {
     let sections: [ThreadSection]
     let selectedIndex: Int?
     let markedIndices: Set<Int>
+    /// The person a row is about. Supplied rather than read off the thread,
+    /// because in Sent that is the recipient, not the sender.
+    let name: (MailThread) -> String
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
 
@@ -116,7 +119,9 @@ struct MessageListView: NSViewRepresentable {
             case let .header(title):
                 return SectionHeaderView(title: title)
             case let .thread(thread, index):
-                return ThreadRowView(thread: thread, isMarked: parent.markedIndices.contains(index))
+                return ThreadRowView(thread: thread,
+                                     isMarked: parent.markedIndices.contains(index),
+                                     name: parent.name(thread))
             }
         }
 
@@ -176,7 +181,7 @@ private final class SectionHeaderView: NSView {
 
 /// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 private final class ThreadRowView: NSView {
-    init(thread: MailThread, isMarked: Bool) {
+    init(thread: MailThread, isMarked: Bool, name: String) {
         super.init(frame: .zero)
 
         // Fixed width whether or not it is showing, so marking a row does not
@@ -191,7 +196,7 @@ private final class ThreadRowView: NSView {
 
         // Unread carries weight; read carries none. One signal, not two, so the
         // list reads as a single column of names rather than a checkerboard.
-        let sender = NSTextField(labelWithString: MailFormatting.displayName(thread.sender))
+        let sender = NSTextField(labelWithString: name)
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
         sender.lineBreakMode = .byTruncatingTail

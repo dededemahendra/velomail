@@ -17,7 +17,9 @@ import VeloCore
     private func list(_ threads: [MailThread], selected: Int? = nil,
                       marked: Set<Int> = []) -> MessageListView {
         MessageListView(sections: InboxSections.split(threads), selectedIndex: selected,
-                        markedIndices: marked, onSelect: { _ in }, onOpen: {})
+                        markedIndices: marked,
+                        name: { MailFormatting.displayName($0.sender) },
+                        onSelect: { _ in }, onOpen: {})
     }
 
     private func described(_ rows: [MessageListView.Row]) -> [String] {
