@@ -16,6 +16,8 @@ public struct RootView: View {
                 SetupView(clientIDHint: app.setupHint)
             case .signIn:
                 SignInView(state: app.authState, onSignIn: app.signIn)
+            case .analytics:
+                AnalyticsView(report: app.analytics, onClose: { app.perform(.back) })
             case .search:
                 SearchView(model: app.search,
                            isAIEnabled: app.assistant.isAvailable,

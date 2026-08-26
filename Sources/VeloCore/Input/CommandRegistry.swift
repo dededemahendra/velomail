@@ -44,6 +44,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Awaiting Reply", action: .showFollowUps),
         Command(title: "Focus Mode", action: .toggleFocus),
         Command(title: "Discard Draft", action: .discardDraft),
+        Command(title: "Analytics", action: .showAnalytics),
         Command(title: "Unsubscribe", action: .unsubscribe),
         Command(title: "Summarise Thread", action: .summarizeThread),
         Command(title: "Suggest Replies", action: .suggestReplies),
