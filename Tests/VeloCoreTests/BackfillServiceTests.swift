@@ -57,10 +57,53 @@ private final class ScriptedSource: GmailReading, @unchecked Sendable {
     }
 }
 
+/// Records peak concurrency and can fail a chosen message, so "stores as it
+/// goes" and "fetches in parallel" are observable rather than assumed.
+private final class ObservingSource: GmailReading, @unchecked Sendable {
+    let ids: [String]
+    var failOn: String?
+    private let lock = NSLock()
+    private var inFlight = 0
+    private(set) var peakConcurrency = 0
+    private(set) var fetched: [String] = []
+    /// Called after each fetch, so a test can look at the store mid-backfill.
+    var onFetch: (@Sendable (Int) -> Void)?
+
+    init(ids: [String], failOn: String? = nil) {
+        self.ids = ids
+        self.failOn = failOn
+    }
+
+    func getProfile() async throws -> GmailProfile {
+        GmailProfile(emailAddress: "u@x.com", historyId: "5000")
+    }
+
+    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+        (ids, nil)
+    }
+
+    func getMessage(id: String) async throws -> GmailMessageDTO {
+        lock.lock(); inFlight += 1; peakConcurrency = max(peakConcurrency, inFlight); lock.unlock()
+        defer { lock.lock(); inFlight -= 1; lock.unlock() }
+
+        await Task.yield()
+        if id == failOn { throw AuthError.invalidResponse }
+
+        lock.lock(); fetched.append(id); let count = fetched.count; lock.unlock()
+        onFetch?(count)
+        return makeDTO(id: id, thread: "t-\(id)", labels: ["INBOX"],
+                       internalDate: "1000", snippet: "s")
+    }
+
+    func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
+        fatalError("not used by backfill")
+    }
+}
+
 @Suite struct BackfillServiceTests {
     private let account = "acct-1"
 
-    private func makeContext(_ source: ScriptedSource) throws
+    private func makeContext(_ source: GmailReading) throws
         -> (BackfillService, MailStore, SyncStateStore) {
         let db = try AppDatabase.makeInMemory()
         let mailStore = MailStore(db)
@@ -193,4 +236,79 @@ private final class ScriptedSource: GmailReading, @unchecked Sendable {
 
         #expect(try syncStore.load(accountID: account)?.emailAddress == "u@x.com")
     }
+
+    // MARK: - Progressive, parallel backfill
+
+    @Test func messagesAreFetchedConcurrently() async throws {
+        let source = ObservingSource(ids: (0..<60).map { "m\($0)" })
+        let (service, _, _) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 60)
+
+        // Sequential fetching is what made a real first sync take minutes.
+        #expect(source.peakConcurrency > 1)
+    }
+
+    @Test func concurrencyIsBoundedRatherThanUnleashingEveryRequestAtOnce() async throws {
+        let source = ObservingSource(ids: (0..<200).map { "m\($0)" })
+        let (service, _, _) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 200)
+
+        // 200 simultaneous requests would be rate-limited and would blow the
+        // connection pool.
+        #expect(source.peakConcurrency <= BackfillService.maximumConcurrentFetches)
+    }
+
+    @Test func everyMessageStillArrives() async throws {
+        let source = ObservingSource(ids: (0..<60).map { "m\($0)" })
+        let (service, store, _) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 60)
+
+        #expect(try store.inboxThreads().count == 60)
+    }
+
+    @Test func theInboxFillsBeforeTheBackfillFinishes() async throws {
+        let db = try AppDatabase.makeInMemory()
+        let mailStore = MailStore(db)
+        let source = ObservingSource(ids: (0..<80).map { "m\($0)" })
+        let seenMidway = LockedBox()
+        source.onFetch = { count in
+            if count == 70, let rows = try? mailStore.inboxThreads().count { seenMidway.set(rows) }
+        }
+        let service = BackfillService(source: source, store: mailStore,
+                                      syncState: SyncStateStore(db))
+
+        try await service.backfillInbox(accountID: account, maxMessages: 80)
+
+        // The v1 design asked for exactly this: "store as we go so the inbox
+        // populates progressively". Waiting for all 500 is what showed an empty
+        // inbox for minutes on a real account.
+        #expect(seenMidway.value > 0)
+    }
+
+    @Test func aFailureMidwayKeepsWhatWasAlreadyStored() async throws {
+        let source = ObservingSource(ids: (0..<80).map { "m\($0)" }, failOn: "m75")
+        let (service, store, syncStore) = try makeContext(source)
+
+        await #expect(throws: (any Error).self) {
+            try await service.backfillInbox(accountID: account, maxMessages: 80)
+        }
+
+        // Losing 74 good messages because the 75th failed is the difference
+        // between a slow first sync and one that never completes.
+        #expect(try store.inboxThreads().count > 0)
+        // The cursor is not recorded, so the next pass resumes rather than
+        // believing it finished.
+        #expect(try syncStore.load(accountID: account)?.backfillComplete != true)
+    }
+}
+
+/// Thread-safe int for observing storage from inside a concurrent fetch.
+private final class LockedBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = 0
+    func set(_ value: Int) { lock.lock(); stored = value; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return stored }
 }
