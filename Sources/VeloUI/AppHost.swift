@@ -57,6 +57,8 @@ final class AppHost: ObservableObject {
     private func observeAuth() {
         guard let auth else { return }
         auth.onStateChange = { [weak self] state in self?.app.setAuthState(state) }
+        // Reads the Keychain -- after the window exists, never during launch.
+        auth.restoreState()
         app.setAuthState(auth.state)
     }
 

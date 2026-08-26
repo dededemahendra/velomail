@@ -37,8 +37,18 @@ public final class AuthCoordinator: NSObject, ObservableObject {
         self.tokenService = tokenService
         self.tokenStore = tokenStore
         super.init()
-        // A stored refresh token means a previous sign-in is still good.
-        if (try? tokenStore.load()) ?? nil != nil { state = .signedIn }
+    }
+
+    /// Looks for a session left by a previous run.
+    ///
+    /// Deliberately *not* in `init`. A Keychain read can block on an
+    /// authorisation prompt -- and does whenever the app's code signature
+    /// changes, which an ad-hoc signed build does on every rebuild. Doing it
+    /// during construction blocks the main thread before SwiftUI has created a
+    /// window, so the app launches and shows nothing at all, with no error.
+    public func restoreState() {
+        guard ((try? tokenStore.load()) ?? nil) != nil else { return }
+        state = .signedIn
     }
 
     public func signIn() {
