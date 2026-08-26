@@ -22,8 +22,15 @@ public struct SearchService: Sendable {
             // syntax, so a stray quote or star in a search box would be a
             // syntax error. FTS5Pattern is what makes arbitrary typing safe.
             if let pattern = FTS5Pattern(matchingAllTokensIn: query.terms) {
-                joins += " JOIN messageSearch ON messageSearch.id = message.id"
-                conditions.append("messageSearch MATCH ?")
+                // A thread matches on its text *or* on the name of a file
+                // attached to it -- the whole reason for attaching something is
+                // that you go looking for it later.
+                conditions.append("""
+                    (message.id IN (SELECT id FROM messageSearch WHERE messageSearch MATCH ?)
+                     OR message.id IN (SELECT messageID FROM attachmentSearch
+                                       WHERE attachmentSearch MATCH ?))
+                    """)
+                arguments.append(pattern)
                 arguments.append(pattern)
             }
 
