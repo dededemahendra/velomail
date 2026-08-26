@@ -30,13 +30,13 @@ struct OutboundSendPayload: Codable, Equatable {
 
 /// Applies triage actions (archive, mark read/unread) optimistically to local
 /// storage and enqueues a durable mutation for later push to Gmail.
-public struct OutboundService {
+public struct OutboundService: Sendable {
     private let writer: GmailWriting
     private let store: MailStore
     private let mutations: MutationStore
-    private let resolveIdentity: () -> String
-    private let now: () -> Date
-    private let newID: () -> String
+    private let resolveIdentity: @Sendable () -> String
+    private let now: @Sendable () -> Date
+    private let newID: @Sendable () -> String
 
     /// - Parameters:
     ///   - identity: resolves the account's own address, used as the `From` of
@@ -44,8 +44,9 @@ public struct OutboundService {
     ///     address arrives with the first backfill, long after this is built.
     ///   - newID: opaque unique-id source, injected so tests get stable ids.
     public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
-                identity: @escaping () -> String, now: @escaping () -> Date = { Date() },
-                newID: @escaping () -> String = { UUID().uuidString }) {
+                identity: @escaping @Sendable () -> String,
+                now: @escaping @Sendable () -> Date = { Date() },
+                newID: @escaping @Sendable () -> String = { UUID().uuidString }) {
         self.writer = writer
         self.store = store
         self.mutations = mutations
@@ -57,8 +58,8 @@ public struct OutboundService {
     /// Convenience for callers that genuinely know their address up front
     /// (tests, and the demo path).
     public init(writer: GmailWriting, store: MailStore, mutations: MutationStore,
-                identity: String, now: @escaping () -> Date = { Date() },
-                newID: @escaping () -> String = { UUID().uuidString }) {
+                identity: String, now: @escaping @Sendable () -> Date = { Date() },
+                newID: @escaping @Sendable () -> String = { UUID().uuidString }) {
         self.init(writer: writer, store: store, mutations: mutations,
                   identity: { identity }, now: now, newID: newID)
     }

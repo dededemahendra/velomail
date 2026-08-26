@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-890 tests, no XCTest, no `.xcodeproj`.
+911 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -153,6 +153,7 @@ untouched.
 | `Cmd+Z` | undo send (10s window) |
 | `g` `f` | threads awaiting a reply |
 | `g` `d` | focus mode (hides counts, silences banners) |
+| `g` `a` | analytics for the last 7 days |
 | `a` `s` / `a` `r` / `a` `t` | summarise / suggest replies / triage (AI) |
 | `Esc` | back, or cancel a half-typed chord |
 
@@ -334,6 +335,16 @@ show what is attached, and the message goes out as `multipart/mixed` with the
 body intact. Total size is capped at 22MB and enforced when you attach rather
 than when the send fails — a server error ten seconds later, after the undo
 window shut, is a much worse experience than being told up front.
+
+## Analytics
+
+`g` `a` shows how mail actually flowed this week: received and sent, median time
+to reply, busiest hour, and a bar per day.
+
+All of it is **derived on demand** from what is already stored - no event log, no
+counters, nothing that can drift out of step with the mailbox. Reply time is a
+median rather than a mean, because one message left for a week would drag an
+average somewhere that describes nothing.
 
 ## Rules
 

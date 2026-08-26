@@ -23,7 +23,9 @@ public extension GmailReading {
 
 /// The Gmail write operations `OutboundService` needs. Abstracted so the outbound
 /// drain can be driven by a scripted writer in tests; `GmailAPIClient` is the live impl.
-public protocol GmailWriting {
+/// `Sendable` for the same reason `GmailReading` is: writers are held by
+/// `Sendable` services and crossed between tasks.
+public protocol GmailWriting: Sendable {
     /// Atomically adds/removes labels on many messages in one request, so a
     /// multi-message change can't be left half-applied.
     func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws

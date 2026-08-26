@@ -14,7 +14,6 @@ public struct SearchService: Sendable {
 
     public func search(_ query: SearchQuery, limit: Int = 200) throws -> [MailThread] {
         try database.dbQueue.read { db in
-            var joins = ""
             var conditions: [String] = []
             var arguments: [DatabaseValueConvertible?] = []
 
@@ -58,7 +57,7 @@ public struct SearchService: Sendable {
             // thread should appear once.
             let sql = """
                 SELECT DISTINCT thread.* FROM thread
-                JOIN message ON message.threadID = thread.id\(joins)\(whereClause)
+                JOIN message ON message.threadID = thread.id\(whereClause)
                 ORDER BY thread.lastMessageDate DESC
                 LIMIT ?
                 """
