@@ -281,6 +281,8 @@ plain search terms.
 
 ## Not done yet
 
-Attachments, server-side drafts, multiple accounts,
-threaded transcripts with quote collapsing, reply-body quoting, code signing and
-notarisation.
+Attachments, server-side drafts (`users.drafts`), multiple accounts, pinning a
+thread to the top, collapsing the quoted part of a reply (parsing someone
+else's quoting is its own problem), desktop notifications, local filters and
+rules, calendar and contacts, anything needing a server (team features), and
+code signing / notarisation.

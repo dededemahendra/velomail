@@ -12,13 +12,20 @@ import GRDB
         var values: [[String]] { lock.lock(); defer { lock.unlock() }; return stored }
     }
 
-    /// Polls `condition` up to ~2s (100 × 20ms), failing the test if never true.
-    private func pollUntil(_ condition: () -> Bool) async {
-        for _ in 0..<100 {
+    /// Waits for `condition`, failing the test if it never becomes true.
+    ///
+    /// The budget is deliberately generous. GRDB delivers these emissions on the
+    /// main queue, and the full suite runs hundreds of tests in parallel -- a
+    /// two-second budget passed in isolation and failed under that contention,
+    /// which is the worst kind of test. Waiting longer costs nothing except on a
+    /// genuine failure.
+    private func pollUntil(_ what: String, _ condition: () -> Bool,
+                           sourceLocation: SourceLocation = #_sourceLocation) async {
+        for _ in 0..<500 {                      // ~10s
             if condition() { return }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
-        Issue.record("condition not met within timeout")
+        Issue.record("timed out waiting for \(what)", sourceLocation: sourceLocation)
     }
 
     @Test @MainActor func observationEmitsInitialThenUpdatesOnInsert() async throws {
@@ -29,7 +36,7 @@ import GRDB
         defer { cancellable.cancel() }
 
         // `.immediate` scheduling delivers the initial value synchronously.
-        await pollUntil { !collector.values.isEmpty }
+        await pollUntil("the initial emission") { !collector.values.isEmpty }
         #expect(collector.values.first == [])
 
         try store.upsert(MailThread(id: "t", snippet: "",
@@ -37,7 +44,7 @@ import GRDB
                                     isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
 
         // The post-write emission is delivered asynchronously on the main queue.
-        await pollUntil { collector.values.count >= 2 }
+        await pollUntil("the post-write emission") { collector.values.count >= 2 }
         #expect(collector.values.last == ["t"])
     }
 }
