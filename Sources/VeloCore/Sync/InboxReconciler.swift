@@ -11,6 +11,11 @@ public enum InboxReconciler {
             }
             for dto in threadDTOs {
                 try store.upsert(GmailMessageMapper.message(from: dto))
+                // Metadata only. Fetching content here would drag hundreds of
+                // megabytes through a backfill for files mostly never opened.
+                for attachment in GmailMessageMapper.attachments(from: dto) {
+                    try store.upsert(attachment)
+                }
             }
         }
     }

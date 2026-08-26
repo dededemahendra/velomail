@@ -171,6 +171,20 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v13_create_attachment") { db in
+            try db.create(table: "attachment") { t in
+                t.primaryKey("id", .text)
+                t.column("messageID", .text).notNull()
+                    .references("message", onDelete: .cascade)
+                t.column("filename", .text).notNull().defaults(to: "")
+                t.column("mimeType", .text).notNull().defaults(to: "application/octet-stream")
+                t.column("size", .integer).notNull().defaults(to: 0)
+                t.column("attachmentID", .text)
+                t.column("inlineData", .text)
+            }
+            try db.create(index: "attachment_on_messageID", on: "attachment", columns: ["messageID"])
+        }
+
         return migrator
     }
 }
