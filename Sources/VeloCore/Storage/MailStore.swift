@@ -67,6 +67,21 @@ public final class MailStore: Sendable {
 
     /// Sets a thread's aggregate `labelIDs` + `isUnread`, preserving all other
     /// fields. No-op if the thread does not exist.
+    public func upsert(_ attachment: MailAttachment) throws {
+        try database.dbQueue.write { try attachment.save($0) }
+    }
+
+    /// A message's files, by filename so the order does not wander between
+    /// reads.
+    public func attachments(forMessage messageID: String) throws -> [MailAttachment] {
+        try database.dbQueue.read { db in
+            try MailAttachment
+                .filter(Column("messageID") == messageID)
+                .order(Column("filename").asc)
+                .fetchAll(db)
+        }
+    }
+
     public func deleteMessage(id: String) throws {
         _ = try database.dbQueue.write { db in
             try Message.deleteOne(db, key: id)

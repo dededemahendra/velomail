@@ -11,6 +11,9 @@ public struct GmailMessageDTO: Decodable, Equatable {
 
     public struct Body: Decodable, Equatable {
         public let data: String?
+        /// Gmail's handle for a part whose content is not inlined.
+        public let attachmentId: String?
+        public let size: Int?
     }
 
     public struct Part: Decodable, Equatable {

@@ -15,6 +15,8 @@ public final class InboxViewModel: ObservableObject {
     /// index means the same thread in both.
     @Published public private(set) var sections: [ThreadSection] = []
     @Published public private(set) var selectedMessages: [Message] = []
+    /// Attachments for the open thread, by message id.
+    @Published public private(set) var selectedAttachments: [String: [MailAttachment]] = [:]
 
     private let store: MailStore
     private let outbound: OutboundService
@@ -161,15 +163,24 @@ public final class InboxViewModel: ObservableObject {
     private func refreshSelectedMessages() throws {
         guard let thread = selectedThread else {
             selectedMessages = []
+            selectedAttachments = [:]
             return
         }
         selectedMessages = try store.messages(inThread: thread.id)
+        selectedAttachments = Dictionary(
+            uniqueKeysWithValues: try selectedMessages.map {
+                ($0.id, try store.attachments(forMessage: $0.id))
+            })
         transcript.sync(threadID: thread.id, messages: selectedMessages)
     }
 
     // MARK: - Transcript
 
     public func isExpanded(_ messageID: String) -> Bool { transcript.isExpanded(messageID) }
+
+    public func attachments(forMessage messageID: String) -> [MailAttachment] {
+        selectedAttachments[messageID] ?? []
+    }
 
     public func toggleExpansion(_ messageID: String) { transcript.toggle(messageID) }
 }

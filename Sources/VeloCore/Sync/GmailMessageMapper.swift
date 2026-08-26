@@ -73,6 +73,39 @@ public enum GmailMessageMapper {
         return (labelIDs, isUnread)
     }
 
+    /// Every part of `dto` that is a file: a part with a filename.
+    ///
+    /// A filename is the discriminator because that is what Gmail sets on parts
+    /// meant to be files; the body parts carrying the message text have none.
+    public static func attachments(from dto: GmailMessageDTO) -> [MailAttachment] {
+        var found: [MailAttachment] = []
+        collectAttachments(dto.payload, messageID: dto.id, path: "0", into: &found)
+        return found
+    }
+
+    private static func collectAttachments(_ part: GmailMessageDTO.Part?, messageID: String,
+                                           path: String, into found: inout [MailAttachment]) {
+        guard let part else { return }
+
+        if let filename = part.filename, !filename.isEmpty {
+            found.append(MailAttachment(
+                // Part path rather than Gmail's attachmentId: inline parts have
+                // no id, and re-hydrating a message must update these rows
+                // rather than pile up duplicates.
+                id: "\(messageID):\(path)",
+                messageID: messageID,
+                filename: filename,
+                mimeType: part.mimeType ?? "application/octet-stream",
+                size: part.body?.size ?? 0,
+                attachmentID: part.body?.attachmentId,
+                inlineData: part.body?.attachmentId == nil ? part.body?.data : nil))
+        }
+
+        for (index, child) in (part.parts ?? []).enumerated() {
+            collectAttachments(child, messageID: messageID, path: "\(path).\(index)", into: &found)
+        }
+    }
+
     // MARK: - Internals
 
     private static func isUnread(_ dto: GmailMessageDTO) -> Bool {

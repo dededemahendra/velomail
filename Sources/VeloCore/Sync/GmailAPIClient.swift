@@ -7,6 +7,18 @@ public protocol GmailReading: Sendable {
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?)
     func getMessage(id: String) async throws -> GmailMessageDTO
     func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse
+
+    /// Base64url content of one attachment.
+    func getAttachment(messageID: String, attachmentID: String) async throws -> String
+}
+
+public extension GmailReading {
+    /// Default for sources that do not serve attachments. It throws rather than
+    /// returning empty, so a source that should have implemented this fails
+    /// loudly instead of producing a zero-byte file.
+    func getAttachment(messageID: String, attachmentID: String) async throws -> String {
+        throw AttachmentError.unavailable
+    }
 }
 
 /// The Gmail write operations `OutboundService` needs. Abstracted so the outbound
@@ -88,6 +100,20 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
 
         let (data, response) = try await authorizedGET(components.url!)
         return try checkedDecode(data, response)
+    }
+
+    /// Fetches one attachment's content, base64url encoded.
+    public func getAttachment(messageID: String, attachmentID: String) async throws -> String {
+        let url = baseURL.appendingPathComponent(
+            "users/me/messages/\(messageID)/attachments/\(attachmentID)")
+        let (data, response) = try await authorizedGET(url)
+        let decoded: AttachmentResponse = try checkedDecode(data, response)
+        return decoded.data ?? ""
+    }
+
+    private struct AttachmentResponse: Decodable {
+        let data: String?
+        let size: Int?
     }
 
     /// Adds/removes labels on a message via `users.messages.modify`. Returns the

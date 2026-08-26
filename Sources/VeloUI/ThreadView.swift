@@ -145,6 +145,8 @@ struct ThreadView: View {
     let messages: [Message]
     let isExpanded: (String) -> Bool
     let onToggle: (String) -> Void
+    let attachments: (String) -> [MailAttachment]
+    @ObservedObject var attachmentModel: AttachmentViewModel
     let onUnsubscribe: () -> Void
 
     /// Whether this thread can be left. Parsed rather than merely present: a
@@ -189,6 +191,8 @@ struct ThreadView: View {
                             MessageCard(message: message,
                                         isExpanded: isExpanded(message.id),
                                         isOnly: messages.count == 1,
+                                        attachments: attachments(message.id),
+                                        attachmentModel: attachmentModel,
                                         onToggle: { onToggle(message.id) })
                             Divider()
                         }
@@ -210,6 +214,8 @@ private struct MessageCard: View {
     let message: Message
     let isExpanded: Bool
     let isOnly: Bool
+    let attachments: [MailAttachment]
+    @ObservedObject var attachmentModel: AttachmentViewModel
     let onToggle: () -> Void
 
     var body: some View {
@@ -248,6 +254,9 @@ private struct MessageCard: View {
             .padding(.vertical, 12)
 
             if isExpanded {
+                if !attachments.isEmpty {
+                    AttachmentStrip(attachments: attachments, model: attachmentModel)
+                }
                 MessageBodyView(message: message)
                     .frame(minHeight: 220)
             }

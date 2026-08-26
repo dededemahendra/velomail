@@ -76,5 +76,26 @@ enum DemoData {
                                      messageIDHeader: "<\(sample.id)@demo.velomail>",
                                      listUnsubscribe: sample.unsubscribe))
         }
+
+        // One inline attachment, so the chips are exercised in demo mode. Inline
+        // rather than referenced because demo has no Gmail source to fetch from.
+        try store.upsert(MailAttachment(
+            id: "m-t1:0.1", messageID: "m-t1", filename: "saturday-numbers.pdf",
+            mimeType: "application/pdf", size: 284_120,
+            attachmentID: nil,
+            inlineData: Data("A survey drawing would live here.".utf8)
+                .base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")))
+        try store.upsert(MailAttachment(
+            id: "m-t1:0.2", messageID: "m-t1", filename: "open-day-roster.csv",
+            mimeType: "text/csv", size: 4_820, attachmentID: nil,
+            inlineData: Data("name,seats\nWarren,2\n".utf8)
+                .base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")))
+
     }
 }
