@@ -121,6 +121,27 @@ public final class AppViewModel: ObservableObject {
         }
         try inbox.reload()
         route = .list
+        openDemoRouteIfRequested()
+    }
+
+    /// Opens a named surface on a demo launch, so every screen can be reviewed
+    /// without synthetic input. Ignored entirely outside demo, and an
+    /// unrecognised name is ignored rather than failing.
+    private func openDemoRouteIfRequested() {
+        guard config.isDemo, let requested = config.demoRoute else { return }
+        switch requested {
+        case "compose":
+            compose.startNew()
+            route = .compose
+        case "search":
+            route = .search
+        case "palette":
+            route = .palette
+        case "thread":
+            perform(.openSelected)
+        default:
+            break
+        }
     }
 
     /// Sign-in state changed underneath us (the browser leg finished, or the

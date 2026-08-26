@@ -48,7 +48,7 @@ struct SearchView: View {
         if let failure = model.failure {
             message(failure)
         } else if model.results.isEmpty {
-            message(model.text.isEmpty ? "Type to search." : "No matching mail.")
+            emptyState
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -76,6 +76,27 @@ struct SearchView: View {
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(isSelected ? Color.accentColor.opacity(0.18) : .clear)
         .contentShape(Rectangle())
+    }
+
+    /// Says what can be typed rather than only that something can be.
+    private var emptyState: some View {
+        VStack(spacing: 7) {
+            Image(systemName: model.text.isEmpty ? "magnifyingglass" : "tray")
+                .font(.system(size: 22))
+                .foregroundStyle(.tertiary)
+            Text(model.text.isEmpty ? "Search your mail" : "No matching mail")
+                .font(.system(size: 13, weight: .medium))
+            Text(model.text.isEmpty
+                 ? (isAIEnabled
+                    ? "Keywords, or plain English like “unread from natalie last week”."
+                    : "Searches senders, subjects and message text.")
+                 : "Try fewer words, or a different sender.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 380, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
     }
 
     private func message(_ text: String) -> some View {

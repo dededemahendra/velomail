@@ -10,6 +10,10 @@ public struct AppConfig: Equatable, Sendable {
     /// Only a Desktop-app client has one; a native client does not.
     public let clientSecret: String?
     public let isDemo: Bool
+    /// Which surface a demo launch should open on, for reviewing the UI.
+    /// Honoured only in demo mode -- a debug affordance must never be able to
+    /// redirect a real launch.
+    public let demoRoute: String?
 
     public var isConfigured: Bool { clientID != nil }
 
@@ -25,7 +29,8 @@ public struct AppConfig: Equatable, Sendable {
         return AppConfig(
             clientID: nonBlank(environment["VELOMAIL_CLIENT_ID"]) ?? nonBlank(file?.clientID),
             clientSecret: nonBlank(environment["VELOMAIL_CLIENT_SECRET"]) ?? nonBlank(file?.clientSecret),
-            isDemo: nonBlank(environment["VELOMAIL_DEMO"]) != nil)
+            isDemo: nonBlank(environment["VELOMAIL_DEMO"]) != nil,
+            demoRoute: nonBlank(environment["VELOMAIL_DEMO_ROUTE"])?.lowercased())
     }
 
     public static let setupInstructions = """
