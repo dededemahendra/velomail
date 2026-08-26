@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-936 tests, no XCTest, no `.xcodeproj`.
+949 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -140,6 +140,8 @@ untouched.
 | `j` / `k` | next / previous thread |
 | `Enter` / `o` | open (also marks read) |
 | `e` | archive and advance |
+| `⌫` | delete (moves to Trash) |
+| `Shift+U` | mark unread |
 | `r` | reply |
 | `Shift+R` | reply all |
 | `f` | forward (carries the attachments) |

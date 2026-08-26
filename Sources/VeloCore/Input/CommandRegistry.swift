@@ -27,6 +27,8 @@ public struct CommandRegistry: Equatable, Sendable {
     /// keymap and nothing is keyboard-only.
     public static let v1 = CommandRegistry(commands: [
         Command(title: "Archive", action: .archiveSelected),
+        Command(title: "Delete", action: .trashSelected),
+        Command(title: "Mark Unread", action: .markUnreadSelected),
         Command(title: "Reply", action: .reply),
         Command(title: "Reply All", action: .replyAll),
         Command(title: "Forward", action: .forward),

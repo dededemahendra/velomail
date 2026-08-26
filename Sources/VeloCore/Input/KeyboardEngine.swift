@@ -83,6 +83,8 @@ public struct KeyboardEngine {
         case .escape:
             // Spelled out: the ⎋ glyph is unrecognisable to most people.
             text += "esc"
+        case .delete:
+            text += "⌫"
         }
         return text
     }
@@ -108,6 +110,8 @@ public struct KeyboardEngine {
         KeyInput(.character("x")): .toggleMark,
         KeyInput(.character("h")): .snoozeSelected,
         KeyInput(.character("u")): .unsubscribe,
+        KeyInput(.character("u"), [.shift]): .markUnreadSelected,
+        KeyInput(.delete): .trashSelected,
         KeyInput(.character("z"), [.command]): .undoSend,
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,
