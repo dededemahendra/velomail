@@ -1,5 +1,44 @@
 import Foundation
 
+/// A file going out with a draft.
+///
+/// The bytes travel with it rather than a file path. The outbound queue promises
+/// a send survives a restart and a failure without losing anything, and a path
+/// breaks that the moment the user moves or deletes the file between hitting
+/// send and the drain finishing -- a real gap, given the ten-second undo window.
+public struct DraftAttachment: Codable, Equatable, Sendable {
+    public var filename: String
+    public var mimeType: String
+    public var data: Data
+
+    public init(filename: String, mimeType: String, data: Data) {
+        self.filename = filename
+        self.mimeType = mimeType
+        self.data = data
+    }
+
+    /// Best guess at a type from the extension, for files picked off disk.
+    public static func mimeType(forExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "pdf": return "application/pdf"
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "gif": return "image/gif"
+        case "svg": return "image/svg+xml"
+        case "txt", "md": return "text/plain"
+        case "csv": return "text/csv"
+        case "html", "htm": return "text/html"
+        case "json": return "application/json"
+        case "zip": return "application/zip"
+        case "doc", "docx": return "application/msword"
+        case "xls", "xlsx": return "application/vnd.ms-excel"
+        case "mp4": return "video/mp4"
+        case "mp3": return "audio/mpeg"
+        default: return "application/octet-stream"
+        }
+    }
+}
+
 /// An outgoing message not yet handed to Gmail. Pure value type: it carries the
 /// recipients, the body, and the threading context needed to make Gmail staple
 /// the result onto an existing conversation. It is `Codable` because it is
@@ -18,11 +57,12 @@ public struct Draft: Codable, Equatable, Sendable {
     public var inReplyTo: String?
     /// The full ancestry, oldest first, ending with `inReplyTo`.
     public var references: [String]
+    public var attachments: [DraftAttachment]
 
     public init(to: [String], cc: [String] = [], bcc: [String] = [],
                 subject: String, bodyText: String, bodyHTML: String? = nil,
                 threadID: String? = nil, inReplyTo: String? = nil,
-                references: [String] = []) {
+                references: [String] = [], attachments: [DraftAttachment] = []) {
         self.to = to
         self.cc = cc
         self.bcc = bcc
@@ -32,7 +72,18 @@ public struct Draft: Codable, Equatable, Sendable {
         self.threadID = threadID
         self.inReplyTo = inReplyTo
         self.references = references
+        self.attachments = attachments
     }
+
+    /// Roughly what Gmail accepts in one `messages.send`, minus the third that
+    /// base64 adds. Enforced when a file is attached rather than when the send
+    /// fails, because a server error ten seconds later -- after the undo window
+    /// shut -- is a much worse experience than being told up front.
+    public static let maximumAttachmentBytes = 22 * 1_000_000
+
+    public var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
+
+    public var exceedsAttachmentLimit: Bool { attachmentBytes > Self.maximumAttachmentBytes }
 
     /// A reply to just the sender of `message`.
     ///
