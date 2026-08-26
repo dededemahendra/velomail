@@ -116,7 +116,7 @@ private struct SilentWriter: GmailWriting {
 
         let thread = try #require(app.inbox.threads.first)
         #expect(app.inbox.rowDate(of: thread)
-                == MailFormatting.relativeDate(try #require(thread.snoozedUntil)))
+                == MailFormatting.wakeTime(try #require(thread.snoozedUntil)))
     }
 
     @Test func otherListsStillShowTheReceivedDate() throws {

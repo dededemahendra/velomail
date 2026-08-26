@@ -122,7 +122,7 @@ public final class InboxViewModel: ObservableObject {
         guard scope == .snoozed, let wake = thread.snoozedUntil else {
             return MailFormatting.relativeDate(thread.lastMessageDate)
         }
-        return MailFormatting.relativeDate(wake)
+        return MailFormatting.wakeTime(wake)
     }
 
     private func threadsInScope() throws -> [MailThread] {

@@ -8,6 +8,8 @@ import VeloCore
 /// business running. JavaScript is off, and a content rule blocks remote loads.
 struct MessageBodyView: NSViewRepresentable {
     let message: Message
+    /// The message's own parts, so `cid:` references in the body resolve.
+    var attachments: [MailAttachment] = []
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -17,12 +19,12 @@ struct MessageBodyView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.attach(webView, document: Self.document(for: message))
+        context.coordinator.attach(webView, document: document)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.render(Self.document(for: message))
+        context.coordinator.render(document)
     }
 
     /// Compiles the blocker once, then renders. Rendering genuinely waits for
@@ -98,16 +100,47 @@ struct MessageBodyView: NSViewRepresentable {
     static func stripRemoteContent(from document: String) -> String {
         var stripped = document
         for tag in ["img", "iframe", "video", "audio", "object", "embed", "source", "script"] {
-            stripped = stripped.replacingOccurrences(
-                of: "</?\(tag)\\b[^>]*>", with: "", options: [.regularExpression, .caseInsensitive])
+            stripped = remove(tag, from: stripped)
         }
         return stripped
     }
 
+    /// Tags that may legitimately carry their own bytes. Blocking exists to
+    /// stop the sender learning a message was opened; a `data:` URI makes no
+    /// request, so stripping one costs the reader a picture and protects
+    /// nothing. Scripts are never in this list, whatever their scheme.
+    private static let mayCarryOwnBytes: Set<String> = ["img", "source"]
+
+    private static func carriesOwnBytes(_ tag: Substring) -> Bool {
+        tag.localizedCaseInsensitiveContains("src=\"data:")
+            || tag.localizedCaseInsensitiveContains("src='data:")
+    }
+
+    private static func remove(_ tag: String, from html: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: "</?\(tag)\\b[^>]*>",
+                                                   options: .caseInsensitive) else { return html }
+        let keepsOwnBytes = mayCarryOwnBytes.contains(tag)
+        var out = ""
+        var last = html.startIndex
+        for match in regex.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let range = Range(match.range, in: html) else { continue }
+            out += html[last..<range.lowerBound]
+            if keepsOwnBytes, carriesOwnBytes(html[range]) { out += html[range] }
+            last = range.upperBound
+        }
+        out += html[last...]
+        return out
+    }
+
+    private var document: String { Self.document(for: message, attachments: attachments) }
+
     /// Wraps the body so it inherits the system font and respects dark mode,
     /// rather than rendering as unstyled 1990s HTML on white.
-    static func document(for message: Message) -> String {
-        let body = message.bodyHTML ?? "<pre>\(escaped(message.bodyText ?? ""))</pre>"
+    static func document(for message: Message, attachments: [MailAttachment] = []) -> String {
+        let raw = message.bodyHTML ?? "<pre>\(escaped(message.bodyText ?? ""))</pre>"
+        // Before the styling, so a substituted data: URI is inside the document
+        // the content rules are applied to rather than bolted on afterwards.
+        let body = InlineImages.embed(raw, using: attachments)
         return """
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -269,7 +302,7 @@ private struct MessageCard: View {
                 // Fills what is left of the pane. A fixed height leaves a hard
                 // seam where the web view stops and the window background
                 // resumes, which reads as a rendering fault.
-                MessageBodyView(message: message)
+                MessageBodyView(message: message, attachments: attachments)
                     .frame(minHeight: 260, maxHeight: .infinity)
             }
         }
