@@ -12,6 +12,7 @@ final class AppHost: ObservableObject {
     private let sync: GmailSync?
     private let store: MailStore
     private let auth: AuthCoordinator?
+    private let notifications = NotificationPresenter()
     private var syncTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
     /// Must be retained: GRDB cancels the observation when this is released,
@@ -35,6 +36,8 @@ final class AppHost: ObservableObject {
         try? app.start()
         observeInbox()
         observeAuth()
+        await notifications.requestAuthorizationIfNeeded()
+        announceNewMail()
         guard let sync else { return }
         syncTask = Task { await sync.run(interval: 60) }
         statusTask = Task { [weak self] in
@@ -57,10 +60,29 @@ final class AppHost: ObservableObject {
         app.setAuthState(auth.state)
     }
 
+    /// Announces anything new and refreshes the badge.
+    ///
+    /// Driven off the same observation that repaints the list, so a banner
+    /// appears exactly when the mail does rather than on a timer of its own.
+    private func announceNewMail() {
+        notifications.setBadge(app.visibleUnreadCount)
+        guard app.shouldAnnounce else { return }
+
+        let messages = (try? store.recentInboxMessages(limit: 100)) ?? []
+        let result = MailAnnouncer().announce(messages: messages,
+                                              identity: app.identity,
+                                              since: notifications.announcedThrough)
+        notifications.present(result)
+        notifications.announcedThrough = result.highWaterMark
+    }
+
     /// Repaints the list whenever sync lands rows, so the UI never polls.
     private func observeInbox() {
-        inboxObservation = store.observeInboxThreads { [weak app] _ in
-            Task { @MainActor in try? app?.inbox.reload() }
+        inboxObservation = store.observeInboxThreads { [weak app, weak self] _ in
+            Task { @MainActor in
+                try? app?.inbox.reload()
+                self?.announceNewMail()
+            }
         }
     }
 

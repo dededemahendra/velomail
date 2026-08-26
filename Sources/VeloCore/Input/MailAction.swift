@@ -20,6 +20,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case snoozeSelected
     case undoSend
     case showFollowUps
+    case toggleFocus
     /// Star or unstar the selection. A star is a real Gmail label, so it is the
     /// one triage gesture that works on every launch for every user.
     case toggleStar

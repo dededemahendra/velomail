@@ -37,6 +37,8 @@ public final class AppViewModel: ObservableObject {
     /// Threads you are waiting on, shown by `g f`.
     @Published public private(set) var followUps: [MailThread] = []
     @Published public private(set) var isShowingFollowUps = false
+    /// Suppresses banners and hides how much is waiting.
+    @Published public private(set) var isFocused = false
 
     /// AI commands are filtered out when no provider is configured, so the
     /// palette never offers an action that can only fail.
@@ -218,6 +220,7 @@ public final class AppViewModel: ObservableObject {
         case .snoozeSelected: snoozeSelected(hours: 4)
         case .undoSend: undoLastSend()
         case .showFollowUps: loadFollowUps()
+        case .toggleFocus: toggleFocus()
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
         case .triageThread: runAssistant { await $0.triage(messages: $1) }
@@ -329,6 +332,23 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func hideFollowUps() { isShowingFollowUps = false }
+
+    // MARK: - Attention
+
+    /// How much is actually unread.
+    public var unreadCount: Int { inbox.threads.filter(\.isUnread).count }
+
+    /// What the badge shows. Focus hides the number rather than the mail --
+    /// not knowing how much is waiting is the point of it.
+    public var visibleUnreadCount: Int { isFocused ? 0 : unreadCount }
+
+    public var shouldAnnounce: Bool { !isFocused }
+
+    public func toggleFocus() { isFocused.toggle() }
+
+    /// The account's own address, for filtering self-authored mail out of
+    /// notifications.
+    public var identity: String { resolveIdentity() }
 
     /// How long silence counts as needing a nudge.
     public static let followUpWindow: TimeInterval = 3 * 86_400
