@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct MailThread: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable {
+public struct MailThread: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable, Sendable {
     public var id: String
     /// Who spoke last in the thread -- what a list row shows. Derived from the
     /// newest message rather than the first, which is what other clients do.

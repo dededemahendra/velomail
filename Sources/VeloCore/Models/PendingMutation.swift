@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 /// The kind of outbound change queued for the Gmail API.
-public enum MutationKind: String, Codable, Equatable {
+public enum MutationKind: String, Codable, Equatable, Sendable {
     case archive
     case markRead
     case markUnread
@@ -21,7 +21,7 @@ public enum MutationKind: String, Codable, Equatable {
 }
 
 /// Lifecycle of a queued mutation. Success removes the row (there is no `done`).
-public enum MutationStatus: String, Codable, Equatable {
+public enum MutationStatus: String, Codable, Equatable, Sendable {
     case pending
     case failed
 }
@@ -29,7 +29,7 @@ public enum MutationStatus: String, Codable, Equatable {
 /// A durable outbound mutation: an optimistic local change awaiting push to Gmail.
 /// `payload` holds a JSON-encoded `OutboundMutationPayload` (the labels to apply,
 /// the affected message ids, and the pre-change state for revert-on-failure).
-public struct PendingMutation: Codable, FetchableRecord, MutablePersistableRecord, Equatable {
+public struct PendingMutation: Codable, FetchableRecord, MutablePersistableRecord, Equatable, Sendable {
     public var id: Int64?
     public var kind: MutationKind
     public var payload: Data

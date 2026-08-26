@@ -10,7 +10,7 @@ import GRDB
 ///
 /// Named `MailAttachment` rather than `Attachment` because Swift Testing
 /// already owns that name.
-public struct MailAttachment: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable {
+public struct MailAttachment: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable, Sendable {
     /// Stable per message+part, so re-hydrating a message updates rather than duplicates.
     public var id: String
     public var messageID: String
