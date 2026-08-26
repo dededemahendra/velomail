@@ -53,6 +53,40 @@ public struct KeyboardEngine {
         }
     }
 
+    /// How to reach `action` from the keyboard, or nil when nothing does.
+    ///
+    /// Derived from the keymap rather than written alongside it, so a binding
+    /// and the hint that advertises it cannot drift apart -- and a new binding
+    /// becomes discoverable in the palette with no extra step.
+    public static func shortcutLabel(for action: MailAction) -> String? {
+        if let chord = chords.first(where: { $0.value == action })?.key {
+            return "\(label(for: chord.prefix)) \(label(for: chord.second))"
+        }
+        // Prefer the shortest label when several keys do the same thing, so
+        // "E" wins over a chord and a bare key wins over a modified one.
+        return bindings
+            .filter { $0.value == action }
+            .map { label(for: $0.key) }
+            .min { ($0.count, $0) < ($1.count, $1) }
+    }
+
+    private static func label(for input: KeyInput) -> String {
+        var text = ""
+        if input.modifiers.contains(.command) { text += "⌘" }
+        if input.modifiers.contains(.shift) { text += "⇧" }
+
+        switch input.key {
+        case let .character(character):
+            text += String(character).uppercased()
+        case .enter:
+            text += "↩"
+        case .escape:
+            // Spelled out: the ⎋ glyph is unrecognisable to most people.
+            text += "esc"
+        }
+        return text
+    }
+
     // MARK: - The v1 keymap
 
     private struct Chord: Hashable {

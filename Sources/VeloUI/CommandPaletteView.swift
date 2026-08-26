@@ -28,9 +28,20 @@ struct CommandPaletteView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(results.enumerated()), id: \.offset) { index, command in
-                        HStack {
+                        HStack(spacing: 10) {
                             Text(command.title)
-                            Spacer()
+                            Spacer(minLength: 12)
+                            // The hint is what turns the palette from a menu
+                            // into the thing that teaches the keymap.
+                            if let shortcut = KeyboardEngine.shortcutLabel(for: command.action) {
+                                Text(shortcut)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .monospacedDigit()
+                                    .foregroundStyle(index == highlighted ? .secondary : .tertiary)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(.quaternary.opacity(0.6),
+                                                in: RoundedRectangle(cornerRadius: 4))
+                            }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 9)
                         .background(index == highlighted ? Color.accentColor.opacity(0.18) : .clear)
