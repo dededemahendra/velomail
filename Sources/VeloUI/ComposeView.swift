@@ -13,9 +13,9 @@ struct ComposeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 Text(model.isReply ? "Reply" : "New message")
-                    .font(.headline)
+                    .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
                 Button("Send", action: onSend)
@@ -26,17 +26,26 @@ struct ComposeView: View {
             Divider()
 
             VStack(spacing: 0) {
-                field("To", text: $model.to)
+                field("To", placeholder: "name@example.com", text: $model.to)
                 Divider()
-                field("Subject", text: $model.subject)
+                field("Subject", placeholder: "Subject", text: $model.subject)
                 Divider()
                 attachmentBar
                 if assistant.isAvailable { assistantBar }
-                TextEditor(text: $model.body)
-                    .onChange(of: model.body) { _, _ in model.autosave() }
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
+                ZStack(alignment: .topLeading) {
+                    if model.body.isEmpty {
+                        Text("Write your message…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 21).padding(.vertical, 18)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $model.body)
+                        .onChange(of: model.body) { _, _ in model.autosave() }
+                        .font(.system(size: 13))
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,15 +182,23 @@ struct ComposeView: View {
         }
     }
 
-    private func field(_ label: String, text: Binding<String>) -> some View {
-        HStack(spacing: 10) {
+    /// A labelled row that actually looks editable.
+    ///
+    /// A bare `.plain` field with no placeholder renders as nothing at all --
+    /// the label alone reads as grey placeholder text, and there is no sign of
+    /// where to type.
+    private func field(_ label: String, placeholder: String,
+                       text: Binding<String>) -> some View {
+        HStack(spacing: 12) {
             Text(label)
-                .font(.callout).foregroundStyle(.secondary)
-                .frame(width: 58, alignment: .leading)
-            TextField("", text: text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: 52, alignment: .leading)
+            TextField(placeholder, text: text)
                 .textFieldStyle(.plain)
+                .font(.system(size: 13))
                 .onChange(of: text.wrappedValue) { _, _ in model.autosave() }
         }
-        .padding(.horizontal, 20).padding(.vertical, 10)
+        .padding(.horizontal, 20).padding(.vertical, 11)
     }
 }

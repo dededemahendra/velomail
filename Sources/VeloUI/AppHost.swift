@@ -94,7 +94,7 @@ final class AppHost: ObservableObject {
         let outbound = OutboundService(writer: LocalOnlyWriter(), store: store,
                                        mutations: MutationStore(database), identity: "me@localhost")
         return Composition.Assembly(
-            app: AppViewModel(config: AppConfig(clientID: nil, clientSecret: nil, isDemo: false),
+            app: AppViewModel(config: AppConfig(clientID: nil, clientSecret: nil, isDemo: false, demoRoute: nil),
                               store: store, outbound: outbound, identity: "me@localhost"),
             sync: nil, store: store, auth: nil)
     }

@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-886 tests, no XCTest, no `.xcodeproj`.
+890 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -25,7 +25,15 @@ VELOMAIL_DEMO=1 VeloMail.app/Contents/MacOS/VeloMail
 ```
 
 Demo mode seeds an in-memory mailbox. Nothing touches the network and nothing
-is persisted.
+is persisted — and it stays local even when real credentials are configured.
+
+To look at a particular screen without navigating to it:
+
+```bash
+VELOMAIL_DEMO=1 VELOMAIL_DEMO_ROUTE=compose VeloMail.app/Contents/MacOS/VeloMail
+```
+
+`compose`, `search`, `palette` or `thread`. Ignored outside demo mode.
 
 ### Connect a real account
 
