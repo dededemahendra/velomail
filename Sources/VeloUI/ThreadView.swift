@@ -185,17 +185,26 @@ struct ThreadView: View {
                 .padding(.bottom, 12)
                 Divider()
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(messages) { message in
-                            MessageCard(message: message,
-                                        isExpanded: isExpanded(message.id),
-                                        isOnly: messages.count == 1,
-                                        attachments: attachments(message.id),
-                                        attachmentModel: attachmentModel,
-                                        onToggle: { onToggle(message.id) })
-                            Divider()
+                // GeometryReader so the transcript can be told to fill the pane.
+                // Inside a ScrollView, maxHeight: .infinity means "as tall as
+                // the content", which left the body stopping partway down with a
+                // hard edge that reads as a rendering fault.
+                GeometryReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                                MessageCard(message: message,
+                                            isExpanded: isExpanded(message.id),
+                                            isOnly: messages.count == 1,
+                                            attachments: attachments(message.id),
+                                            attachmentModel: attachmentModel,
+                                            onToggle: { onToggle(message.id) })
+                                // No rule under the last message: it would draw
+                                // a line across empty space.
+                                if index < messages.count - 1 { Divider() }
+                            }
                         }
+                        .frame(minHeight: proxy.size.height, alignment: .top)
                     }
                 }
             }
@@ -226,7 +235,7 @@ private struct MessageCard: View {
                         // Display name only: a full "Name <addr>" wraps to two
                         // lines and makes the transcript look ragged.
                         Text(MailFormatting.displayName(message.sender))
-                            .font(.callout.weight(.medium))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
                         Spacer()
                         Text(message.date.formatted(date: .abbreviated, time: .shortened))
@@ -257,8 +266,11 @@ private struct MessageCard: View {
                 if !attachments.isEmpty {
                     AttachmentStrip(attachments: attachments, model: attachmentModel)
                 }
+                // Fills what is left of the pane. A fixed height leaves a hard
+                // seam where the web view stops and the window background
+                // resumes, which reads as a rendering fault.
                 MessageBodyView(message: message)
-                    .frame(minHeight: 220)
+                    .frame(minHeight: 260, maxHeight: .infinity)
             }
         }
     }

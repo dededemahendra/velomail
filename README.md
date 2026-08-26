@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-874 tests, no XCTest, no `.xcodeproj`.
+886 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
