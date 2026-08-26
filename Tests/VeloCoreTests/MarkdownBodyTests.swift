@@ -55,9 +55,28 @@ import Foundation
         #expect(out?.contains("<li>first</li>") == true)
     }
 
-    @Test func aQuotedReplyStaysAQuote() {
-        // Our own reply quoting uses "> ", so it must survive round-tripping.
-        #expect(html("> they said this")?.contains("<blockquote>") == true)
+    @Test func aQuotationAloneIsNotFormatting() {
+        // Every reply carries the parent behind "> " lines. If that alone made
+        // a message rich, no reply would ever be plain text again.
+        #expect(html("> they said this") == nil)
+        #expect(html("Yes.\n\n> they said this") == nil)
+    }
+
+    @Test func aQuotedReplyStaysAQuoteOnceSomethingIsFormatted() {
+        let out = html("**Yes.**\n\n> they said this")
+        #expect(out?.contains("<blockquote>") == true)
+        #expect(out?.contains("<strong>Yes.</strong>") == true)
+    }
+
+    @Test func arithmeticIsNotEmphasis() {
+        // 5*4*3 read as italics is how a naive scanner mangles a real sentence.
+        #expect(html("5*4*3") == nil)
+        #expect(html("the rate is 2*x") == nil)
+    }
+
+    @Test func emphasisStillWorksNextToPunctuation() {
+        #expect(html("(*maybe*)")?.contains("<em>maybe</em>") == true)
+        #expect(html("say \"*now*\"")?.contains("<em>now</em>") == true)
     }
 
     @Test func blankLinesSeparateParagraphs() {

@@ -65,6 +65,16 @@ import VeloCore
         #expect(try sent(model, mutations).bodyText.contains("**One**"))
     }
 
+    @Test func aPlainReplyIsStillPlain() throws {
+        // The quoted parent arrives in the body behind "> " lines. If that were
+        // enough to promote the message, every reply would become HTML.
+        let (model, store, mutations) = try makeContext()
+        model.startReply(to: try parent(in: store))
+        model.body = "Yes, one o'clock.\n" + model.body
+
+        #expect(try sent(model, mutations).bodyHTML == nil)
+    }
+
     @Test func aFormattedReplyStillQuotesItsParent() throws {
         let (model, store, mutations) = try makeContext()
         model.startReply(to: try parent(in: store))

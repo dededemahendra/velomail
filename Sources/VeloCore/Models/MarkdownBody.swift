@@ -102,7 +102,9 @@ public enum MarkdownBody {
             formatted = true
             return list("ol", lines, formatted: &formatted)
         case let .quote(lines):
-            formatted = true
+            // Deliberately does not set `formatted`: see the block comment on
+            // `html(from:)` -- a reply's quoted parent is not the writer asking
+            // for rich text.
             let body = lines.map { inline($0, formatted: &formatted) }.joined(separator: "<br>\n")
             return "<blockquote>\(body)</blockquote>"
         }
@@ -132,7 +134,7 @@ public enum MarkdownBody {
                 continue
             }
 
-            if text[index...].hasPrefix("**"),
+            if text[index...].hasPrefix("**"), opensAWord(in: text, at: index),
                let close = closing("**", in: text, after: text.index(index, offsetBy: 2)) {
                 let start = text.index(index, offsetBy: 2)
                 out += "<strong>\(inline(String(text[start..<close]), formatted: &formatted))</strong>"
@@ -141,7 +143,8 @@ public enum MarkdownBody {
                 continue
             }
 
-            if character == "*", let close = closing("*", in: text, after: text.index(after: index)) {
+            if character == "*", opensAWord(in: text, at: index),
+               let close = closing("*", in: text, after: text.index(after: index)) {
                 let start = text.index(after: index)
                 out += "<em>\(inline(String(text[start..<close]), formatted: &formatted))</em>"
                 index = text.index(after: close)
@@ -168,6 +171,16 @@ public enum MarkdownBody {
             index = text.index(after: index)
         }
         return out
+    }
+
+    /// Whether a mark at `index` starts a word rather than sitting inside one.
+    ///
+    /// Without this, `5*4*3` reads as italics and a sentence about arithmetic
+    /// comes out mangled.
+    private static func opensAWord(in text: String, at index: String.Index) -> Bool {
+        guard index > text.startIndex else { return true }
+        let before = text[text.index(before: index)]
+        return before.isWhitespace || "([{<\"\u{2018}\u{201C}'-".contains(before)
     }
 
     /// The start of the closing `mark`, if it closes a non-empty span.
