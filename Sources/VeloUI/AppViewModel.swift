@@ -235,6 +235,8 @@ public final class AppViewModel: ObservableObject {
         case .moveSelectionUp: inbox.moveUp()
         case .openSelected: openSelected()
         case .archiveSelected: try? inbox.archiveSelected()
+        case .trashSelected: try? inbox.trashSelected()
+        case .markUnreadSelected: try? inbox.markSelectedUnread()
         case .reply: startReply()
         case .replyAll: startReply(toEveryone: true)
         case .forward: startForward()

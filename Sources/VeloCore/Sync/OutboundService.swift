@@ -193,6 +193,16 @@ public struct OutboundService: Sendable {
         }
     }
 
+    /// Moves a thread to the bin.
+    ///
+    /// Applies Gmail's `TRASH` alongside removing `INBOX`, so it is recoverable
+    /// from any client rather than disappearing locally in a way nothing else
+    /// knows about. That extra label is the whole difference from archive.
+    public func trash(threadID: String) throws {
+        try enqueueLabelChange(threadID: threadID, kind: .trash,
+                               add: ["TRASH"], remove: ["INBOX"])
+    }
+
     public func markUnread(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .markUnread, add: ["UNREAD"], remove: [])
     }

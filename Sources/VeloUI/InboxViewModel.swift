@@ -93,9 +93,22 @@ public final class InboxViewModel: ObservableObject {
     /// of the first one. With nothing marked that is the selected thread, so
     /// this is also the single-row archive — there is no bulk variant.
     public func archiveSelected() throws {
+        try disposeTargets { try outbound.archive(threadID: $0) }
+    }
+
+    /// Moves the targets to the bin, advancing the same way archive does.
+    public func trashSelected() throws {
+        try disposeTargets { try outbound.trash(threadID: $0) }
+    }
+
+    /// Removes the targets from the list after applying `dispose` to each.
+    ///
+    /// Shared by archive and trash because the list bookkeeping is the fiddly
+    /// part and duplicating it is how the two would drift.
+    private func disposeTargets(_ dispose: (String) throws -> Void) throws {
         let indices = cursor.targets
         guard !indices.isEmpty else { return }
-        for index in indices { try outbound.archive(threadID: threads[index].id) }
+        for index in indices { try dispose(threads[index].id) }
         // Highest index first, so removing one does not shift the next.
         for index in indices.reversed() {
             threads.remove(at: index)
@@ -122,6 +135,17 @@ public final class InboxViewModel: ObservableObject {
                 try outbound.star(threadID: thread.id)
             }
         }
+        try refreshTargetRows()
+    }
+
+    /// Puts the unread flag back so the thread can be come back to.
+    ///
+    /// Unlike archive and trash it does *not* advance -- the thread stays where
+    /// it is, because the point is that you are leaving it there.
+    public func markSelectedUnread() throws {
+        let targets = targetThreads
+        guard !targets.isEmpty else { return }
+        for thread in targets { try outbound.markUnread(threadID: thread.id) }
         try refreshTargetRows()
     }
 

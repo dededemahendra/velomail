@@ -47,6 +47,7 @@ struct KeyMonitor: NSViewRepresentable {
         switch event.keyCode {
         case 36, 76: return KeyInput(.enter, modifiers)     // Return, keypad Enter
         case 53: return KeyInput(.escape, modifiers)
+        case 51, 117: return KeyInput(.delete, modifiers)   // Backspace, forward delete
         default:
             // "/" opens search, so punctuation cannot be filtered out wholesale.
             guard let character = event.charactersIgnoringModifiers?.first,

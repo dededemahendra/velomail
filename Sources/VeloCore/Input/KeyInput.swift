@@ -7,6 +7,9 @@ public struct KeyInput: Hashable, Sendable {
         case character(Character)
         case enter
         case escape
+        /// Backspace / forward-delete. Bound to trash, the way every mail
+        /// client does it.
+        case delete
     }
 
     public struct Modifiers: OptionSet, Hashable, Sendable {
