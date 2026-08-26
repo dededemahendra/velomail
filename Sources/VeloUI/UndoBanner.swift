@@ -4,12 +4,14 @@ import VeloCore
 /// The undo-send strip. Present only while the window is open, which is what
 /// makes the promise honest: once it goes, the mail is gone.
 struct UndoBanner: View {
+    let prompt: String
     let onUndo: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "paperplane.fill").font(.caption)
-            Text("Message sent").font(.callout)
+            Image(systemName: prompt == "Message sent" ? "paperplane.fill" : "arrow.uturn.backward")
+                .font(.caption)
+            Text(prompt).font(.callout)
             Spacer()
             Button("Undo", action: onUndo)
                 .buttonStyle(.borderless)

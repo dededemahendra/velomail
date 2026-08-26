@@ -22,7 +22,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case openCommandPalette
     case openSearch
     case snoozeSelected
-    case undoSend
+    case undo
     case showFollowUps
     case toggleFocus
     case discardDraft

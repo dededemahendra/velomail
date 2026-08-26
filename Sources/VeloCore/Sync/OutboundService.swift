@@ -203,6 +203,15 @@ public struct OutboundService: Sendable {
                                add: ["TRASH"], remove: ["INBOX"])
     }
 
+    /// Puts a thread back in the inbox after an archive or a delete.
+    ///
+    /// Clears `TRASH` as well as restoring `INBOX`: leaving it would put the
+    /// thread back in the inbox *and* the bin at the same time.
+    public func unarchive(threadID: String) throws {
+        try enqueueLabelChange(threadID: threadID, kind: .unarchive,
+                               add: ["INBOX"], remove: ["TRASH"])
+    }
+
     public func markUnread(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .markUnread, add: ["UNREAD"], remove: [])
     }

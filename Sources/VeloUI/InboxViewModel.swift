@@ -92,6 +92,11 @@ public final class InboxViewModel: ObservableObject {
     /// Archives every target and advances onto the thread that takes the place
     /// of the first one. With nothing marked that is the selected thread, so
     /// this is also the single-row archive — there is no bulk variant.
+    /// The thread ids an action would act on, captured before it runs.
+    public var targetThreadIDs: [String] {
+        cursor.targets.compactMap { threads.indices.contains($0) ? threads[$0].id : nil }
+    }
+
     public func archiveSelected() throws {
         try disposeTargets { try outbound.archive(threadID: $0) }
     }

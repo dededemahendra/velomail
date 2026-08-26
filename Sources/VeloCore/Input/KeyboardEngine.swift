@@ -112,7 +112,7 @@ public struct KeyboardEngine {
         KeyInput(.character("u")): .unsubscribe,
         KeyInput(.character("u"), [.shift]): .markUnreadSelected,
         KeyInput(.delete): .trashSelected,
-        KeyInput(.character("z"), [.command]): .undoSend,
+        KeyInput(.character("z"), [.command]): .undo,
         KeyInput(.escape): .back,
         KeyInput(.enter, [.command]): .send,
         KeyInput(.character("k"), [.command]): .openCommandPalette,
