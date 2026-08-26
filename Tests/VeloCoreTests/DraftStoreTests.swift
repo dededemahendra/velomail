@@ -26,47 +26,47 @@ import Foundation
     }
 
     @Test func nothingIsStoredInitially() throws {
-        #expect(try makeStore().load() == nil)
+        #expect(try makeStore().latest() == nil)
     }
 
     @Test func aDraftRoundTrips() throws {
         let store = try makeStore()
         let original = draft()
 
-        try store.save(original, at: Date(timeIntervalSince1970: 100))
+        try store.save(original, id: "seed", at: Date(timeIntervalSince1970: 100))
 
-        let restored = try #require(try store.load())
+        let restored = try #require(try store.latest())
         #expect(restored.draft == original)
         #expect(restored.updatedAt == Date(timeIntervalSince1970: 100))
     }
 
     @Test func savingAgainReplacesRatherThanAccumulating() throws {
         let store = try makeStore()
-        try store.save(draft(subject: "first"), at: Date(timeIntervalSince1970: 1))
-        try store.save(draft(subject: "second"), at: Date(timeIntervalSince1970: 2))
+        try store.save(draft(subject: "first"), id: "seed", at: Date(timeIntervalSince1970: 1))
+        try store.save(draft(subject: "second"), id: "seed", at: Date(timeIntervalSince1970: 2))
 
         // There is one draft slot, not a folder.
-        #expect(try store.load()?.draft.subject == "second")
+        #expect(try store.latest()?.draft.subject == "second")
     }
 
     @Test func discardingClearsIt() throws {
         let store = try makeStore()
-        try store.save(draft(), at: Date(timeIntervalSince1970: 1))
+        try store.save(draft(), id: "seed", at: Date(timeIntervalSince1970: 1))
 
-        try store.discard()
+        try store.discard(id: "seed")
 
-        #expect(try store.load() == nil)
+        #expect(try store.latest() == nil)
     }
 
     @Test func discardingWhenEmptyIsHarmless() throws {
-        try makeStore().discard()
+        try makeStore().discard(id: "seed")
     }
 
     @Test func aReplyDraftKeepsItsThread() throws {
         let store = try makeStore()
-        try store.save(draft(threadID: "t1"), at: Date(timeIntervalSince1970: 1))
+        try store.save(draft(threadID: "t1"), id: "seed", at: Date(timeIntervalSince1970: 1))
 
-        let restored = try #require(try store.load()).draft
+        let restored = try #require(try store.latest()).draft
 
         // Losing this turns a resumed reply into a new message to the same
         // person, which is worse than losing the draft.
@@ -79,18 +79,18 @@ import Foundation
         let store = try makeStore()
         let file = DraftAttachment(filename: "invoice.pdf", mimeType: "application/pdf",
                                    data: Data("PDF".utf8))
-        try store.save(draft(attachments: [file]), at: Date(timeIntervalSince1970: 1))
+        try store.save(draft(attachments: [file]), id: "seed", at: Date(timeIntervalSince1970: 1))
 
-        #expect(try store.load()?.draft.attachments == [file])
+        #expect(try store.latest()?.draft.attachments == [file])
     }
 
     @Test func everyRecipientFieldSurvives() throws {
         let store = try makeStore()
         var original = draft()
         original.bcc = ["secret@example.com"]
-        try store.save(original, at: Date(timeIntervalSince1970: 1))
+        try store.save(original, id: "seed", at: Date(timeIntervalSince1970: 1))
 
-        let restored = try #require(try store.load()).draft
+        let restored = try #require(try store.latest()).draft
         #expect(restored.to == ["a@b.com"])
         #expect(restored.cc == ["c@d.com"])
         #expect(restored.bcc == ["secret@example.com"])
@@ -100,8 +100,8 @@ import Foundation
         let store = try makeStore()
         var original = draft()
         original.bodyHTML = "<p>rich</p>"
-        try store.save(original, at: Date(timeIntervalSince1970: 1))
+        try store.save(original, id: "seed", at: Date(timeIntervalSince1970: 1))
 
-        #expect(try store.load()?.draft.bodyHTML == "<p>rich</p>")
+        #expect(try store.latest()?.draft.bodyHTML == "<p>rich</p>")
     }
 }
