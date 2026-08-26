@@ -78,7 +78,7 @@ public struct AttachmentService: Sendable {
     }
 
     /// Gmail's URL-safe base64 (RFC 4648 §5), tolerating missing padding.
-    static func decodeBase64URL(_ string: String) -> Data? {
+    public static func decodeBase64URL(_ string: String) -> Data? {
         var base64 = string
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")

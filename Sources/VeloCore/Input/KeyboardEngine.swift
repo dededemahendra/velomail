@@ -101,6 +101,8 @@ public struct KeyboardEngine {
         KeyInput(.enter): .openSelected,
         KeyInput(.character("e")): .archiveSelected,
         KeyInput(.character("r")): .reply,
+        KeyInput(.character("r"), [.shift]): .replyAll,
+        KeyInput(.character("f")): .forward,
         KeyInput(.character("c")): .compose,
         KeyInput(.character("s")): .toggleStar,
         KeyInput(.character("x")): .toggleMark,

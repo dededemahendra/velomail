@@ -8,7 +8,7 @@ import Foundation
 public enum QuotedReply {
     /// `On <date>, <sender> wrote:` followed by the parent body, `> ` per line.
     public static func text(quoting message: Message) -> String {
-        let body = message.bodyText ?? strippedTags(from: message.bodyHTML ?? "")
+        let body = message.bodyText ?? strippedTags(message.bodyHTML ?? "")
         let quoted = body
             .components(separatedBy: .newlines)
             .map { $0.isEmpty ? ">" : "> \($0)" }
@@ -24,6 +24,33 @@ public enum QuotedReply {
         <blockquote style="margin:0 0 0 12px;padding-left:12px;border-left:2px solid #ccc">
         \(body)
         </blockquote>
+        """
+    }
+
+    /// The block a forward puts above the original: the standard header set,
+    /// so the reader can see who sent it, to whom, and when.
+    public static func forwardedText(_ message: Message) -> String {
+        var lines = ["---------- Forwarded message ----------",
+                     "From: \(message.sender)",
+                     "Date: \(dateFormatter.string(from: message.date))",
+                     "Subject: \(message.subject)"]
+        if !message.recipients.isEmpty {
+            lines.append("To: \(message.recipients.joined(separator: ", "))")
+        }
+        if !message.cc.isEmpty {
+            lines.append("Cc: \(message.cc.joined(separator: ", "))")
+        }
+        let body = message.bodyText ?? strippedTags(message.bodyHTML ?? "")
+        return lines.joined(separator: "\n") + "\n\n" + body
+    }
+
+    public static func forwardedHTML(_ message: Message) -> String {
+        let header = forwardedText(message)
+            .components(separatedBy: "\n\n").first ?? ""
+        let body = message.bodyHTML ?? "<p>\(escaped(message.bodyText ?? ""))</p>"
+        return """
+        <div><pre>\(escaped(header))</pre></div>
+        \(body)
         """
     }
 
@@ -50,7 +77,7 @@ public enum QuotedReply {
     }
 
     /// Crude de-HTML for quoting an HTML-only parent as plain text.
-    private static func strippedTags(from html: String) -> String {
+    static func strippedTags(_ html: String) -> String {
         html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .replacingOccurrences(of: "&nbsp;", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
