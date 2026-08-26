@@ -27,6 +27,9 @@ public final class ComposeViewModel: ObservableObject {
     /// Which suggestion the keyboard is currently on.
     @Published public private(set) var highlighted = 0
     @Published public var cc: String = ""
+    /// Recipients the others cannot see. Kept out of the way behind a control,
+    /// because a Bcc field left standing open is how one gets used by accident.
+    @Published public var bcc: String = ""
     @Published public var subject: String = ""
     /// Observed rather than plain, because a snippet expands off the character
     /// you just typed and `TextEditor` gives no other hook to hang that on.
@@ -156,6 +159,7 @@ public final class ComposeViewModel: ObservableObject {
         refreshContacts()
         to = draft.to.joined(separator: ", ")
         cc = draft.cc.joined(separator: ", ")
+        bcc = draft.bcc.joined(separator: ", ")
         subject = draft.subject
         body = draft.bodyText
         attachments = draft.attachments
@@ -223,7 +227,7 @@ public final class ComposeViewModel: ObservableObject {
 
     public func startNew() {
         refreshContacts()
-        to = ""; cc = ""; subject = ""; body = signatureBlock
+        to = ""; cc = ""; bcc = ""; subject = ""; body = signatureBlock
         attachments = []
         isReply = false
         replyContext = nil
@@ -245,6 +249,7 @@ public final class ComposeViewModel: ObservableObject {
         let draft = Draft.forward(message, from: identity, attachments: files)
         to = ""
         cc = ""
+        bcc = ""
         subject = draft.subject
         body = draft.bodyText
         attachments = files
@@ -258,6 +263,7 @@ public final class ComposeViewModel: ObservableObject {
         let draft = Draft.reply(to: message, from: identity)
         to = draft.to.joined(separator: ", ")
         cc = ""
+        bcc = ""
         subject = draft.subject
         // The quote goes in the editor, not on at send time: what the user sees
         // is what gets sent, and they can trim it like in any other client.
@@ -293,11 +299,12 @@ public final class ComposeViewModel: ObservableObject {
             var reply = Draft.reply(to: message, from: identity, bodyText: body, bodyHTML: html)
             reply.to = recipients
             reply.cc = addresses(in: cc)
+            reply.bcc = addresses(in: bcc)
             reply.subject = subject
             draft = reply
         } else {
-            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject,
-                          bodyText: body, bodyHTML: html)
+            draft = Draft(to: recipients, cc: addresses(in: cc), bcc: addresses(in: bcc),
+                          subject: subject, bodyText: body, bodyHTML: html)
             // A resumed reply has no parent message to hand, so its threading
             // comes from what was stored. Losing it would turn the reply into a
             // new message to the same person.
