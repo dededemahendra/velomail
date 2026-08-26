@@ -185,6 +185,16 @@ public final class AppDatabase: Sendable {
             try db.create(index: "attachment_on_messageID", on: "attachment", columns: ["messageID"])
         }
 
+        migrator.registerMigration("v14_create_draft") { db in
+            // A single row, keyed by a fixed id: one draft slot rather than a
+            // folder, so saving is an upsert and nothing accumulates.
+            try db.create(table: "draft") { t in
+                t.primaryKey("id", .text)
+                t.column("payload", .blob).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 }
