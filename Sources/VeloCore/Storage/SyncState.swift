@@ -4,7 +4,7 @@ import GRDB
 /// Per-account sync cursor. `historyId` is the Gmail history marker the next
 /// incremental sync pages from; `backfillComplete` records whether the initial
 /// backfill has finished.
-public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable {
+public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable, Sendable {
     public var accountID: String
     public var historyId: String?
     public var backfillComplete: Bool

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct Message: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable {
+public struct Message: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatable, Sendable {
     public var id: String
     public var threadID: String
     public var sender: String
