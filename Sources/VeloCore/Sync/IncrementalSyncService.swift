@@ -17,7 +17,10 @@ public struct IncrementalSyncService: Sendable {
     /// Syncs the account forward from its stored `historyId`.
     ///
     /// - Throws: `SyncError.notInitialized` when no `historyId` baseline exists.
-    public func sync(accountID: String) async throws {
+    /// - Returns: the ids of threads that gained a message, so a caller can
+    ///   act on *arrivals* only. Rules must never see a backfill.
+    @discardableResult
+    public func sync(accountID: String) async throws -> [String] {
         guard var state = try syncState.load(accountID: accountID),
               let startHistoryId = state.historyId else {
             throw SyncError.notInitialized
@@ -60,6 +63,9 @@ public struct IncrementalSyncService: Sendable {
 
         state.historyId = latestHistoryId
         try syncState.save(state)
+
+        var seenThreads = Set<String>()
+        return dtos.map(\.threadId).filter { seenThreads.insert($0).inserted }
     }
 
     /// A Gmail 404 surfaces as `.server` with code `"404"` or (via Gmail's

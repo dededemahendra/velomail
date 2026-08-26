@@ -73,4 +73,30 @@ import VeloCore
         #expect(!assembly.app.isConfigured)
         #expect(assembly.app.route == .list)
     }
+
+    // MARK: - Demo must mean demo
+
+    @Test func demoNeverBuildsTheGmailStackEvenWithCredentialsPresent() throws {
+        // Once a config file exists, every launch has a clientID. Demo must
+        // still stay local -- it is the mode you use precisely when you do not
+        // want the app touching a real account.
+        let assembly = try Composition.make(
+            config: AppConfig.resolve(
+                environment: ["VELOMAIL_DEMO": "1", "VELOMAIL_CLIENT_ID": "real-id"],
+                configFile: nil))
+
+        #expect(assembly.sync == nil)
+        #expect(assembly.auth == nil)
+    }
+
+    @Test func demoWithCredentialsStillShowsTheDemoMailbox() throws {
+        let assembly = try Composition.make(
+            config: AppConfig.resolve(
+                environment: ["VELOMAIL_DEMO": "1", "VELOMAIL_CLIENT_ID": "real-id"],
+                configFile: nil))
+        try assembly.app.start()
+
+        #expect(assembly.app.route == .list)
+        #expect(assembly.app.inbox.threads.count > 0)
+    }
 }

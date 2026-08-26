@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-821 tests, no XCTest, no `.xcodeproj`.
+874 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -156,6 +156,12 @@ Every key is also in the command palette, so nothing is keyboard-only.
 swift test          # 821 tests; offline and deterministic
 swift build
 ```
+
+**Run tests with `--no-parallel`.** Swift Testing in this toolchain crashes
+intermittently under its own parallel scheduler — the trace is entirely inside
+`Runner._runStep` and `Test.id.getter`, with no frames from this project.
+Roughly half of parallel runs die with SIGSEGV or SIGTRAP; serial runs are
+stable.
 
 If tests fail with `no such module 'Testing'`, `xcode-select` is pointing at the
 Command Line Tools, which ship the swift-testing macro plugin but not the
@@ -321,6 +327,26 @@ body intact. Total size is capped at 22MB and enforced when you attach rather
 than when the send fails — a server error ten seconds later, after the undo
 window shut, is a much worse experience than being told up front.
 
+## Rules
+
+Filters, auto-sorting, VIP and blocking are one mechanism. Put rules in
+`~/.config/velomail/rules.json`:
+
+```json
+[{"id":"news","name":"Newsletters","isEnabled":true,"order":1,"matchAll":true,
+  "conditions":[{"senderContains":{"_0":"noreply"}}],
+  "actions":["archive","markRead"]}]
+```
+
+Conditions: `senderContains`, `subjectContains`, `bodyContains`, `isUnread`,
+`hasAttachment`. Actions: `archive`, `star`, `markRead`, `markImportant` (VIP),
+`block` (archive, mark read, and never notify).
+
+**Rules only ever run on mail that arrives while the app is running.** They are
+never applied to a backfill — otherwise a new "archive anything from noreply@"
+rule would archive hundreds of messages you had already dealt with, on every
+device. A malformed rules file disables rules rather than guessing.
+
 ## Search
 
 `/` opens search. Plain keywords work with no setup — full-text over sender,
@@ -342,5 +368,5 @@ plain search terms.
 Draft sync to other devices (`users.drafts`), resumable upload for very large
 attachments, multiple accounts, pinning a
 thread to the top, collapsing the quoted part of a reply (parsing someone
-else's quoting is its own problem), local filters and rules, calendar and contacts, anything needing a server (team features), and
+else's quoting is its own problem),  calendar and contacts, anything needing a server (team features), and
 code signing / notarisation.

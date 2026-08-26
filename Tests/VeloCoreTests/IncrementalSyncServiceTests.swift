@@ -309,4 +309,40 @@ private final class ThrowingFetchHistorySource: GmailReading, @unchecked Sendabl
 
         #expect(try syncStore.load(accountID: account)?.historyId == "1100")
     }
+
+    // MARK: - Reporting arrivals (U)
+
+    @Test func syncReportsTheThreadsThatArrived() async throws {
+        let (service, _, _, _) = try makeContext(
+            pages: [historyPage(added: [("m1", "t1"), ("m2", "t2")],
+                                historyId: "5100", nextPageToken: nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", internalDate: "1000", snippet: "s"),
+                       makeDTO(id: "m2", thread: "t2", internalDate: "1000", snippet: "s")],
+            seedHistoryId: "5000")
+
+        let arrived = try await service.sync(accountID: account)
+
+        // Rules need to know what is new; running them over everything would
+        // archive mail the user already dealt with.
+        #expect(Set(arrived) == ["t1", "t2"])
+    }
+
+    @Test func aThreadWithTwoNewMessagesIsReportedOnce() async throws {
+        let (service, _, _, _) = try makeContext(
+            pages: [historyPage(added: [("m1", "t1"), ("m2", "t1")],
+                                historyId: "5100", nextPageToken: nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", internalDate: "1000", snippet: "s"),
+                       makeDTO(id: "m2", thread: "t1", internalDate: "2000", snippet: "s")],
+            seedHistoryId: "5000")
+
+        #expect(try await service.sync(accountID: account) == ["t1"])
+    }
+
+    @Test func aQuietSyncReportsNothing() async throws {
+        let (service, _, _, _) = try makeContext(
+            pages: [historyPage(added: [], historyId: "5100", nextPageToken: nil)],
+            messages: [], seedHistoryId: "5000")
+
+        #expect(try await service.sync(accountID: account).isEmpty)
+    }
 }

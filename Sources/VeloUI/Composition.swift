@@ -36,6 +36,7 @@ public enum Composition {
         let mutations = MutationStore(database)
         let syncState = SyncStateStore(database)
         let drafts = DraftStore(database)
+        let ruleLibrary = RuleLibrary.load()
         // The account id is stable and local; the *address* is discovered from
         // Gmail's profile on first backfill. Keeping them separate is what lets
         // the app be built before it knows who it is.
@@ -50,7 +51,11 @@ public enum Composition {
         // and the app is exactly what it was before AI existed.
         let assistant = MailAssistant(provider: llm.makeProvider(httpClient: URLSessionHTTPClient(session: LLMConfig.makeHTTPClientSession())))
 
-        guard let clientID = config.clientID else {
+        // Demo takes the local path even when credentials exist. Once a config
+        // file is present every launch has a clientID, and without this check
+        // the flag silently stops meaning anything -- while the app quietly
+        // signs in to a real account.
+        guard let clientID = config.clientID, !config.isDemo else {
             // Unconfigured: still a fully working local app, just with nothing
             // to sync. A local-only writer keeps the queue honest.
             let outbound = OutboundService(writer: LocalOnlyWriter(), store: store,
@@ -77,11 +82,15 @@ public enum Composition {
             backfill: BackfillService(source: api, store: store, syncState: syncState),
             incremental: IncrementalSyncService(source: api, store: store, syncState: syncState),
             outbound: outbound,
-            syncState: syncState)
+            syncState: syncState,
+            // Rules see arrivals only; GmailSync never hands it a backfill.
+            rules: RuleApplier(engine: RuleEngine(rules: ruleLibrary.rules),
+                               store: store, outbound: outbound))
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,
-                               identity: resolver.identity, isSignedIn: auth.state == .signedIn,
+                               // Signed-in state is restored after launch, not during it.
+                               identity: resolver.identity, isSignedIn: false,
                                assistant: assistant, snippets: snippets,
                                attachmentModel: AttachmentViewModel(
                                    service: AttachmentService(source: api)),
