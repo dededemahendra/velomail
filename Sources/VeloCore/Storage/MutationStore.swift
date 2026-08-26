@@ -69,6 +69,18 @@ public final class MutationStore: Sendable {
         }
     }
 
+    /// Mutations the queue has given up on: failed, and at or past the cap that
+    /// `retryFailed` stops requeueing at. Oldest first.
+    public func abandoned(maxAttempts: Int) throws -> [PendingMutation] {
+        try database.dbQueue.read { db in
+            try PendingMutation
+                .filter(Column("status") == MutationStatus.failed.rawValue)
+                .filter(Column("attempts") >= maxAttempts)
+                .order(Column("createdAt"))
+                .fetchAll(db)
+        }
+    }
+
     /// Removes a mutation (models "done"). No-op if the id is unknown.
     public func delete(id: Int64) throws {
         _ = try database.dbQueue.write { db in

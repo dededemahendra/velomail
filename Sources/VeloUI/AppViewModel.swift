@@ -66,6 +66,20 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Changes the queue gave up on. Unlike undo this does not expire: a
+    /// message that never went has to still be there when the writer looks up.
+    @Published public private(set) var failures: [MailFailure] = []
+
+    /// One line for the banner, or nil when nothing has failed.
+    ///
+    /// Always names a single failure, even when several are waiting: a bulk
+    /// "dismiss all" over two failed sends would throw away both drafts on one
+    /// click. They are stepped through instead.
+    public var failurePrompt: String? { failures.first?.summary }
+
+    /// How many failures are queued behind the one on show.
+    public var failureOverflow: Int { max(0, failures.count - 1) }
+
     /// Threads you are waiting on, shown by `g f`.
     @Published public private(set) var followUps: [MailThread] = []
     @Published public private(set) var isShowingFollowUps = false
@@ -158,6 +172,7 @@ public final class AppViewModel: ObservableObject {
             return
         }
         try inbox.reload()
+        refreshFailures()
         route = .list
         openDemoRouteIfRequested()
     }
@@ -202,7 +217,12 @@ public final class AppViewModel: ObservableObject {
         return isSignedIn ? .list : .signIn
     }
 
-    public func setSyncStatus(_ status: SyncStatus) { syncStatus = status }
+    public func setSyncStatus(_ status: SyncStatus) {
+        syncStatus = status
+        // A push gives up during a sync, so this is the moment the answer
+        // changes. Polling for it on a timer would only ever be late.
+        refreshFailures()
+    }
 
     public func setAuthState(_ state: AuthCoordinator.AuthState) {
         authState = state
@@ -403,6 +423,32 @@ public final class AppViewModel: ObservableObject {
         case let .web(url):
             openURL(url)
         }
+    }
+
+    // MARK: - Failures
+
+    /// Rereads what the queue has given up on.
+    public func refreshFailures() {
+        failures = (try? outbound.failures(maxAttempts: OutboundService.maxAttempts)) ?? []
+    }
+
+    /// Puts a failed send's words back in the composer, where they can be
+    /// fixed and sent again through the ordinary path.
+    public func reopenFailure(_ failure: MailFailure) {
+        guard let draft = (try? outbound.reopen(mutationID: failure.id)) ?? nil else {
+            dismissFailure(failure)
+            return
+        }
+        compose.resume(draft)
+        route = .compose
+        refreshFailures()
+    }
+
+    /// Accepts a failure and stops showing it. The local side was already put
+    /// back when the push failed, so there is nothing else to undo.
+    public func dismissFailure(_ failure: MailFailure) {
+        try? outbound.dismiss(mutationID: failure.id)
+        refreshFailures()
     }
 
     /// How long a send can be taken back.

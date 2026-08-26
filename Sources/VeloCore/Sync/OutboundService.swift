@@ -125,6 +125,71 @@ public struct OutboundService: Sendable {
         try mutations.delete(id: mutationID)
     }
 
+    // MARK: - Failures
+
+    /// How many pushes a mutation gets before the queue gives up on it.
+    ///
+    /// Shared with `GmailSync` rather than duplicated: the number that decides
+    /// what stops being retried must be the number that decides what is
+    /// reported, or the app goes quiet about writes it has abandoned.
+    public static let maxAttempts = 3
+
+    /// Changes that will not be retried again, described in the writer's terms.
+    ///
+    /// Only rows at the cap: a mutation still under it goes out on the next
+    /// tick, and reporting that is crying wolf over a dropped connection.
+    public func failures(maxAttempts: Int) throws -> [MailFailure] {
+        try mutations.abandoned(maxAttempts: maxAttempts).compactMap(describe)
+    }
+
+    /// Hands back the draft of a failed send and clears the failure.
+    ///
+    /// Returns nil for anything still queued: reopening a send that is on its
+    /// way would put the same message out twice.
+    public func reopen(mutationID: Int64) throws -> Draft? {
+        guard let mutation = try failedMutation(mutationID), mutation.kind == .send,
+              let payload = try? JSONDecoder().decode(OutboundSendPayload.self,
+                                                      from: mutation.payload) else { return nil }
+        try mutations.delete(id: mutationID)
+        return payload.draft
+    }
+
+    /// Forgets a failure. The local revert happened when the push failed, so
+    /// there is nothing here to put back.
+    public func dismiss(mutationID: Int64) throws {
+        guard try failedMutation(mutationID) != nil else { return }
+        try mutations.delete(id: mutationID)
+    }
+
+    private func failedMutation(_ id: Int64) throws -> PendingMutation? {
+        try mutations.all().first { $0.id == id && $0.status == .failed }
+    }
+
+    /// Names a failed mutation by the mail it was about.
+    private func describe(_ mutation: PendingMutation) -> MailFailure? {
+        guard let id = mutation.id else { return nil }
+        if mutation.kind == .send {
+            guard let payload = try? JSONDecoder().decode(OutboundSendPayload.self,
+                                                          from: mutation.payload) else { return nil }
+            return MailFailure(id: id, kind: .send, subject: payload.draft.subject,
+                               attempts: mutation.attempts, draft: payload.draft)
+        }
+        guard let payload = try? JSONDecoder().decode(OutboundMutationPayload.self,
+                                                      from: mutation.payload) else { return nil }
+        return MailFailure(id: id, kind: mutation.kind, subject: subject(ofThread: payload.threadID),
+                           attempts: mutation.attempts, draft: nil)
+    }
+
+    /// The thread's subject, falling back to its snippet: a thread whose
+    /// messages have since gone still has to be nameable.
+    private func subject(ofThread threadID: String) -> String {
+        if let subject = try? mailStore.messages(inThread: threadID).first?.subject,
+           !subject.isEmpty {
+            return subject
+        }
+        return (try? mailStore.thread(id: threadID))??.snippet ?? ""
+    }
+
     /// The domain half of the sending identity, for minting a `Message-ID`.
     private var identityDomain: String {
         let address = Draft.normalizedAddress(identity)

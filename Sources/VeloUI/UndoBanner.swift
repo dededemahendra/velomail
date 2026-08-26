@@ -27,6 +27,46 @@ struct UndoBanner: View {
     }
 }
 
+/// What the queue gave up on.
+///
+/// Deliberately unlike `UndoBanner`: no countdown and no automatic dismissal.
+/// A message that never went is not a ten second offer, and the writer has to
+/// be the one who decides it has been dealt with.
+struct FailureBanner: View {
+    let prompt: String
+    /// Present only when there is a draft to put back in the composer.
+    let canReopen: Bool
+    /// How many more are waiting behind this one.
+    var overflow: Int = 0
+    let onReopen: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Text(prompt).font(.callout).lineLimit(1)
+            if overflow > 0 {
+                Text("+\(overflow) more").font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            if canReopen {
+                Button("Reopen", action: onReopen).buttonStyle(.borderless)
+            }
+            Button("Dismiss", action: onDismiss)
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9).strokeBorder(.orange.opacity(0.35), lineWidth: 1))
+        .padding(.horizontal, 16).padding(.bottom, 12)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
 /// Threads you are waiting on, shown by `g f`.
 struct FollowUpBar: View {
     let threads: [MailThread]

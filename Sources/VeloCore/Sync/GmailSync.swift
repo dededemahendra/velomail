@@ -28,7 +28,8 @@ public actor GmailSync {
     public init(accountID: String, backfill: BackfillService, incremental: IncrementalSyncService,
                 outbound: OutboundService, syncState: SyncStateStore, backfillLimit: Int = 500,
                 now: @escaping () -> Date = { Date() }, clock: SyncClock = SystemSyncClock(),
-                backoff: BackoffPolicy = .standard, maxMutationAttempts: Int = 3,
+                backoff: BackoffPolicy = .standard,
+                maxMutationAttempts: Int = OutboundService.maxAttempts,
                 rules: RuleApplier? = nil) {
         self.accountID = accountID
         self.backfill = backfill

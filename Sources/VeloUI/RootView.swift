@@ -33,12 +33,23 @@ public struct RootView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let prompt = app.undoPrompt {
-                UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
+            VStack(spacing: 0) {
+                // Above undo, because it is the one that does not expire.
+                if let failure = app.failurePrompt {
+                    FailureBanner(prompt: failure,
+                                  canReopen: app.failures.first?.draft != nil,
+                                  overflow: app.failureOverflow,
+                                  onReopen: { app.failures.first.map { app.reopenFailure($0) } },
+                                  onDismiss: { app.failures.first.map { app.dismissFailure($0) } })
+                }
+                if let prompt = app.undoPrompt {
+                    UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
                                onUndo: { app.undo() })
+                }
             }
         }
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
+        .animation(.easeOut(duration: 0.18), value: app.failurePrompt)
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
