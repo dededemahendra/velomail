@@ -118,6 +118,13 @@ struct ComposeView: View {
                     Text(AttachmentViewModel.formattedSize(model.attachmentBytes))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
+                if model.isRichText {
+                    Label("Formatted", systemImage: "textformat")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .help("**bold**, *italics*, `code`, - lists and [links](https://example.com) "
+                              + "are sent as formatted text.")
+                }
                 Spacer()
                 if let attachmentError {
                     Text(attachmentError).font(.caption).foregroundStyle(.orange).lineLimit(1)

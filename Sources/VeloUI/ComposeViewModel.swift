@@ -270,18 +270,25 @@ public final class ComposeViewModel: ObservableObject {
         return queued
     }
 
+    /// True when what has been typed will be sent as HTML as well as text.
+    public var isRichText: Bool { MarkdownBody.isFormatted(body) }
+
     /// The composer as a `Draft`. One builder, so what autosave stores is
     /// exactly what send would have sent.
     private func currentDraft() -> Draft {
         var draft: Draft
+        // Marks the writer typed travel as HTML; the plain part keeps what was
+        // typed, which is what a reader on a text-only client expects to see.
+        let html = MarkdownBody.html(from: body)
         if let message = replyContext {
-            var reply = Draft.reply(to: message, from: identity, bodyText: body)
+            var reply = Draft.reply(to: message, from: identity, bodyText: body, bodyHTML: html)
             reply.to = recipients
             reply.cc = addresses(in: cc)
             reply.subject = subject
             draft = reply
         } else {
-            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject, bodyText: body)
+            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject,
+                          bodyText: body, bodyHTML: html)
             // A resumed reply has no parent message to hand, so its threading
             // comes from what was stored. Losing it would turn the reply into a
             // new message to the same person.
