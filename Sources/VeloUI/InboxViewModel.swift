@@ -11,12 +11,14 @@ import VeloCore
 public enum MailScope: Equatable, Sendable {
     case inbox
     case sent
+    case snoozed
 
     /// What the list calls itself.
     public var title: String {
         switch self {
         case .inbox: return "Inbox"
         case .sent: return "Sent"
+        case .snoozed: return "Snoozed"
         }
     }
 }
@@ -113,10 +115,21 @@ public final class InboxViewModel: ObservableObject {
         return "\(name) and \(recipients.count - 1) other\(recipients.count == 2 ? "" : "s")"
     }
 
+    /// The date a row should carry: when it comes back, in Snoozed, and when it
+    /// arrived everywhere else. The received date is the one thing the writer
+    /// already knows about a thread they chose to put away.
+    public func rowDate(of thread: MailThread) -> String {
+        guard scope == .snoozed, let wake = thread.snoozedUntil else {
+            return MailFormatting.relativeDate(thread.lastMessageDate)
+        }
+        return MailFormatting.relativeDate(wake)
+    }
+
     private func threadsInScope() throws -> [MailThread] {
         switch scope {
         case .inbox: return try store.inboxThreads()
         case .sent: return try store.sentThreads()
+        case .snoozed: return try store.snoozedThreads()
         }
     }
 
@@ -143,6 +156,12 @@ public final class InboxViewModel: ObservableObject {
     /// Archives every target and advances onto the thread that takes the place
     /// of the first one. With nothing marked that is the selected thread, so
     /// this is also the single-row archive — there is no bulk variant.
+    /// Brings every target back to the inbox now.
+    public func unsnoozeSelected() throws {
+        for id in targetThreadIDs { try outbound.unsnooze(threadID: id) }
+        try reloadPreservingSelection()
+    }
+
     public func archiveSelected() throws {
         try disposeTargets { try outbound.archive(threadID: $0) }
     }

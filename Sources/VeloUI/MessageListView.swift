@@ -16,6 +16,8 @@ struct MessageListView: NSViewRepresentable {
     /// The person a row is about. Supplied rather than read off the thread,
     /// because in Sent that is the recipient, not the sender.
     let name: (MailThread) -> String
+    /// The date a row shows. In Snoozed that is when it comes back.
+    let date: (MailThread) -> String
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
 
@@ -121,7 +123,8 @@ struct MessageListView: NSViewRepresentable {
             case let .thread(thread, index):
                 return ThreadRowView(thread: thread,
                                      isMarked: parent.markedIndices.contains(index),
-                                     name: parent.name(thread))
+                                     name: parent.name(thread),
+                                     dateText: parent.date(thread))
             }
         }
 
@@ -181,7 +184,7 @@ private final class SectionHeaderView: NSView {
 
 /// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 private final class ThreadRowView: NSView {
-    init(thread: MailThread, isMarked: Bool, name: String) {
+    init(thread: MailThread, isMarked: Bool, name: String, dateText: String) {
         super.init(frame: .zero)
 
         // Fixed width whether or not it is showing, so marking a row does not
@@ -208,7 +211,7 @@ private final class ThreadRowView: NSView {
 
         // Tabular figures so the dates form a straight right edge instead of
         // wobbling by a pixel per digit.
-        let date = NSTextField(labelWithString: MailFormatting.relativeDate(thread.lastMessageDate))
+        let date = NSTextField(labelWithString: dateText)
         date.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         date.textColor = .tertiaryLabelColor
         date.setContentCompressionResistancePriority(.required, for: .horizontal)

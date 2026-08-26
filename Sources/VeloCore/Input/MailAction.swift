@@ -18,6 +18,10 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case compose
     case goToInbox
     case goToSent
+    case goToSnoozed
+    case snoozeUntilTomorrow
+    case snoozeUntilNextWeek
+    case unsnoozeSelected
     /// Leave the current view; also cancels a half-typed chord.
     case back
     case openCommandPalette

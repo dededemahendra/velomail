@@ -82,6 +82,7 @@ public struct RootView: View {
                                     selectedIndex: app.inbox.selectedIndex,
                                     markedIndices: app.inbox.markedIndices,
                                     name: { app.inbox.correspondent(of: $0) },
+                                    date: { app.inbox.rowDate(of: $0) },
                                     onSelect: { app.inbox.select(index: $0) },
                                     onOpen: { app.perform(.openSelected) })
                 }
@@ -142,14 +143,37 @@ struct MailboxHeader: View {
 struct EmptyListView: View {
     let scope: MailScope
 
+    private var symbol: String {
+        switch scope {
+        case .inbox: return "checkmark.circle"
+        case .sent: return "paperplane"
+        case .snoozed: return "clock"
+        }
+    }
+
+    private var headline: String {
+        switch scope {
+        case .inbox: return "Inbox zero"
+        case .sent: return "Nothing sent yet"
+        case .snoozed: return "Nothing snoozed"
+        }
+    }
+
+    private var detail: String {
+        switch scope {
+        case .inbox: return "Nothing left to triage."
+        case .sent: return "Messages you send appear here."
+        case .snoozed: return "Threads you put off come back here."
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: scope == .inbox ? "checkmark.circle" : "paperplane")
+            Image(systemName: symbol)
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text(scope == .inbox ? "Inbox zero" : "Nothing sent yet")
-                .font(.title3.weight(.medium))
-            Text(scope == .inbox ? "Nothing left to triage." : "Messages you send appear here.")
+            Text(headline).font(.title3.weight(.medium))
+            Text(detail)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

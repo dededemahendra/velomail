@@ -19,6 +19,7 @@ import VeloCore
         MessageListView(sections: InboxSections.split(threads), selectedIndex: selected,
                         markedIndices: marked,
                         name: { MailFormatting.displayName($0.sender) },
+                        date: { MailFormatting.relativeDate($0.lastMessageDate) },
                         onSelect: { _ in }, onOpen: {})
     }
 
