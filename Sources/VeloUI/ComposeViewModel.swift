@@ -148,18 +148,27 @@ public final class ComposeViewModel: ObservableObject {
         try? drafts.save(currentDraft())
     }
 
-    /// Puts the stored draft back in the composer. A no-op when there is none.
-    public func resumeDraft() {
-        guard let stored = storedDraft else { return }
-        let draft = stored.draft
+    /// Loads a draft into the composer, threading and all.
+    ///
+    /// Used by resume and by reopening a send that never went: both are the
+    /// same act of putting written words back in front of the writer.
+    public func resume(_ draft: Draft) {
+        refreshContacts()
         to = draft.to.joined(separator: ", ")
         cc = draft.cc.joined(separator: ", ")
         subject = draft.subject
         body = draft.bodyText
         attachments = draft.attachments
         isReply = draft.threadID != nil
+        replyContext = nil
         resumedContext = (threadID: draft.threadID, inReplyTo: draft.inReplyTo,
                           references: draft.references)
+    }
+
+    /// Puts the stored draft back in the composer. A no-op when there is none.
+    public func resumeDraft() {
+        guard let stored = storedDraft else { return }
+        resume(stored.draft)
     }
 
     /// Flattens the double optional a `try?` on an optional store produces.
