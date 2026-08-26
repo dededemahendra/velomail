@@ -221,6 +221,16 @@ public struct OutboundService: Sendable {
         try store.setSnoozedUntil(date, onThread: threadID)
     }
 
+    /// Brings a snoozed thread back now, before its time.
+    ///
+    /// Clears the wake time as well as restoring the label: left set, the waker
+    /// would later fire on a thread already sitting in the inbox.
+    public func unsnooze(threadID: String) throws {
+        guard let thread = try store.thread(id: threadID), thread.snoozedUntil != nil else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .unsnooze, add: ["INBOX"], remove: [])
+        try store.setSnoozedUntil(nil, onThread: threadID)
+    }
+
     /// Returns any thread whose snooze has expired to the inbox.
     /// - Returns: the ids that woke.
     @discardableResult

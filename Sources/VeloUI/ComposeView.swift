@@ -10,6 +10,9 @@ struct ComposeView: View {
 
     @State private var isWorking = false
     @State private var attachmentError: String?
+    /// Bcc is revealed rather than always shown. A standing blind-copy field is
+    /// how one gets filled in by accident.
+    @State private var isShowingBcc = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,8 +35,12 @@ struct ComposeView: View {
                 Divider()
                 // Always present rather than revealed by a control: a hidden Cc
                 // is one people forget exists, and reply-all fills it.
-                field("Cc", placeholder: "Optional", text: $model.cc)
+                field("Cc", placeholder: "Optional", text: $model.cc) { bccToggle }
                 Divider()
+                if isShowingBcc || !model.bcc.isEmpty {
+                    field("Bcc", placeholder: "Hidden from the others", text: $model.bcc)
+                    Divider()
+                }
                 field("Subject", placeholder: "Subject", text: $model.subject)
                 Divider()
                 attachmentBar
@@ -55,6 +62,17 @@ struct ComposeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Reveals the Bcc row. Hidden again only when it is empty, so a filled
+    /// blind copy can never be out of sight while the message is still open.
+    @ViewBuilder private var bccToggle: some View {
+        if !isShowingBcc && model.bcc.isEmpty {
+            Button("Bcc") { isShowingBcc = true }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.tertiary)
+        }
     }
 
     /// People already written to, offered as the address is typed.
@@ -246,9 +264,10 @@ struct ComposeView: View {
     /// A bare `.plain` field with no placeholder renders as nothing at all --
     /// the label alone reads as grey placeholder text, and there is no sign of
     /// where to type.
-    private func field(_ label: String, placeholder: String, text: Binding<String>,
-                       onKey: @escaping (KeyPress) -> KeyPress.Result = { _ in .ignored })
-        -> some View {
+    private func field<Trailing: View>(
+        _ label: String, placeholder: String, text: Binding<String>,
+        onKey: @escaping (KeyPress) -> KeyPress.Result = { _ in .ignored },
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }) -> some View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.system(size: 12, weight: .medium))
@@ -259,6 +278,7 @@ struct ComposeView: View {
                 .font(.system(size: 13))
                 .onKeyPress(phases: .down, action: onKey)
                 .onChange(of: text.wrappedValue) { _, _ in model.autosave() }
+            trailing()
         }
         .padding(.horizontal, 20).padding(.vertical, 11)
     }

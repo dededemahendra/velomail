@@ -22,11 +22,15 @@ public struct MailAttachment: Codable, FetchableRecord, PersistableRecord, Ident
     /// Base64url content, present only for small inline parts, which therefore
     /// need no fetch at all.
     public var inlineData: String?
+    /// The part's `Content-ID`, angles stripped, when it has one. This is what
+    /// a body's `cid:` reference points at.
+    public var contentID: String?
 
     public static let databaseTableName = "attachment"
 
     public init(id: String, messageID: String, filename: String, mimeType: String,
-                size: Int, attachmentID: String?, inlineData: String?) {
+                size: Int, attachmentID: String?, inlineData: String?,
+                contentID: String? = nil) {
         self.id = id
         self.messageID = messageID
         self.filename = filename
@@ -34,6 +38,7 @@ public struct MailAttachment: Codable, FetchableRecord, PersistableRecord, Ident
         self.size = size
         self.attachmentID = attachmentID
         self.inlineData = inlineData
+        self.contentID = contentID
     }
 
     /// True when the content is already here.

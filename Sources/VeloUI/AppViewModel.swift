@@ -306,6 +306,10 @@ public final class AppViewModel: ObservableObject {
         case .send: send()
         case .goToInbox: show(.inbox)
         case .goToSent: show(.sent)
+        case .goToSnoozed: show(.snoozed)
+        case .snoozeUntilTomorrow: snoozeSelected(until: { SnoozeHorizon.tomorrow() })
+        case .snoozeUntilNextWeek: snoozeSelected(until: { SnoozeHorizon.nextWeek() })
+        case .unsnoozeSelected: dispose("Woken") { try inbox.unsnoozeSelected() }
         case .back: goBack()
         case .openCommandPalette: route = .palette
         case .openSearch: route = .search
@@ -500,13 +504,22 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func snoozeSelected(hours: Double) {
-        let targets = inbox.targetThreads
-        guard !targets.isEmpty else { return }
-        // One wake time for the whole gesture, so a bulk snooze comes back
-        // together rather than trickling in.
-        let wake = Date().addingTimeInterval(hours * 3_600)
-        for thread in targets { try? outbound.snooze(threadID: thread.id, until: wake) }
-        try? inbox.reload()
+        snoozeSelected(until: { Date().addingTimeInterval(hours * 3_600) })
+    }
+
+    /// Snoozes every target to one wake time, so a bulk snooze comes back
+    /// together rather than trickling in.
+    ///
+    /// Undoable like an archive: the thread leaves the list either way, and a
+    /// mistyped `h` should cost no more than a mistyped `e`.
+    public func snoozeSelected(until horizon: () -> Date) {
+        let wake = horizon()
+        dispose("Snoozed") {
+            let targets = inbox.targetThreads
+            guard !targets.isEmpty else { return }
+            for thread in targets { try outbound.snooze(threadID: thread.id, until: wake) }
+            try inbox.reload()
+        }
     }
 
     public func loadFollowUps() {

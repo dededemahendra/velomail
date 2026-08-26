@@ -80,4 +80,35 @@ import Foundation
     @Test func anEmptyDisplayNameFallsBackToTheAddress() {
         #expect(MailFormatting.displayName(" <bare@example.com>") == "bare@example.com")
     }
+
+    // MARK: - When something comes back
+
+    private func wake(_ offset: TimeInterval) -> String {
+        MailFormatting.wakeTime(now.addingTimeInterval(offset), now: now, calendar: calendar)
+    }
+
+    @Test func laterTodayIsJustTheTime() {
+        #expect(wake(2 * 3_600).contains("19"))
+        #expect(!wake(2 * 3_600).lowercased().contains("tomorrow"))
+    }
+
+    @Test func tomorrowSaysSo() {
+        // A bare "09:00" on a list of future times reads as today.
+        #expect(wake(20 * 3_600).hasPrefix("Tomorrow"))
+    }
+
+    @Test func laterThisWeekNamesTheDay() {
+        let out = wake(3 * 86_400)
+        #expect(out.hasPrefix("Sun"))
+        #expect(out.contains("17"))
+    }
+
+    @Test func beyondAWeekGivesTheDate() {
+        #expect(wake(30 * 86_400).contains("Sep"))
+    }
+
+    @Test func aWakeTimeAlreadyPastReadsAsNow() {
+        // A thread at its wake time is on its way back, not overdue.
+        #expect(wake(-60) == "Now")
+    }
 }

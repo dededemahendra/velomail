@@ -46,6 +46,21 @@ public final class MailStore: Sendable {
         }
     }
 
+    /// Threads waiting to come back, soonest first.
+    ///
+    /// Ordered by wake time rather than arrival: this list answers "what is
+    /// coming back and when", so that is the order to read it in. A thread past
+    /// its wake time is excluded -- it belongs to the inbox again, and showing
+    /// it in both places would double-count it.
+    public func snoozedThreads(now: Date = Date()) throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "snoozedUntil IS NOT NULL AND snoozedUntil > ?", arguments: [now])
+                .order(sql: "snoozedUntil ASC")
+                .fetchAll(db)
+        }
+    }
+
     /// Threads whose snooze has expired.
     public func snoozedThreadsDue(now: Date) throws -> [MailThread] {
         try database.dbQueue.read { db in

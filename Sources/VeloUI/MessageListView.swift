@@ -16,6 +16,8 @@ struct MessageListView: NSViewRepresentable {
     /// The person a row is about. Supplied rather than read off the thread,
     /// because in Sent that is the recipient, not the sender.
     let name: (MailThread) -> String
+    /// The date a row shows. In Snoozed that is when it comes back.
+    let date: (MailThread) -> String
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
 
@@ -121,7 +123,8 @@ struct MessageListView: NSViewRepresentable {
             case let .thread(thread, index):
                 return ThreadRowView(thread: thread,
                                      isMarked: parent.markedIndices.contains(index),
-                                     name: parent.name(thread))
+                                     name: parent.name(thread),
+                                     dateText: parent.date(thread))
             }
         }
 
@@ -181,7 +184,7 @@ private final class SectionHeaderView: NSView {
 
 /// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 private final class ThreadRowView: NSView {
-    init(thread: MailThread, isMarked: Bool, name: String) {
+    init(thread: MailThread, isMarked: Bool, name: String, dateText: String) {
         super.init(frame: .zero)
 
         // Fixed width whether or not it is showing, so marking a row does not
@@ -208,7 +211,7 @@ private final class ThreadRowView: NSView {
 
         // Tabular figures so the dates form a straight right edge instead of
         // wobbling by a pixel per digit.
-        let date = NSTextField(labelWithString: MailFormatting.relativeDate(thread.lastMessageDate))
+        let date = NSTextField(labelWithString: dateText)
         date.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         date.textColor = .tertiaryLabelColor
         date.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -268,6 +271,30 @@ enum MailFormatting {
     /// A mail list is scanned, not read: "17:11" and "Monday" answer *when*
     /// instantly, where "25/08/26" makes you do arithmetic. The year only
     /// appears once it is actually ambiguous.
+    /// When a snoozed thread comes back.
+    ///
+    /// Deliberately not `relativeDate`, which treats anything in the future as
+    /// "today" and prints a bare clock time. On a list of future times that
+    /// reads as today for every row, which is the one thing it must not say.
+    static func wakeTime(_ date: Date, now: Date = Date(),
+                         calendar: Calendar = .current) -> String {
+        guard date > now else { return "Now" }
+        let days = calendar.dateComponents([.day],
+                                           from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        let time = formatted(date, calendar, timeStyle: .short, dateStyle: .none)
+
+        switch days {
+        case 0: return time
+        case 1: return "Tomorrow \(time)"
+        case 2..<7: return "\(formatted(date, calendar, template: "EEE")) \(time)"
+        default:
+            let sameYear = calendar.component(.year, from: date)
+                == calendar.component(.year, from: now)
+            return "\(formatted(date, calendar, template: sameYear ? "d MMM" : "d MMM yyyy")) \(time)"
+        }
+    }
+
     static func relativeDate(_ date: Date, now: Date = Date(),
                              calendar: Calendar = .current) -> String {
         // Day boundaries, not elapsed hours: 01:00 today and 23:00 yesterday

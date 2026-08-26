@@ -98,12 +98,24 @@ public enum GmailMessageMapper {
                 mimeType: part.mimeType ?? "application/octet-stream",
                 size: part.body?.size ?? 0,
                 attachmentID: part.body?.attachmentId,
-                inlineData: part.body?.attachmentId == nil ? part.body?.data : nil))
+                inlineData: part.body?.attachmentId == nil ? part.body?.data : nil,
+                contentID: contentID(of: part)))
         }
 
         for (index, child) in (part.parts ?? []).enumerated() {
             collectAttachments(child, messageID: messageID, path: "\(path).\(index)", into: &found)
         }
+    }
+
+    /// The part's `Content-ID` with its angle brackets removed, because a body
+    /// writes `cid:logo@velo`, never `cid:<logo@velo>`.
+    private static func contentID(of part: GmailMessageDTO.Part) -> String? {
+        guard let raw = part.headers?.first(where: {
+            $0.name.caseInsensitiveCompare("Content-ID") == .orderedSame
+        })?.value else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: - Internals

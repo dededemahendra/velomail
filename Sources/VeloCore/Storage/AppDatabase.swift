@@ -234,6 +234,16 @@ public final class AppDatabase: Sendable {
                 """)
         }
 
+
+        migrator.registerMigration("v16_add_attachment_contentID") { db in
+            // Nullable and unbackfilled: a `cid:` reference in an already-synced
+            // message simply stays unresolved until that message is next
+            // hydrated, which is cheaper than re-fetching the whole mailbox.
+            try db.alter(table: "attachment") { t in
+                t.add(column: "contentID", .text)
+            }
+        }
+
         return migrator
     }
 }
