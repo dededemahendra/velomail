@@ -73,12 +73,15 @@ public struct RootView: View {
                                 onOpen: { app.openFromSearch($0) })
                     Divider()
                 }
+                MailboxHeader(title: app.inbox.title, count: app.inbox.threads.count)
+                Divider()
                 if app.inbox.threads.isEmpty {
-                    InboxZeroView()
+                    EmptyListView(scope: app.inbox.scope)
                 } else {
                     MessageListView(sections: app.sections,
                                     selectedIndex: app.inbox.selectedIndex,
                                     markedIndices: app.inbox.markedIndices,
+                                    name: { app.inbox.correspondent(of: $0) },
                                     onSelect: { app.inbox.select(index: $0) },
                                     onOpen: { app.perform(.openSelected) })
                 }
@@ -118,14 +121,35 @@ public struct RootView: View {
 ///
 /// An empty table reads as a loading failure rather than as success, and
 /// finishing is the thing this app is for.
-struct InboxZeroView: View {
+/// Names the list you are looking at. Without it, Inbox and Sent are two
+/// identical columns of names and dates.
+struct MailboxHeader: View {
+    let title: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Text("\(count)")
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+    }
+}
+
+struct EmptyListView: View {
+    let scope: MailScope
+
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "checkmark.circle")
+            Image(systemName: scope == .inbox ? "checkmark.circle" : "paperplane")
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text("Inbox zero").font(.title3.weight(.medium))
-            Text("Nothing left to triage.")
+            Text(scope == .inbox ? "Inbox zero" : "Nothing sent yet")
+                .font(.title3.weight(.medium))
+            Text(scope == .inbox ? "Nothing left to triage." : "Messages you send appear here.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

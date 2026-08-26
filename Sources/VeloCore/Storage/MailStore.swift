@@ -31,6 +31,21 @@ public final class MailStore: Sendable {
         try database.dbQueue.read { try Self.inboxRequest(now: now).fetchAll($0) }
     }
 
+    /// Threads carrying Gmail's own `SENT` label, newest first.
+    ///
+    /// Not filtered by snooze: a snooze says when something should come back to
+    /// the inbox and has nothing to say about what you have already sent. A
+    /// replied-to conversation carries both labels and appears in both places,
+    /// exactly as it does in Gmail.
+    public func sentThreads() throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"SENT\"%"])
+                .order(sql: "lastMessageDate DESC")
+                .fetchAll(db)
+        }
+    }
+
     /// Threads whose snooze has expired.
     public func snoozedThreadsDue(now: Date) throws -> [MailThread] {
         try database.dbQueue.read { db in

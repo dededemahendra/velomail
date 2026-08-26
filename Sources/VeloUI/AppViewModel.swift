@@ -304,7 +304,8 @@ public final class AppViewModel: ObservableObject {
             compose.resumeDraft()
             route = .compose
         case .send: send()
-        case .goToInbox: route = .list
+        case .goToInbox: show(.inbox)
+        case .goToSent: show(.sent)
         case .back: goBack()
         case .openCommandPalette: route = .palette
         case .openSearch: route = .search
@@ -423,6 +424,12 @@ public final class AppViewModel: ObservableObject {
         case let .web(url):
             openURL(url)
         }
+    }
+
+    /// Switches which list is on screen and puts the focus back on it.
+    private func show(_ scope: MailScope) {
+        try? inbox.show(scope)
+        route = .list
     }
 
     // MARK: - Failures
@@ -555,7 +562,7 @@ public final class AppViewModel: ObservableObject {
 /// honestly instead of writing an empty file.
 struct UnavailableSource: GmailReading {
     func getProfile() async throws -> GmailProfile { throw AttachmentError.unavailable }
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         throw AttachmentError.unavailable
     }
     func getMessage(id: String) async throws -> GmailMessageDTO { throw AttachmentError.unavailable }

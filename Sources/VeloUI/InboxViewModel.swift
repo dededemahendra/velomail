@@ -7,8 +7,24 @@ import VeloCore
 /// Reads only from `MailStore` and issues actions through `OutboundService`, so
 /// the UI never waits on the network: an archive is visible immediately and the
 /// sync actor pushes it later.
+/// Which of the mailbox's lists is on screen.
+public enum MailScope: Equatable, Sendable {
+    case inbox
+    case sent
+
+    /// What the list calls itself.
+    public var title: String {
+        switch self {
+        case .inbox: return "Inbox"
+        case .sent: return "Sent"
+        }
+    }
+}
+
 @MainActor
 public final class InboxViewModel: ObservableObject {
+    /// The list currently on screen. Changing it reloads from the top.
+    @Published public private(set) var scope: MailScope = .inbox
     @Published public private(set) var threads: [MailThread] = []
     /// `threads`, grouped. A contiguous partition of the same array, so
     /// `sections.flatMap(\.threads) == threads` always holds and a flat row
@@ -69,9 +85,39 @@ public final class InboxViewModel: ObservableObject {
     /// Re-reads the inbox. Selection clamps rather than dangling, because
     /// background sync can shrink the list under the cursor at any moment.
     public func reload() throws {
-        regroup(try store.inboxThreads())
+        regroup(try threadsInScope())
         cursor.reset(count: threads.count)
         try refreshSelectedMessages()
+    }
+
+    /// What the list calls itself, for the header.
+    public var title: String { scope.title }
+
+    /// Switches list. The cursor starts at the top rather than keeping its row:
+    /// an index carried across two different lists lands on whatever happens to
+    /// sit in that position.
+    public func show(_ scope: MailScope) throws {
+        guard scope != self.scope else { return }
+        self.scope = scope
+        try reload()
+    }
+
+    /// The person a row is about: who wrote it in the inbox, who it went to in
+    /// Sent. "me" on every row of Sent tells the writer nothing.
+    public func correspondent(of thread: MailThread) -> String {
+        guard scope == .sent else { return MailFormatting.displayName(thread.sender) }
+        let recipients = (try? store.messages(inThread: thread.id).last?.recipients) ?? []
+        guard let first = recipients.first else { return MailFormatting.displayName(thread.sender) }
+        let name = MailFormatting.displayName(first)
+        guard recipients.count > 1 else { return name }
+        return "\(name) and \(recipients.count - 1) other\(recipients.count == 2 ? "" : "s")"
+    }
+
+    private func threadsInScope() throws -> [MailThread] {
+        switch scope {
+        case .inbox: return try store.inboxThreads()
+        case .sent: return try store.sentThreads()
+        }
     }
 
     public func moveDown() {
@@ -183,7 +229,7 @@ public final class InboxViewModel: ObservableObject {
 
     private func reloadPreservingSelection() throws {
         let previous = cursor.index
-        regroup(try store.inboxThreads())
+        regroup(try threadsInScope())
         cursor.reset(count: threads.count)
         if let previous { cursor.select(min(previous, max(threads.count - 1, 0))) }
         try refreshSelectedMessages()

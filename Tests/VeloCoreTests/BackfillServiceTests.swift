@@ -38,7 +38,7 @@ private final class ScriptedSource: GmailReading, @unchecked Sendable {
         return GmailProfile(emailAddress: "u@x.com", historyId: profileHistoryId)
     }
 
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         callLog.append("list")
         if pageToken == nil { pageIndex = 0 }
         let page = pages[pageIndex]
@@ -78,7 +78,7 @@ private final class ObservingSource: GmailReading, @unchecked Sendable {
         GmailProfile(emailAddress: "u@x.com", historyId: "5000")
     }
 
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         (ids, nil)
     }
 

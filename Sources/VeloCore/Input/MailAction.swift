@@ -17,6 +17,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case send
     case compose
     case goToInbox
+    case goToSent
     /// Leave the current view; also cancels a half-typed chord.
     case back
     case openCommandPalette

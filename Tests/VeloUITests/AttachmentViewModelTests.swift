@@ -6,7 +6,7 @@ import VeloCore
 private final class FakeSource: GmailReading, @unchecked Sendable {
     var shouldFail = false
     func getProfile() async throws -> GmailProfile { fatalError() }
-    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+    func listMessageIDs(labelID: String, pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         fatalError()
     }
     func getMessage(id: String) async throws -> GmailMessageDTO { fatalError() }
