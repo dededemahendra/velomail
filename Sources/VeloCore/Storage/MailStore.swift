@@ -67,6 +67,18 @@ public final class MailStore: Sendable {
 
     /// Sets a thread's aggregate `labelIDs` + `isUnread`, preserving all other
     /// fields. No-op if the thread does not exist.
+    /// The newest inbox messages, for deciding what to announce. Capped because
+    /// the announcer only ever looks at what arrived since a mark.
+    public func recentInboxMessages(limit: Int = 100) throws -> [Message] {
+        try database.dbQueue.read { db in
+            try Message
+                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"INBOX\"%"])
+                .order(sql: "date DESC")
+                .limit(limit)
+                .fetchAll(db)
+        }
+    }
+
     public func upsert(_ attachment: MailAttachment) throws {
         try database.dbQueue.write { try attachment.save($0) }
     }

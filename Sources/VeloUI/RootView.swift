@@ -69,7 +69,8 @@ public struct RootView: View {
                                     onOpen: { app.perform(.openSelected) })
                 }
                 Divider()
-                StatusBar(status: app.syncStatus, count: app.inbox.threads.count)
+                StatusBar(status: app.syncStatus, count: app.inbox.threads.count,
+                          unread: app.visibleUnreadCount, isFocused: app.isFocused)
             }
             .frame(minWidth: 300, idealWidth: 380, maxWidth: 520)
 
@@ -120,12 +121,19 @@ struct InboxZeroView: View {
 struct StatusBar: View {
     let status: SyncStatus
     let count: Int
+    let unread: Int
+    let isFocused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
             Circle().frame(width: 6, height: 6).foregroundStyle(colour)
             Text(label).font(.caption).foregroundStyle(.secondary)
             Spacer()
+            if isFocused {
+                Image(systemName: "moon.fill").font(.caption2).foregroundStyle(.secondary)
+            } else if unread > 0 {
+                Text("\(unread) unread").font(.caption).foregroundStyle(.secondary)
+            }
             Text("\(count)").font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 7)

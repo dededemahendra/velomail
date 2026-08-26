@@ -83,3 +83,29 @@ logic beyond forwarding, and it cannot run in a test process anyway.
 - A message arriving dated older than the last announced one stays silent.
 - The mark is per-installation; two Macs each announce once.
 - No notification actions, no sounds, no per-sender rules.
+
+---
+
+## Completion record
+
+753 → 781 tests, clean build, no warnings. No migration, as §4 said: the mark is
+`UserDefaults`.
+
+The announcer carries the increment's weight — 18 tests for a type with one
+method — because every way this feature goes wrong is a decision, not a
+mechanism. First-run silence, self-authored mail through a display name, the
+mark surviving a simulated restart, the mark refusing to go backwards, the burst
+cap, and showing the *newest* few rather than the first few.
+
+**One trap worth recording:** `UNUserNotificationCenter.current()` traps outright
+when the process has no bundle identifier, which is exactly the case in a test
+runner. The presenter guards on `Bundle.main.bundleIdentifier` before touching
+it — without that, importing the type into a test target is enough to crash the
+suite.
+
+**Verified by launching:** the status bar shows "2 unread" against the demo
+mailbox and the app logs nothing on start.
+
+**Not verified:** an actual banner. Demo mode announces nothing by design (first
+run, no mark), and an unsigned build may not be permitted to post at all — which
+is exactly the case §6 says must degrade quietly, and it does.

@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-753 tests, no XCTest, no `.xcodeproj`.
+781 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -130,6 +130,7 @@ untouched.
 | `u` | unsubscribe from the open thread |
 | `Cmd+Z` | undo send (10s window) |
 | `g` `f` | threads awaiting a reply |
+| `g` `d` | focus mode (hides counts, silences banners) |
 | `a` `s` / `a` `r` / `a` `t` | summarise / suggest replies / triage (AI) |
 | `Esc` | back, or cancel a half-typed chord |
 
@@ -138,7 +139,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 753 tests; offline and deterministic
+swift test          # 781 tests; offline and deterministic
 swift build
 ```
 
@@ -161,6 +162,20 @@ The suite is offline by default. To exercise the real Ollama wire format:
 ```bash
 VELOMAIL_LIVE_OLLAMA=1 VELOMAIL_OLLAMA_MODEL="your-model" swift test --filter OllamaLiveTests
 ```
+
+## Notifications and focus
+
+New mail raises a banner and updates the Dock badge. What gets announced is
+deliberately conservative: nothing on the first run (a fresh account backfills
+hundreds of messages), never your own sent mail, never the same message twice,
+and a burst is capped at three banners plus a summary.
+
+`g` `d` toggles focus, which silences banners and hides the unread count — not
+knowing how much is waiting is the point of it.
+
+If macOS refuses notification permission, or the build is unsigned and simply
+not allowed to post, the app carries on without banners rather than complaining
+every sync.
 
 ## Time
 
@@ -301,6 +316,5 @@ plain search terms.
 Server-side drafts (`users.drafts`), resumable upload for very large
 attachments, multiple accounts, pinning a
 thread to the top, collapsing the quoted part of a reply (parsing someone
-else's quoting is its own problem), desktop notifications, local filters and
-rules, calendar and contacts, anything needing a server (team features), and
+else's quoting is its own problem), local filters and rules, calendar and contacts, anything needing a server (team features), and
 code signing / notarisation.
