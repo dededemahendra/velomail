@@ -5,7 +5,7 @@ import SwiftUI
 import VeloCore
 
 public enum Route: Equatable, Sendable {
-    case setup, signIn, list, thread, compose, palette, search, analytics
+    case setup, signIn, list, thread, compose, palette, search, analytics, drafts
 }
 
 /// Owns which surface is focused and turns keystrokes into actions.
@@ -65,6 +65,9 @@ public final class AppViewModel: ObservableObject {
             return "arrow.uturn.backward"
         }
     }
+
+    /// Every message being written, most recently touched first.
+    @Published public private(set) var drafts: [StoredDraft] = []
 
     /// Changes the queue gave up on. Unlike undo this does not expire: a
     /// message that never went has to still be there when the writer looks up.
@@ -307,6 +310,7 @@ public final class AppViewModel: ObservableObject {
         case .goToInbox: show(.inbox)
         case .goToSent: show(.sent)
         case .goToSnoozed: show(.snoozed)
+        case .goToDrafts: showDrafts()
         case .snoozeUntilTomorrow: snoozeSelected(until: { SnoozeHorizon.tomorrow() })
         case .snoozeUntilNextWeek: snoozeSelected(until: { SnoozeHorizon.nextWeek() })
         case .unsnoozeSelected: dispose("Woken") { try inbox.unsnoozeSelected() }
@@ -436,6 +440,29 @@ public final class AppViewModel: ObservableObject {
         route = .list
     }
 
+    // MARK: - Drafts
+
+    /// Opens the draft list, always re-read: one written since the last visit
+    /// has to be in it.
+    public func showDrafts() {
+        drafts = compose.storedDrafts
+        route = .drafts
+    }
+
+    /// Puts a chosen draft back in the composer, keeping its row so further
+    /// edits update it rather than forking a copy.
+    public func resumeDraft(_ stored: StoredDraft) {
+        compose.resume(stored)
+        route = .compose
+    }
+
+    /// Bins one draft from the list, leaving the rest and whatever is being
+    /// written alone.
+    public func discardDraft(_ stored: StoredDraft) {
+        compose.discard(stored)
+        drafts = compose.storedDrafts
+    }
+
     // MARK: - Failures
 
     /// Rereads what the queue has given up on.
@@ -561,7 +588,7 @@ public final class AppViewModel: ObservableObject {
     /// is nowhere further to go.
     private func goBack() {
         switch route {
-        case .thread, .compose, .palette, .analytics: route = .list
+        case .thread, .compose, .palette, .analytics, .drafts: route = .list
         case .search:
             search.clear()
             route = .list

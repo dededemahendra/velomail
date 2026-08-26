@@ -28,6 +28,11 @@ public struct RootView: View {
                             assistant: app.assistant,
                             onSend: { app.perform(.send) },
                             onCancel: { app.perform(.back) })
+            case .drafts:
+                DraftListView(drafts: app.drafts,
+                              onOpen: { app.resumeDraft($0) },
+                              onDiscard: { app.discardDraft($0) },
+                              onClose: { app.perform(.back) })
             default:
                 mailSurface
             }

@@ -125,7 +125,10 @@ public struct KeyboardEngine {
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("s"))): .goToSent,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("h"))): .goToSnoozed,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("f"))): .showFollowUps,
-        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("d"))): .toggleFocus,
+        // `g d` is drafts in every other mail client; focus mode is ours to
+        // place, so it moved to `g z` rather than holding the conventional key.
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("d"))): .goToDrafts,
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("z"))): .toggleFocus,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("a"))): .showAnalytics,
         // AI lives behind `a`, freeing `s` for star. AI is optional and off by
         // default, so on most launches `s` and `d` were two of the best keys on
