@@ -40,10 +40,31 @@ public enum MIMEBuilder {
 
     // MARK: - Body
 
-    /// Content headers plus the body. A draft with HTML becomes a
-    /// `multipart/alternative` whose plain-text part comes first, per RFC 2046:
-    /// the least-capable rendering goes earliest so simple clients stop there.
+    /// Content headers plus the body.
+    ///
+    /// Files do not get appended to the body's parts -- they *wrap* it. Putting
+    /// a PDF inside `multipart/alternative` tells the recipient's client it is
+    /// an alternative rendering of the message, so it shows the PDF instead of
+    /// the text. The nesting is the whole point.
     private static func content(of draft: Draft, boundary: String) -> (headers: [String], body: String) {
+        let (bodyHeaders, bodyPart) = messageBody(of: draft, boundary: boundary)
+        guard !draft.attachments.isEmpty else { return (bodyHeaders, bodyPart) }
+
+        // The inner multipart needs its own boundary: reusing the outer one
+        // terminates the outer part early and truncates the message.
+        let inner = "\(boundary)-alt"
+        let (innerHeaders, innerBody) = messageBody(of: draft, boundary: inner)
+
+        var parts = [(["--\(boundary)"] + innerHeaders + ["", innerBody]).joined(separator: crlf)]
+        parts += draft.attachments.map { attachmentPart($0, boundary: boundary) }
+        parts.append("--\(boundary)--")
+
+        return (["Content-Type: multipart/mixed; boundary=\"\(boundary)\""],
+                parts.joined(separator: crlf))
+    }
+
+    /// The message itself: plain text, or `multipart/alternative` with HTML.
+    private static func messageBody(of draft: Draft, boundary: String) -> (headers: [String], body: String) {
         guard let html = draft.bodyHTML else {
             return (["Content-Type: text/plain; charset=\"UTF-8\"",
                      "Content-Transfer-Encoding: base64"],
@@ -67,6 +88,16 @@ public enum MIMEBuilder {
                 parts.joined(separator: crlf))
     }
 
+    private static func attachmentPart(_ attachment: DraftAttachment, boundary: String) -> String {
+        let name = encodedWordIfNeeded(attachment.filename)
+        return ["--\(boundary)",
+                "Content-Type: \(attachment.mimeType); name=\"\(name)\"",
+                "Content-Transfer-Encoding: base64",
+                "Content-Disposition: attachment; filename=\"\(name)\"",
+                "",
+                wrapBase64(attachment.data.base64EncodedString())].joined(separator: crlf)
+    }
+
     // MARK: - Encoding
 
     private static let crlf = "\r\n"
@@ -75,7 +106,11 @@ public enum MIMEBuilder {
     /// unwrapped body can exceed the 998-octet line cap that RFC 5322 imposes,
     /// which some MTAs enforce by rewriting or rejecting the message.
     private static func base64Body(_ string: String) -> String {
-        let encoded = Data(string.utf8).base64EncodedString()
+        wrapBase64(Data(string.utf8).base64EncodedString())
+    }
+
+    /// Wraps base64 at the RFC 2045 limit.
+    private static func wrapBase64(_ encoded: String) -> String {
         return stride(from: 0, to: encoded.count, by: 76).map { offset in
             let start = encoded.index(encoded.startIndex, offsetBy: offset)
             let end = encoded.index(start, offsetBy: min(76, encoded.count - offset))
