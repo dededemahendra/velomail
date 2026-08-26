@@ -5,7 +5,6 @@ import VeloCore
 /// ready `AppViewModel`. Kept out of the view models so they stay testable
 /// against an in-memory database.
 public enum Composition {
-    static let redirectURI = "co.sistercreatives.velomail:/oauth2redirect"
     static let identityKey = "VELOMAIL_IDENTITY"
 
     /// Where the mailbox lives between launches.
@@ -64,7 +63,8 @@ public enum Composition {
         }
 
         let httpClient = URLSessionHTTPClient()
-        let authConfig = AuthConfig.gmail(clientID: clientID, redirectURI: redirectURI)
+        // The redirect is derived from the client id; see AuthConfig.
+        let authConfig = AuthConfig.gmail(clientID: clientID)
         let tokenService = TokenService(config: authConfig, httpClient: httpClient)
         let tokenStore = KeychainTokenStore()
         let tokenProvider = AccessTokenProvider(store: tokenStore, service: tokenService)

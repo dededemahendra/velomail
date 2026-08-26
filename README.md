@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-805 tests, no XCTest, no `.xcodeproj`.
+811 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -33,7 +33,15 @@ You need a Google Cloud OAuth client id. In
 [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services:
 
 1. Enable the **Gmail API**.
-2. Credentials → Create credentials → **OAuth client ID** → type **Desktop app**.
+2. Credentials → Create credentials → **OAuth client ID** → type **iOS**, bundle ID
+   `co.sistercreatives.velomail`.
+
+   Not *Desktop app*: Velo Mail signs in through `ASWebAuthenticationSession`
+   with a custom URI scheme, and Google only accepts that for an iOS client —
+   where the scheme must be the reversed client id. A Desktop client accepts
+   loopback only, and would need a local HTTP server to catch the redirect.
+   The app derives the right redirect URI from your client id, so there is
+   nothing to configure.
 3. On the consent screen, add yourself as a test user (the `gmail.modify` scope
    needs Google's review before public distribution, but not for your own use).
 
@@ -139,7 +147,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 805 tests; offline and deterministic
+swift test          # 811 tests; offline and deterministic
 swift build
 ```
 
