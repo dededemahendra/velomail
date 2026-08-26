@@ -38,15 +38,22 @@ public struct AddressBook: Sendable {
     public static func build(from store: MailStore, identity: String,
                              now: Date = Date(), withinDays: Int = 365) throws -> AddressBook {
         let cutoff = now.addingTimeInterval(-Double(withinDays) * 86_400)
-        let messages = try store.database.dbQueue.read { db in
-            try Message.filter(sql: "date >= ?", arguments: [cutoff]).fetchAll(db)
+        // Three columns rather than whole messages: the bodies are the bulk of
+        // the table, and this runs on the main thread as the composer opens.
+        let rows = try store.database.dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT sender, recipients, cc FROM message WHERE date >= ?
+                """, arguments: [cutoff])
         }
 
         let mine = Draft.normalizedAddress(identity)
         var seen: [String: (name: String?, count: Int)] = [:]
 
-        for message in messages {
-            for header in [[message.sender], message.recipients, message.cc].flatMap({ $0 }) {
+        for row in rows {
+            let sender: String = row["sender"] ?? ""
+            let headers = [sender] + addresses(inColumn: row["recipients"])
+                + addresses(inColumn: row["cc"])
+            for header in headers {
                 let address = Draft.normalizedAddress(header)
                 guard !address.isEmpty, address != mine, address.contains("@") else { continue }
 
@@ -63,6 +70,14 @@ public struct AddressBook: Sendable {
         return AddressBook(contacts: seen.map {
             Contact(address: $0.key, name: $0.value.name, count: $0.value.count)
         })
+    }
+
+    /// Decodes one of the JSON address columns, treating anything unreadable as
+    /// empty: a malformed row should cost its own addresses, not the whole book.
+    private static func addresses(inColumn value: String?) -> [String] {
+        guard let value, let data = value.data(using: .utf8),
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return list
     }
 
     /// Contacts matching `prefix`, best first.

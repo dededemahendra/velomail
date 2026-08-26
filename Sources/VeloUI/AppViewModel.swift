@@ -54,7 +54,7 @@ public final class AppViewModel: ObservableObject {
     public struct Undoable: Equatable {
         public enum Kind: Equatable {
             case send(Int64)
-            /// Threads to put back, and whether they went to the bin.
+            /// Threads to put back in the inbox.
             case disposal([String])
         }
         public let kind: Kind
@@ -65,6 +65,7 @@ public final class AppViewModel: ObservableObject {
             return "arrow.uturn.backward"
         }
     }
+
     /// Threads you are waiting on, shown by `g f`.
     @Published public private(set) var followUps: [MailThread] = []
     @Published public private(set) var isShowingFollowUps = false
