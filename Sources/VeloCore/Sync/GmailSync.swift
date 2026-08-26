@@ -17,6 +17,7 @@ public actor GmailSync {
     private let clock: SyncClock
     private let backoff: BackoffPolicy
     private let maxMutationAttempts: Int
+    private let rules: RuleApplier?
     private var isSyncing = false
     private var consecutiveFailures = 0
 
@@ -27,7 +28,8 @@ public actor GmailSync {
     public init(accountID: String, backfill: BackfillService, incremental: IncrementalSyncService,
                 outbound: OutboundService, syncState: SyncStateStore, backfillLimit: Int = 500,
                 now: @escaping () -> Date = { Date() }, clock: SyncClock = SystemSyncClock(),
-                backoff: BackoffPolicy = .standard, maxMutationAttempts: Int = 3) {
+                backoff: BackoffPolicy = .standard, maxMutationAttempts: Int = 3,
+                rules: RuleApplier? = nil) {
         self.accountID = accountID
         self.backfill = backfill
         self.incremental = incremental
@@ -38,6 +40,7 @@ public actor GmailSync {
         self.clock = clock
         self.backoff = backoff
         self.maxMutationAttempts = maxMutationAttempts
+        self.rules = rules
     }
 
     /// Polls until cancelled: a pass, then a wait, forever.
@@ -116,7 +119,11 @@ public actor GmailSync {
         }
 
         do {
-            try await incremental.sync(accountID: accountID)
+            // Rules see only what this returns -- threads that just arrived.
+            // Running them over a backfill would archive hundreds of messages
+            // the user had already dealt with, on every device.
+            let arrived = try await incremental.sync(accountID: accountID)
+            try rules?.apply(toThreads: arrived)
         } catch is SyncError {
             // Both SyncError cases mean the same thing: there is no usable
             // cursor. `historyExpired` is Gmail dropping history older than
@@ -128,7 +135,8 @@ public actor GmailSync {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
             // Exactly one retry: a cursor that is still unusable after a fresh
             // backfill is a real fault, and retrying it in a loop would spin.
-            try await incremental.sync(accountID: accountID)
+            // Deliberately no rules here: everything this pulls is history.
+            _ = try await incremental.sync(accountID: accountID)
         }
 
         try await outbound.drain()

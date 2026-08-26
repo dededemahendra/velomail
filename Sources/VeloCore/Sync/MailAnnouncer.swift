@@ -26,7 +26,14 @@ public struct MailAnnouncer: Sendable {
     /// interruptions.
     public static let maximumBanners = 3
 
-    public init() {}
+    private let blocklist: RuleEngine?
+
+    /// - Parameter blocklist: rules whose `block` action means "never show me
+    ///   this". Announcing blocked mail would make the feature worse than not
+    ///   having it.
+    public init(blocklist: RuleEngine? = nil) {
+        self.blocklist = blocklist
+    }
 
     /// - Parameter since: the mark from the previous run. `nil` means this
     ///   installation has never announced anything, which is treated as "say
@@ -47,6 +54,7 @@ public struct MailAnnouncer: Sendable {
             // Sending puts a message in the thread; it must not come back as
             // "new mail from you".
             .filter { Draft.normalizedAddress($0.sender) != mine }
+            .filter { blocklist?.isBlocked($0) != true }
             .sorted { $0.date > $1.date }
 
         let shown = candidates.prefix(Self.maximumBanners).map {

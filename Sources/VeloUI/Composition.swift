@@ -36,6 +36,7 @@ public enum Composition {
         let mutations = MutationStore(database)
         let syncState = SyncStateStore(database)
         let drafts = DraftStore(database)
+        let ruleLibrary = RuleLibrary.load()
         // The account id is stable and local; the *address* is discovered from
         // Gmail's profile on first backfill. Keeping them separate is what lets
         // the app be built before it knows who it is.
@@ -77,7 +78,10 @@ public enum Composition {
             backfill: BackfillService(source: api, store: store, syncState: syncState),
             incremental: IncrementalSyncService(source: api, store: store, syncState: syncState),
             outbound: outbound,
-            syncState: syncState)
+            syncState: syncState,
+            // Rules see arrivals only; GmailSync never hands it a backfill.
+            rules: RuleApplier(engine: RuleEngine(rules: ruleLibrary.rules),
+                               store: store, outbound: outbound))
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,

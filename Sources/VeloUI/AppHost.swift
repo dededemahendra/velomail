@@ -69,7 +69,7 @@ final class AppHost: ObservableObject {
         guard app.shouldAnnounce else { return }
 
         let messages = (try? store.recentInboxMessages(limit: 100)) ?? []
-        let result = MailAnnouncer().announce(messages: messages,
+        let result = MailAnnouncer(blocklist: RuleEngine(rules: RuleLibrary.load().rules)).announce(messages: messages,
                                               identity: app.identity,
                                               since: notifications.announcedThrough)
         notifications.present(result)

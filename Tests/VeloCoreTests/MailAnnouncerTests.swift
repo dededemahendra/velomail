@@ -151,4 +151,43 @@ private func message(_ id: String, from sender: String = "Alice <alice@example.c
                                         since: Date(timeIntervalSince1970: 1))
         #expect(result.items.first?.threadID == "t-m1")
     }
+
+    // MARK: - Blocked senders
+
+    @Test func aBlockedSenderIsNotAnnounced() {
+        let blocked = RuleEngine(rules: [
+            MailRule(id: "b", name: "b", conditions: [.senderContains("alice")], actions: [.block])
+        ])
+        let result = MailAnnouncer(blocklist: blocked)
+            .announce(messages: [message("m1")], identity: identity,
+                      since: Date(timeIntervalSince1970: 1))
+
+        // Announcing something the user asked never to see would make blocking
+        // worse than not having it.
+        #expect(result.items.isEmpty)
+    }
+
+    @Test func anUnblockedSenderStillAnnounces() {
+        let blocked = RuleEngine(rules: [
+            MailRule(id: "b", name: "b", conditions: [.senderContains("spammer")], actions: [.block])
+        ])
+        let result = MailAnnouncer(blocklist: blocked)
+            .announce(messages: [message("m1")], identity: identity,
+                      since: Date(timeIntervalSince1970: 1))
+
+        #expect(result.items.count == 1)
+    }
+
+    @Test func aBlockedMessageStillAdvancesTheMark() {
+        let blocked = RuleEngine(rules: [
+            MailRule(id: "b", name: "b", conditions: [.senderContains("alice")], actions: [.block])
+        ])
+        let result = MailAnnouncer(blocklist: blocked)
+            .announce(messages: [message("m1")], identity: identity,
+                      since: Date(timeIntervalSince1970: 1))
+
+        // Otherwise the mark stalls and the next real message re-announces
+        // everything behind it.
+        #expect(result.highWaterMark == Date(timeIntervalSince1970: 1_000_000))
+    }
 }

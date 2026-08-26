@@ -7,7 +7,10 @@
 # local development build -- not signed, not notarised.
 set -euo pipefail
 
-CONFIG="${1:-debug}"
+# Release by default: a debug binary is three times the size and carries
+# symbols nobody shipping needs. Pass "debug" for a build you intend to attach
+# a debugger to.
+CONFIG="${1:-release}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/VeloMail.app"
 
@@ -17,6 +20,20 @@ BIN="$(swift build -c "$CONFIG" --product VeloMail --show-bin-path)/VeloMail"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/VeloMail"
+
+# Stripping local symbols and debug entries halves it again. Kept out of the
+# debug path, where those symbols are the entire point.
+#
+# Re-signing afterwards is not optional: stripping rewrites the binary and
+# invalidates the ad-hoc signature the toolchain applied, and on Apple Silicon
+# the kernel then kills the process outright with
+# "SIGKILL (Code Signature Invalid)" -- which presents as an app that launches
+# and shows no window.
+if [ "$CONFIG" = "release" ]; then
+    strip -rSTx "$APP/Contents/MacOS/VeloMail" 2>/dev/null || true
+fi
+codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true
+codesign --verify --deep "$APP" 2>/dev/null || echo "warning: bundle signature did not verify"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -38,4 +55,5 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "built $APP"
+printf "built %s (%s, %s)\n" "$APP" "$CONFIG" \
+    "$(du -h "$APP/Contents/MacOS/VeloMail" | cut -f1)"

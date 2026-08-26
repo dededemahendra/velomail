@@ -109,7 +109,8 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
     private func makeSync(source: FakeGmail, seedState: SyncState? = nil,
                           seedMutationMessageIDs: [String]? = nil, backfillLimit: Int = 500,
-                          clock: SyncClock = SystemSyncClock(), failSeededMutation: Bool = false)
+                          clock: SyncClock = SystemSyncClock(), failSeededMutation: Bool = false,
+                          rules: [MailRule]? = nil)
         throws -> (GmailSync, MailStore, SyncStateStore, MutationStore) {
         let db = try AppDatabase.makeInMemory()
         let mailStore = MailStore(db)
@@ -130,7 +131,11 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
                                        now: { Date(timeIntervalSince1970: 0) })
         let sync = GmailSync(accountID: account, backfill: backfill, incremental: incremental,
                              outbound: outbound, syncState: syncStore, backfillLimit: backfillLimit,
-                             now: { Date(timeIntervalSince1970: 0) }, clock: clock)
+                             now: { Date(timeIntervalSince1970: 0) }, clock: clock,
+                             rules: rules.map {
+                                 RuleApplier(engine: RuleEngine(rules: $0), store: mailStore,
+                                             outbound: outbound)
+                             })
         return (sync, mailStore, syncStore, mutations)
     }
 
@@ -420,6 +425,48 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
 
         // A failure that will not fix itself must not be retried at full rate.
         #expect(clock.sleeps == [2, 4, 8])
+    }
+
+    // MARK: - Rules (U)
+
+    @Test func rulesNeverRunOverABackfill() async throws {
+        // Everything a first sync pulls is history the user already dealt with.
+        // Archiving it would be a real change on every device.
+        // Matches every message in the fixture, backfilled or not -- so if
+        // rules ran on backfill, "tb" would be archived too.
+        let archiveEverything = MailRule(id: "a", name: "a", conditions: [.subjectContains("s")],
+                                         actions: [.archive])
+        let (sync, mailStore, _, _) = try makeSync(source: fresh(), rules: [archiveEverything])
+
+        try await sync.syncNow()
+
+        // The backfilled thread survives; only the history-delivered one is judged.
+        #expect(try mailStore.thread(id: "tb") != nil)
+        #expect(try mailStore.thread(id: "tb")?.labelIDs.contains("INBOX") == true)
+    }
+
+    @Test func rulesRunOverThreadsThatArriveThroughHistory() async throws {
+        let archiveUnread = MailRule(id: "a", name: "a", conditions: [.subjectContains("s")],
+                                     actions: [.archive])
+        let (sync, mailStore, _, _) = try makeSync(
+            source: fresh(),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true),
+            rules: [archiveUnread])
+
+        try await sync.syncNow()
+
+        // "th" is the thread history delivers; it is a genuine arrival.
+        #expect(try mailStore.thread(id: "th")?.labelIDs.contains("INBOX") == false)
+    }
+
+    @Test func withNoRulesArrivalsAreUntouched() async throws {
+        let (sync, mailStore, _, _) = try makeSync(
+            source: fresh(),
+            seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true))
+
+        try await sync.syncNow()
+
+        #expect(try mailStore.thread(id: "th")?.labelIDs.contains("INBOX") == true)
     }
 }
 
