@@ -34,7 +34,8 @@ public struct RootView: View {
         }
         .overlay(alignment: .bottom) {
             if let prompt = app.undoPrompt {
-                UndoBanner(prompt: prompt, onUndo: { app.undo() })
+                UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
+                               onUndo: { app.undo() })
             }
         }
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)

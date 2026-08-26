@@ -112,4 +112,11 @@ private struct SilentWriter: GmailWriting {
         app.handle(KeyInput(.character("z"), [.command]))
         #expect(app.undoPrompt == nil)
     }
+
+    @Test func theBannerIconMatchesWhatCanBeTakenBack() throws {
+        // Carried with the action rather than read back out of the wording.
+        let (app, _) = try makeApp()
+        app.handle(KeyInput(.character("e")))
+        #expect(app.undoSymbol == "arrow.uturn.backward")
+    }
 }

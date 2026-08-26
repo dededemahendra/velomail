@@ -41,6 +41,10 @@ public final class AppViewModel: ObservableObject {
     /// What the banner says, or nil when there is nothing to undo.
     public var undoPrompt: String? { undoable?.prompt }
 
+    /// The banner's icon. Carried with the action rather than inferred from the
+    /// wording, which would change the icon the next time the copy is edited.
+    public var undoSymbol: String? { undoable?.symbol }
+
     /// Kept for the send path, which needs the queue id to cancel.
     public var undoableSend: Int64? {
         if case let .send(id) = undoable?.kind { return id }
@@ -55,6 +59,11 @@ public final class AppViewModel: ObservableObject {
         }
         public let kind: Kind
         public let prompt: String
+
+        public var symbol: String {
+            if case .send = kind { return "paperplane.fill" }
+            return "arrow.uturn.backward"
+        }
     }
     /// Threads you are waiting on, shown by `g f`.
     @Published public private(set) var followUps: [MailThread] = []

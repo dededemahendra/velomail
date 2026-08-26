@@ -5,14 +5,17 @@ import VeloCore
 /// makes the promise honest: once it goes, the mail is gone.
 struct UndoBanner: View {
     let prompt: String
+    var symbol: String = "arrow.uturn.backward"
     let onUndo: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: prompt == "Message sent" ? "paperplane.fill" : "arrow.uturn.backward")
-                .font(.caption)
+            Image(systemName: symbol).font(.caption)
             Text(prompt).font(.callout)
             Spacer()
+            // The shortcut is the way this is meant to be used; the button is
+            // for the times the writer has already reached for the mouse.
+            Text("\u{2318}Z").font(.caption2).foregroundStyle(.tertiary)
             Button("Undo", action: onUndo)
                 .buttonStyle(.borderless)
                 .keyboardShortcut("z", modifiers: .command)
