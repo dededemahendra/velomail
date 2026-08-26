@@ -67,7 +67,7 @@ struct SearchView: View {
                 Text(MailFormatting.displayName(thread.sender))
                     .font(.callout.weight(thread.isUnread ? .semibold : .regular))
                 Spacer()
-                Text(MailFormatting.shortDate(thread.lastMessageDate))
+                Text(MailFormatting.relativeDate(thread.lastMessageDate))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Text(thread.snippet)

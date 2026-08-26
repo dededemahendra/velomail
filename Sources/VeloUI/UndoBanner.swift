@@ -48,7 +48,7 @@ struct FollowUpBar: View {
                         HStack {
                             Text(thread.snippet).font(.callout).lineLimit(1)
                             Spacer()
-                            Text(MailFormatting.shortDate(thread.lastMessageDate))
+                            Text(MailFormatting.relativeDate(thread.lastMessageDate))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .contentShape(Rectangle())

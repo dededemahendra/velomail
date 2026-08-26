@@ -93,7 +93,8 @@ public struct RootView: View {
                     Color.clear
                 }
             }
-            .frame(minWidth: 420)
+            .frame(minWidth: 420, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
         }
     }
 }

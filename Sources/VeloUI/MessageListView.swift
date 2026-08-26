@@ -46,9 +46,14 @@ struct MessageListView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let table = NSTableView()
         table.headerView = nil
-        table.rowHeight = 64
+        table.rowHeight = 60
+        table.intercellSpacing = NSSize(width: 0, height: 2)
         table.style = .inset
-        table.selectionHighlightStyle = .regular
+        // A full accent-filled row is loud in a list you stare at all day. The
+        // source-list style keeps the sender legible and lets the unread dot and
+        // star stay the things that draw the eye. Set via `style`, since the
+        // matching selectionHighlightStyle has been deprecated since macOS 12.
+        table.style = .sourceList
         table.backgroundColor = .clear
         table.addTableColumn(NSTableColumn(identifier: .init("thread")))
         table.delegate = context.coordinator
@@ -181,39 +186,49 @@ private final class ThreadRowView: NSView {
         mark.textColor = .controlAccentColor
 
         let dot = NSTextField(labelWithString: thread.isUnread ? "●" : "")
-        dot.font = .systemFont(ofSize: 9)
+        dot.font = .systemFont(ofSize: 7)
         dot.textColor = .controlAccentColor
 
+        // Unread carries weight; read carries none. One signal, not two, so the
+        // list reads as a single column of names rather than a checkerboard.
         let sender = NSTextField(labelWithString: MailFormatting.displayName(thread.sender))
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
+        sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
         sender.lineBreakMode = .byTruncatingTail
+        sender.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
-        star.font = .systemFont(ofSize: 12)
+        star.font = .systemFont(ofSize: 11)
         star.textColor = .systemYellow
 
-        let date = NSTextField(labelWithString: MailFormatting.shortDate(thread.lastMessageDate))
-        date.font = .systemFont(ofSize: 11)
-        date.textColor = .secondaryLabelColor
+        // Tabular figures so the dates form a straight right edge instead of
+        // wobbling by a pixel per digit.
+        let date = NSTextField(labelWithString: MailFormatting.relativeDate(thread.lastMessageDate))
+        date.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        date.textColor = .tertiaryLabelColor
+        date.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let snippet = NSTextField(labelWithString: thread.snippet)
         snippet.font = .systemFont(ofSize: 12)
+        // Secondary, not tertiary: the snippet is the thing you actually read
+        // when deciding whether to open something.
         snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
 
         let top = NSStackView(views: [mark, dot, sender, NSView(), star, date])
         top.orientation = .horizontal
         top.spacing = 6
+        top.alignment = .firstBaseline
 
         let stack = NSStackView(views: [top, snippet])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 3
+        stack.spacing = 2
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             mark.widthAnchor.constraint(equalToConstant: 10),
         ])
@@ -224,18 +239,66 @@ private final class ThreadRowView: NSView {
 
 /// Shared address and date formatting for anything that lists mail.
 enum MailFormatting {
-    /// "Alice <a@b.com>" reads better as "Alice" wherever space is tight.
+    /// "Alice <a@b.com>" reads as "Alice" wherever space is tight.
+    ///
+    /// Quotes are stripped because headers routinely arrive as
+    /// `"Roberts, Natalie" <n@x.co>` -- the comma forces the quoting, and
+    /// showing it would look like a bug.
     static func displayName(_ value: String) -> String {
         guard let open = value.firstIndex(of: "<") else { return value }
-        let name = value[value.startIndex..<open].trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? value : name
+        let name = value[value.startIndex..<open]
+            .trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            .trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else {
+            // " <bare@example.com>" -- no name at all, so show the address.
+            let close = value.lastIndex(of: ">") ?? value.endIndex
+            return String(value[value.index(after: open)..<close])
+        }
+        return name
     }
 
-    static func shortDate(_ date: Date) -> String {
+    /// A date the way someone thinks about it, rather than a calendar entry.
+    ///
+    /// A mail list is scanned, not read: "17:11" and "Monday" answer *when*
+    /// instantly, where "25/08/26" makes you do arithmetic. The year only
+    /// appears once it is actually ambiguous.
+    static func relativeDate(_ date: Date, now: Date = Date(),
+                             calendar: Calendar = .current) -> String {
+        // Day boundaries, not elapsed hours: 01:00 today and 23:00 yesterday
+        // are two hours apart and belong on different sides of this.
+        let days = calendar.dateComponents([.day],
+                                           from: calendar.startOfDay(for: date),
+                                           to: calendar.startOfDay(for: now)).day ?? 0
+
+        switch days {
+        case ..<1:
+            return formatted(date, calendar, timeStyle: .short, dateStyle: .none)
+        case 1:
+            return "Yesterday"
+        case 2..<7:
+            return formatted(date, calendar, template: "EEEE")
+        default:
+            let sameYear = calendar.component(.year, from: date)
+                == calendar.component(.year, from: now)
+            return formatted(date, calendar, template: sameYear ? "d MMM" : "d MMM yyyy")
+        }
+    }
+
+    private static func formatted(_ date: Date, _ calendar: Calendar,
+                                  template: String? = nil,
+                                  timeStyle: DateFormatter.Style = .none,
+                                  dateStyle: DateFormatter.Style = .none) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
         formatter.locale = .current
-        formatter.dateStyle = Calendar.current.isDateInToday(date) ? .none : .short
-        formatter.timeStyle = Calendar.current.isDateInToday(date) ? .short : .none
+        if let template {
+            formatter.setLocalizedDateFormatFromTemplate(template)
+        } else {
+            formatter.timeStyle = timeStyle
+            formatter.dateStyle = dateStyle
+        }
         return formatter.string(from: date)
     }
 }
