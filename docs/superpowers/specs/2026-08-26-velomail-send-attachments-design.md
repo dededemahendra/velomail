@@ -92,3 +92,28 @@ and that the body survives unchanged when files are added.
 - Total size is capped; no resumable upload.
 - Attachment bytes sit in the mutation row until the send completes.
 - No progress indication while a large message uploads.
+
+---
+
+## Completion record
+
+725 → 753 tests, clean build, no warnings. No migration — an outgoing
+attachment lives in the draft, which already had a home.
+
+The MIME nesting got the most test attention because it is what other clients
+parse and the easiest thing here to get subtly wrong. Two failures are pinned
+explicitly: appending file parts *inside* `multipart/alternative` (which makes a
+recipient's client show the PDF instead of the message), and reusing one
+boundary for the inner and outer multiparts (which terminates the outer part
+early and truncates the message for everyone).
+
+Two end-to-end tests decode the actual base64url `raw` that reaches
+`messages.send`: one asserting a message with a file is properly mixed with the
+body still present, and one asserting a message *without* files did not
+accidentally become multipart. The second is the regression guard — it would
+have caught making every plain message multipart, which is exactly the sort of
+thing this change could have done quietly.
+
+**Not verified:** the Attach button and chips on screen, since opening the
+composer needs key input macOS will not synthesise without Accessibility
+permission. Everything behind it is covered, including the wire format.

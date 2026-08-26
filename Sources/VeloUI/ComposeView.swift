@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import VeloCore
 
 struct ComposeView: View {
@@ -8,6 +9,7 @@ struct ComposeView: View {
     let onCancel: () -> Void
 
     @State private var isWorking = false
+    @State private var attachmentError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +30,7 @@ struct ComposeView: View {
                 Divider()
                 field("Subject", text: $model.subject)
                 Divider()
+                attachmentBar
                 if assistant.isAvailable { assistantBar }
                 TextEditor(text: $model.body)
                     .font(.body)
@@ -36,6 +39,74 @@ struct ComposeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Files on the outgoing message, with a chip each.
+    private var attachmentBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    attachFiles()
+                } label: {
+                    Label("Attach", systemImage: "paperclip").font(.caption)
+                }
+                .buttonStyle(.borderless)
+
+                if !model.attachments.isEmpty {
+                    Text(AttachmentViewModel.formattedSize(model.attachmentBytes))
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let attachmentError {
+                    Text(attachmentError).font(.caption).foregroundStyle(.orange).lineLimit(1)
+                }
+            }
+
+            if !model.attachments.isEmpty {
+                FlowRow(spacing: 8) {
+                    ForEach(Array(model.attachments.enumerated()), id: \.offset) { index, file in
+                        HStack(spacing: 6) {
+                            Image(systemName: AttachmentViewModel.symbol(for: file.mimeType))
+                                .font(.caption2)
+                            Text(file.filename).font(.caption).lineLimit(1)
+                            Button {
+                                model.removeAttachment(at: index)
+                                attachmentError = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+    }
+
+    /// Opens the panel and attaches what was chosen, reporting the first
+    /// refusal rather than silently dropping files.
+    private func attachFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK else { return }
+
+        attachmentError = nil
+        for url in panel.urls {
+            do {
+                try model.attach(url)
+            } catch ComposeError.attachmentsTooLarge {
+                attachmentError = "\(url.lastPathComponent) would take the message over the limit."
+                break
+            } catch {
+                attachmentError = "Could not read \(url.lastPathComponent)."
+                break
+            }
+        }
     }
 
     /// Writing assistance over whatever is currently in the editor. Each action

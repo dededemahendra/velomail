@@ -779,6 +779,53 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
         #expect(try mutations.all().first?.status == .failed)
     }
+
+    // MARK: - Attachments on the wire (Q)
+
+    @Test func drainSendsAnAttachmentAsAProperMixedPart() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+
+        var draft = Draft(to: ["a@b.com"], subject: "Here it is", bodyText: "attached", threadID: "t")
+        draft.attachments = [DraftAttachment(filename: "invoice.pdf", mimeType: "application/pdf",
+                                             data: Data("PDFBYTES".utf8))]
+        try service.send(draft)
+
+        try await service.drain()
+
+        // Decode exactly what Gmail would receive.
+        let call = try #require(writer.sendCalls.first)
+        var padded = call.raw.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        if padded.count % 4 > 0 { padded += String(repeating: "=", count: 4 - padded.count % 4) }
+        let message = String(decoding: Data(base64Encoded: padded)!, as: UTF8.self)
+
+        #expect(message.contains("Content-Type: multipart/mixed"))
+        #expect(message.contains("Content-Disposition: attachment; filename=\"invoice.pdf\""))
+        #expect(message.contains(Data("PDFBYTES".utf8).base64EncodedString()))
+        #expect(message.contains("Subject: Here it is"))
+        // The body must still be there, not replaced by the file.
+        #expect(message.contains(Data("attached".utf8).base64EncodedString()))
+    }
+
+    @Test func aSendWithoutAttachmentsIsStillASimpleMessage() async throws {
+        let writer = ScriptedWriter()
+        let (service, store, _) = try makeDrainContext(writer: writer)
+        try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
+        try service.send(Draft(to: ["a@b.com"], subject: "s", bodyText: "b", threadID: "t"))
+
+        try await service.drain()
+
+        let call = try #require(writer.sendCalls.first)
+        var padded = call.raw.replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        if padded.count % 4 > 0 { padded += String(repeating: "=", count: 4 - padded.count % 4) }
+        let message = String(decoding: Data(base64Encoded: padded)!, as: UTF8.self)
+
+        // Adding the feature must not have made every plain message multipart.
+        #expect(!message.contains("multipart"))
+    }
 }
 
 /// Mutable id counter for deterministic placeholder ids in tests.

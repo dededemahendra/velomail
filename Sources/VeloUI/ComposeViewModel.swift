@@ -4,6 +4,11 @@ import VeloCore
 
 /// The compose sheet: a draft being edited, and the send that hands it to the
 /// outbound queue.
+public enum ComposeError: Error, Equatable {
+    /// Adding this file would push the message past what Gmail accepts.
+    case attachmentsTooLarge
+}
+
 @MainActor
 public final class ComposeViewModel: ObservableObject {
     @Published public var to: String = ""
@@ -14,6 +19,7 @@ public final class ComposeViewModel: ObservableObject {
         didSet { expandIfTyped(from: oldValue) }
     }
     @Published public private(set) var isReply = false
+    @Published public private(set) var attachments: [DraftAttachment] = []
 
     private let outbound: OutboundService
     private let resolveIdentity: () -> String
@@ -39,8 +45,32 @@ public final class ComposeViewModel: ObservableObject {
     /// everything else Gmail will tell us about.
     public var canSend: Bool { !recipients.isEmpty }
 
+    /// Reads a file off disk and attaches it.
+    ///
+    /// The size check happens here rather than at send: refusing a 40MB video
+    /// now is a fine experience, while appearing to send it and surfacing a
+    /// server error after the undo window closed is not.
+    public func attach(_ url: URL) throws {
+        let data = try Data(contentsOf: url)
+        guard attachmentBytes + data.count <= Draft.maximumAttachmentBytes else {
+            throw ComposeError.attachmentsTooLarge
+        }
+        attachments.append(DraftAttachment(
+            filename: url.lastPathComponent,
+            mimeType: DraftAttachment.mimeType(forExtension: url.pathExtension),
+            data: data))
+    }
+
+    public func removeAttachment(at index: Int) {
+        guard attachments.indices.contains(index) else { return }
+        attachments.remove(at: index)
+    }
+
+    public var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
+
     public func startNew() {
         to = ""; subject = ""; body = signatureBlock
+        attachments = []
         isReply = false
         replyContext = nil
     }
@@ -62,7 +92,7 @@ public final class ComposeViewModel: ObservableObject {
     @discardableResult
     public func send() throws -> Int64? {
         guard canSend else { return nil }
-        let draft: Draft
+        var draft: Draft
         if let message = replyContext {
             var reply = Draft.reply(to: message, from: identity, bodyText: body)
             reply.to = recipients
@@ -71,6 +101,8 @@ public final class ComposeViewModel: ObservableObject {
         } else {
             draft = Draft(to: recipients, subject: subject, bodyText: body)
         }
+        draft.attachments = attachments
+
         let queued = try outbound.send(draft, after: AppViewModel.undoWindow)
         startNew()
         return queued

@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-725 tests, no XCTest, no `.xcodeproj`.
+753 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -138,7 +138,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 725 tests; offline and deterministic
+swift test          # 753 tests; offline and deterministic
 swift build
 ```
 
@@ -274,7 +274,11 @@ Filenames arriving from strangers are never trusted as paths: a save is confined
 to the directory you picked, and a collision is numbered rather than overwriting
 what you already had.
 
-Attaching files to outgoing mail is **not** supported yet.
+Composing works the other way too: **Attach** on the composer adds files, chips
+show what is attached, and the message goes out as `multipart/mixed` with the
+body intact. Total size is capped at 22MB and enforced when you attach rather
+than when the send fails — a server error ten seconds later, after the undo
+window shut, is a much worse experience than being told up front.
 
 ## Search
 
@@ -294,7 +298,8 @@ plain search terms.
 
 ## Not done yet
 
-Sending attachments, server-side drafts (`users.drafts`), multiple accounts, pinning a
+Server-side drafts (`users.drafts`), resumable upload for very large
+attachments, multiple accounts, pinning a
 thread to the top, collapsing the quoted part of a reply (parsing someone
 else's quoting is its own problem), desktop notifications, local filters and
 rules, calendar and contacts, anything needing a server (team features), and
