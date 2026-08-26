@@ -33,11 +33,12 @@ public struct RootView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if app.undoableSend != nil {
-                UndoBanner(onUndo: { app.undoLastSend() })
+            if let prompt = app.undoPrompt {
+                UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
+                               onUndo: { app.undo() })
             }
         }
-        .animation(.easeOut(duration: 0.18), value: app.undoableSend)
+        .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,

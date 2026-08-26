@@ -11,7 +11,21 @@ public enum ComposeError: Error, Equatable {
 
 @MainActor
 public final class ComposeViewModel: ObservableObject {
-    @Published public var to: String = ""
+    @Published public var to: String = "" {
+        // The list underneath has changed, so a kept highlight would point at
+        // whoever now happens to sit in that row.
+        didSet {
+            guard to != oldValue else { return }
+            highlighted = 0
+            isSuggesting = true
+        }
+    }
+
+    /// False once the list has been dismissed, until more is typed.
+    @Published private var isSuggesting = true
+
+    /// Which suggestion the keyboard is currently on.
+    @Published public private(set) var highlighted = 0
     @Published public var cc: String = ""
     @Published public var subject: String = ""
     /// Observed rather than plain, because a snippet expands off the character
@@ -26,6 +40,10 @@ public final class ComposeViewModel: ObservableObject {
     private let resolveIdentity: () -> String
     private let library: SnippetLibrary
     private let drafts: DraftStore?
+    /// Built once per composed message rather than per keystroke: it reads a
+    /// year of mail, which is cheap once and not cheap sixty times a minute.
+    private let contacts: (() -> AddressBook?)?
+    private var addressBook: AddressBook?
     private var identity: String { resolveIdentity() }
     private var replyContext: Message?
     /// Threading restored from a stored draft, when the parent message itself
@@ -35,19 +53,78 @@ public final class ComposeViewModel: ObservableObject {
     private var isExpanding = false
 
     public init(outbound: OutboundService, identity: @escaping () -> String,
-                library: SnippetLibrary = .empty, drafts: DraftStore? = nil) {
+                library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
+                addressBook: AddressBook? = nil,
+                contacts: (() -> AddressBook?)? = nil) {
         self.outbound = outbound
         self.resolveIdentity = identity
         self.library = library
         self.drafts = drafts
+        self.addressBook = addressBook
+        self.contacts = contacts
     }
 
     public convenience init(outbound: OutboundService, identity: String,
-                            library: SnippetLibrary = .empty, drafts: DraftStore? = nil) {
-        self.init(outbound: outbound, identity: { identity }, library: library, drafts: drafts)
+                            library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
+                            addressBook: AddressBook? = nil,
+                            contacts: (() -> AddressBook?)? = nil) {
+        self.init(outbound: outbound, identity: { identity }, library: library,
+                  drafts: drafts, addressBook: addressBook, contacts: contacts)
     }
 
     // MARK: - Drafts
+
+    /// Contacts matching whatever address is being typed right now.
+    ///
+    /// Only the fragment after the last comma is matched -- an address already
+    /// completed must not keep suggesting itself.
+    public var suggestions: [AddressBook.Contact] {
+        guard isSuggesting, let addressBook else { return [] }
+        return addressBook.suggestions(for: Self.fragment(of: to))
+    }
+
+    /// Puts the list away without changing what has been typed.
+    public func dismissSuggestions() { isSuggesting = false }
+
+    /// Moves the highlight, wrapping at both ends so a held arrow key never
+    /// appears to stall.
+    public func moveHighlight(by offset: Int) {
+        let count = suggestions.count
+        guard count > 0 else { highlighted = 0; return }
+        highlighted = ((highlighted + offset) % count + count) % count
+    }
+
+    /// Takes the highlighted contact, reporting whether there was one.
+    ///
+    /// The caller uses the answer to decide whether the key was theirs: with no
+    /// suggestions showing, Return still has to reach the composer.
+    @discardableResult
+    public func acceptHighlighted() -> Bool {
+        let matches = suggestions
+        guard matches.indices.contains(highlighted) else { return false }
+        accept(matches[highlighted])
+        return true
+    }
+
+    /// Rereads the address book for a newly opened composer.
+    private func refreshContacts() {
+        if let contacts { addressBook = contacts() }
+    }
+
+    /// Replaces the fragment being typed with the chosen contact, leaving a
+    /// separator so the next address can follow immediately.
+    public func accept(_ contact: AddressBook.Contact) {
+        var parts = to.components(separatedBy: ",").dropLast().map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        parts.append(contact.label)
+        to = parts.joined(separator: ", ") + ", "
+        autosave()
+    }
+
+    static func fragment(of field: String) -> String {
+        (field.components(separatedBy: ",").last ?? "").trimmingCharacters(in: .whitespaces)
+    }
 
     /// What the composer calls itself, so a forward does not claim to be a
     /// reply and a reply-all does not look like a reply.
@@ -136,6 +213,7 @@ public final class ComposeViewModel: ObservableObject {
     public var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
 
     public func startNew() {
+        refreshContacts()
         to = ""; cc = ""; subject = ""; body = signatureBlock
         attachments = []
         isReply = false
@@ -154,6 +232,7 @@ public final class ComposeViewModel: ObservableObject {
     /// Not a reply: `replyContext` stays nil so the sent draft is not threaded,
     /// which would otherwise deliver the forward to the original participants.
     public func startForward(of message: Message, attachments files: [DraftAttachment]) {
+        refreshContacts()
         let draft = Draft.forward(message, from: identity, attachments: files)
         to = ""
         cc = ""
@@ -166,6 +245,7 @@ public final class ComposeViewModel: ObservableObject {
     }
 
     public func startReply(to message: Message) {
+        refreshContacts()
         let draft = Draft.reply(to: message, from: identity)
         to = draft.to.joined(separator: ", ")
         cc = ""
@@ -190,18 +270,25 @@ public final class ComposeViewModel: ObservableObject {
         return queued
     }
 
+    /// True when what has been typed will be sent as HTML as well as text.
+    public var isRichText: Bool { MarkdownBody.isFormatted(body) }
+
     /// The composer as a `Draft`. One builder, so what autosave stores is
     /// exactly what send would have sent.
     private func currentDraft() -> Draft {
         var draft: Draft
+        // Marks the writer typed travel as HTML; the plain part keeps what was
+        // typed, which is what a reader on a text-only client expects to see.
+        let html = MarkdownBody.html(from: body)
         if let message = replyContext {
-            var reply = Draft.reply(to: message, from: identity, bodyText: body)
+            var reply = Draft.reply(to: message, from: identity, bodyText: body, bodyHTML: html)
             reply.to = recipients
             reply.cc = addresses(in: cc)
             reply.subject = subject
             draft = reply
         } else {
-            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject, bodyText: body)
+            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject,
+                          bodyText: body, bodyHTML: html)
             // A resumed reply has no parent message to hand, so its threading
             // comes from what was stored. Losing it would turn the reply into a
             // new message to the same person.

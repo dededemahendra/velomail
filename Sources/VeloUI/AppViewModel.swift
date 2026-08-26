@@ -32,8 +32,40 @@ public final class AppViewModel: ObservableObject {
     public let search: SearchViewModel
     public let attachments: AttachmentViewModel
 
-    /// The still-cancellable send, if any. Drives the undo banner.
-    @Published public private(set) var undoableSend: Int64?
+    /// The one thing that can currently be taken back, if any.
+    ///
+    /// One slot, not a stack: offering to undo something the user stopped
+    /// thinking about two actions ago is worse than offering nothing.
+    @Published public private(set) var undoable: Undoable?
+
+    /// What the banner says, or nil when there is nothing to undo.
+    public var undoPrompt: String? { undoable?.prompt }
+
+    /// The banner's icon. Carried with the action rather than inferred from the
+    /// wording, which would change the icon the next time the copy is edited.
+    public var undoSymbol: String? { undoable?.symbol }
+
+    /// Kept for the send path, which needs the queue id to cancel.
+    public var undoableSend: Int64? {
+        if case let .send(id) = undoable?.kind { return id }
+        return nil
+    }
+
+    public struct Undoable: Equatable {
+        public enum Kind: Equatable {
+            case send(Int64)
+            /// Threads to put back in the inbox.
+            case disposal([String])
+        }
+        public let kind: Kind
+        public let prompt: String
+
+        public var symbol: String {
+            if case .send = kind { return "paperplane.fill" }
+            return "arrow.uturn.backward"
+        }
+    }
+
     /// Threads you are waiting on, shown by `g f`.
     @Published public private(set) var followUps: [MailThread] = []
     @Published public private(set) var isShowingFollowUps = false
@@ -92,8 +124,11 @@ public final class AppViewModel: ObservableObject {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
-        self.compose = ComposeViewModel(outbound: outbound, identity: identity,
-                                        library: snippets, drafts: drafts)
+        self.compose = ComposeViewModel(
+            outbound: outbound, identity: identity, library: snippets, drafts: drafts,
+            // Derived from mail already stored, so completion needs no contacts
+            // API and no extra permission on the account.
+            contacts: { try? AddressBook.build(from: store, identity: identity()) })
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.store = store
@@ -236,8 +271,8 @@ public final class AppViewModel: ObservableObject {
         case .moveSelectionDown: inbox.moveDown()
         case .moveSelectionUp: inbox.moveUp()
         case .openSelected: openSelected()
-        case .archiveSelected: try? inbox.archiveSelected()
-        case .trashSelected: try? inbox.trashSelected()
+        case .archiveSelected: dispose("Archived") { try inbox.archiveSelected() }
+        case .trashSelected: dispose("Deleted") { try inbox.trashSelected() }
         case .markUnreadSelected: try? inbox.markSelectedUnread()
         case .reply: startReply()
         case .replyAll: startReply(toEveryone: true)
@@ -257,7 +292,7 @@ public final class AppViewModel: ObservableObject {
         case .toggleMark: inbox.toggleMark()
         case .unsubscribe: unsubscribeSelected()
         case .snoozeSelected: snoozeSelected(hours: 4)
-        case .undoSend: undoLastSend()
+        case .undo: undo()
         case .showFollowUps: loadFollowUps()
         case .toggleFocus: toggleFocus()
         case .discardDraft: compose.discardDraft()
@@ -341,11 +376,7 @@ public final class AppViewModel: ObservableObject {
     /// Shared by compose and unsubscribe so the two cannot drift on how long
     /// the promise lasts.
     private func holdUndo(_ queued: Int64) {
-        undoableSend = queued
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(AppViewModel.undoWindow * 1_000_000_000))
-            await MainActor.run { self?.expireUndo(queued) }
-        }
+        offerUndo(.init(kind: .send(queued), prompt: "Message sent"))
     }
 
     /// Acts on the open thread's `List-Unsubscribe`, sending the mailto the
@@ -377,17 +408,42 @@ public final class AppViewModel: ObservableObject {
     /// How long a send can be taken back.
     public static let undoWindow: TimeInterval = 10
 
-    public func undoLastSend() {
-        guard let id = undoableSend else { return }
-        try? outbound.cancelSend(mutationID: id)
-        undoableSend = nil
+    /// Takes back whatever was last done, if anything still can be.
+    public func undo() {
+        guard let undoable else { return }
+        switch undoable.kind {
+        case let .send(id):
+            try? outbound.cancelSend(mutationID: id)
+        case let .disposal(threadIDs):
+            for threadID in threadIDs { try? outbound.unarchive(threadID: threadID) }
+        }
+        self.undoable = nil
         try? inbox.reload()
     }
 
-    /// Clears the banner only if it still refers to *this* send; a newer one
+    /// Runs a disposal and remembers what it removed, so it can be put back.
+    ///
+    /// The ids are captured *before* the action, because afterwards the threads
+    /// are gone from the list and there is nothing left to name.
+    private func dispose(_ prompt: String, _ action: () throws -> Void) {
+        let affected = inbox.targetThreadIDs
+        guard !affected.isEmpty, (try? action()) != nil else { return }
+        offerUndo(.init(kind: .disposal(affected), prompt: prompt))
+    }
+
+    /// Shows the banner and starts its countdown.
+    private func offerUndo(_ action: Undoable) {
+        undoable = action
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(AppViewModel.undoWindow * 1_000_000_000))
+            await MainActor.run { self?.expireUndo(action) }
+        }
+    }
+
+    /// Clears the banner only if it still refers to *this* action; a newer one
     /// must not have its window cut short.
-    private func expireUndo(_ id: Int64) {
-        if undoableSend == id { undoableSend = nil }
+    private func expireUndo(_ action: Undoable) {
+        if undoable == action { undoable = nil }
     }
 
     public func snoozeSelected(hours: Double) {

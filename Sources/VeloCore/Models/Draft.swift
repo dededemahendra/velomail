@@ -159,7 +159,7 @@ public struct Draft: Codable, Equatable, Sendable {
         guard quoting else { return (text, html) }
         let quotedText = "\(text)\n\n\(QuotedReply.text(quoting: parent))"
         guard parent.bodyHTML != nil else { return (quotedText, html) }
-        let written = html ?? "<p>\(text)</p>"
+        let written = html ?? "<p>\(MarkdownBody.escape(text))</p>"
         return (quotedText, "\(written)\n\(QuotedReply.html(quoting: parent))")
     }
 

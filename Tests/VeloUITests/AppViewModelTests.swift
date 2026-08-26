@@ -368,14 +368,14 @@ import VeloCore
         app.compose.body = "b"
         app.perform(.send)
 
-        app.perform(.undoSend)
+        app.perform(.undo)
 
         #expect(app.undoableSend == nil)
     }
 
     @Test func undoingWithNothingToUndoIsHarmless() throws {
         let app = try makeApp()
-        app.perform(.undoSend)
+        app.perform(.undo)
         #expect(app.undoableSend == nil)
     }
 
@@ -539,7 +539,7 @@ import VeloCore
         press(app, "u")
         #expect(try mutations.all().count == 1)
 
-        app.undoLastSend()
+        app.undo()
 
         #expect(try mutations.all().isEmpty)
         #expect(app.undoableSend == nil)

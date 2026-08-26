@@ -15,6 +15,8 @@ public enum MutationKind: String, Codable, Equatable, Sendable {
     case unsnooze
     /// Moves a thread to Gmail's TRASH.
     case trash
+    /// Puts a thread back after an archive or a delete.
+    case unarchive
     /// Adds Gmail's own `STARRED` label. A star is a label, not a local flag,
     /// so it is the same queue, the same push and the same revert as an archive.
     case star
