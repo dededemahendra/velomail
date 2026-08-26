@@ -72,10 +72,12 @@ public final class AppViewModel: ObservableObject {
                             assistant: MailAssistant = MailAssistant(provider: nil),
                             search: SearchViewModel? = nil,
                             snippets: SnippetLibrary = .empty,
-                            attachmentModel: AttachmentViewModel? = nil) {
+                            attachmentModel: AttachmentViewModel? = nil,
+                            drafts: DraftStore? = nil) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
-                  search: search, snippets: snippets, attachmentModel: attachmentModel)
+                  search: search, snippets: snippets, attachmentModel: attachmentModel,
+                  drafts: drafts)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
@@ -83,11 +85,13 @@ public final class AppViewModel: ObservableObject {
                 assistant: MailAssistant = MailAssistant(provider: nil),
                 search: SearchViewModel? = nil,
                 snippets: SnippetLibrary = .empty,
-                attachmentModel: AttachmentViewModel? = nil) {
+                attachmentModel: AttachmentViewModel? = nil,
+                drafts: DraftStore? = nil) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
-        self.compose = ComposeViewModel(outbound: outbound, identity: identity, library: snippets)
+        self.compose = ComposeViewModel(outbound: outbound, identity: identity,
+                                        library: snippets, drafts: drafts)
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.resolveIdentity = identity
@@ -208,6 +212,9 @@ public final class AppViewModel: ObservableObject {
         case .reply: startReply()
         case .compose:
             compose.startNew()
+            // Resuming is what someone expects on reopening the app after being
+            // interrupted; a blank window would silently discard their work.
+            compose.resumeDraft()
             route = .compose
         case .send: send()
         case .goToInbox: route = .list
@@ -221,6 +228,7 @@ public final class AppViewModel: ObservableObject {
         case .undoSend: undoLastSend()
         case .showFollowUps: loadFollowUps()
         case .toggleFocus: toggleFocus()
+        case .discardDraft: compose.discardDraft()
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
         case .triageThread: runAssistant { await $0.triage(messages: $1) }

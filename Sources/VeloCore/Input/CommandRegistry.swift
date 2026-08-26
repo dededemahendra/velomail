@@ -43,6 +43,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Undo Send", action: .undoSend),
         Command(title: "Awaiting Reply", action: .showFollowUps),
         Command(title: "Focus Mode", action: .toggleFocus),
+        Command(title: "Discard Draft", action: .discardDraft),
         Command(title: "Unsubscribe", action: .unsubscribe),
         Command(title: "Summarise Thread", action: .summarizeThread),
         Command(title: "Suggest Replies", action: .suggestReplies),

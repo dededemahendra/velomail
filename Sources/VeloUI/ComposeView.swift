@@ -33,6 +33,7 @@ struct ComposeView: View {
                 attachmentBar
                 if assistant.isAvailable { assistantBar }
                 TextEditor(text: $model.body)
+                    .onChange(of: model.body) { _, _ in model.autosave() }
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -177,7 +178,9 @@ struct ComposeView: View {
             Text(label)
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(width: 58, alignment: .leading)
-            TextField("", text: text).textFieldStyle(.plain)
+            TextField("", text: text)
+                .textFieldStyle(.plain)
+                .onChange(of: text.wrappedValue) { _, _ in model.autosave() }
         }
         .padding(.horizontal, 20).padding(.vertical, 10)
     }

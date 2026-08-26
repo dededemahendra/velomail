@@ -36,6 +36,7 @@ public enum Composition {
         let store = MailStore(database)
         let mutations = MutationStore(database)
         let syncState = SyncStateStore(database)
+        let drafts = DraftStore(database)
         // The account id is stable and local; the *address* is discovered from
         // Gmail's profile on first backfill. Keeping them separate is what lets
         // the app be built before it knows who it is.
@@ -57,7 +58,8 @@ public enum Composition {
                                            mutations: mutations, identity: resolver.identity)
             return Assembly(app: AppViewModel(config: config, store: store,
                                               outbound: outbound, identity: resolver.identity,
-                                              assistant: assistant, snippets: snippets),
+                                              assistant: assistant, snippets: snippets,
+                                              drafts: drafts),
                             sync: nil, store: store, auth: nil)
         }
 
@@ -80,7 +82,10 @@ public enum Composition {
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,
                                identity: resolver.identity, isSignedIn: auth.state == .signedIn,
-                               assistant: assistant, snippets: snippets)
+                               assistant: assistant, snippets: snippets,
+                               attachmentModel: AttachmentViewModel(
+                                   service: AttachmentService(source: api)),
+                               drafts: drafts)
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }

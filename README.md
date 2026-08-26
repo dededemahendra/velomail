@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-781 tests, no XCTest, no `.xcodeproj`.
+805 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -139,7 +139,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 781 tests; offline and deterministic
+swift test          # 805 tests; offline and deterministic
 swift build
 ```
 
@@ -162,6 +162,18 @@ The suite is offline by default. To exercise the real Ollama wire format:
 ```bash
 VELOMAIL_LIVE_OLLAMA=1 VELOMAIL_OLLAMA_MODEL="your-model" swift test --filter OllamaLiveTests
 ```
+
+## Drafts
+
+A half-written message is saved as you type and comes back when you press `c`.
+Quitting, or crashing, no longer loses it. An untouched composer is not saved —
+opening the window and closing it does not leave a phantom draft to resume
+forever — and sending clears it.
+
+Drafts are **local**. Gmail's `users.drafts` would put the same message on your
+phone, but that is a two-way sync with its own reconciliation, and a one-way
+create would litter the account with a duplicate every time you typed another
+sentence. Deferred deliberately.
 
 ## Notifications and focus
 
@@ -313,7 +325,7 @@ plain search terms.
 
 ## Not done yet
 
-Server-side drafts (`users.drafts`), resumable upload for very large
+Draft sync to other devices (`users.drafts`), resumable upload for very large
 attachments, multiple accounts, pinning a
 thread to the top, collapsing the quoted part of a reply (parsing someone
 else's quoting is its own problem), local filters and rules, calendar and contacts, anything needing a server (team features), and
