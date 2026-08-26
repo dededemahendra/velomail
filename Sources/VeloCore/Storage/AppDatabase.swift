@@ -195,6 +195,45 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v15_create_attachment_search") { db in
+            // A second index rather than folding filenames into messageSearch:
+            // attachments are written *after* their message, so a trigger on
+            // `message` cannot see them.
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE attachmentSearch USING fts5(
+                    messageID UNINDEXED,
+                    filename,
+                    tokenize='porter unicode61'
+                )
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER attachment_search_insert AFTER INSERT ON attachment BEGIN
+                    INSERT INTO attachmentSearch(rowid, messageID, filename)
+                    VALUES (new.rowid, new.messageID, new.filename);
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER attachment_search_update AFTER UPDATE ON attachment BEGIN
+                    DELETE FROM attachmentSearch WHERE rowid = old.rowid;
+                    INSERT INTO attachmentSearch(rowid, messageID, filename)
+                    VALUES (new.rowid, new.messageID, new.filename);
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER attachment_search_delete AFTER DELETE ON attachment BEGIN
+                    DELETE FROM attachmentSearch WHERE rowid = old.rowid;
+                END
+                """)
+
+            // Index what is already stored, or attachment search silently
+            // returns nothing for every file received before this upgrade.
+            try db.execute(sql: """
+                INSERT INTO attachmentSearch(rowid, messageID, filename)
+                SELECT rowid, messageID, filename FROM attachment
+                """)
+        }
+
         return migrator
     }
 }

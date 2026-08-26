@@ -5,7 +5,7 @@ import SwiftUI
 import VeloCore
 
 public enum Route: Equatable, Sendable {
-    case setup, signIn, list, thread, compose, palette, search
+    case setup, signIn, list, thread, compose, palette, search, analytics
 }
 
 /// Owns which surface is focused and turns keystrokes into actions.
@@ -39,6 +39,7 @@ public final class AppViewModel: ObservableObject {
     @Published public private(set) var isShowingFollowUps = false
     /// Suppresses banners and hides how much is waiting.
     @Published public private(set) var isFocused = false
+    @Published public private(set) var analytics: MailAnalytics.Report?
 
     /// AI commands are filtered out when no provider is configured, so the
     /// palette never offers an action that can only fail.
@@ -51,6 +52,7 @@ public final class AppViewModel: ObservableObject {
     private let config: AppConfig
     private let outbound: OutboundService
     private let followUp: FollowUpService
+    private let store: MailStore
     private let resolveIdentity: () -> String
     private var keyboard = KeyboardEngine()
     private var isSignedIn: Bool
@@ -94,6 +96,7 @@ public final class AppViewModel: ObservableObject {
                                         library: snippets, drafts: drafts)
         self.outbound = outbound
         self.followUp = FollowUpService(store)
+        self.store = store
         self.resolveIdentity = identity
         self.assistant = AssistantViewModel(assistant: assistant)
         // Without a source, saving fails with "not available" rather than
@@ -139,6 +142,8 @@ public final class AppViewModel: ObservableObject {
             route = .palette
         case "thread":
             perform(.openSelected)
+        case "analytics":
+            showAnalytics()
         default:
             break
         }
@@ -250,6 +255,7 @@ public final class AppViewModel: ObservableObject {
         case .showFollowUps: loadFollowUps()
         case .toggleFocus: toggleFocus()
         case .discardDraft: compose.discardDraft()
+        case .showAnalytics: showAnalytics()
         case .summarizeThread: runAssistant { await $0.summarize(messages: $1) }
         case .suggestReplies: runAssistant { await $0.suggestReplies(to: $1) }
         case .triageThread: runAssistant { await $0.triage(messages: $1) }
@@ -362,6 +368,13 @@ public final class AppViewModel: ObservableObject {
 
     public func hideFollowUps() { isShowingFollowUps = false }
 
+    /// Derived on demand rather than kept up to date: there is nothing stored
+    /// to go stale, and the numbers are always exactly the mailbox.
+    public func showAnalytics() {
+        analytics = try? MailAnalytics(store).report(identity: resolveIdentity())
+        route = .analytics
+    }
+
     // MARK: - Attention
 
     /// How much is actually unread.
@@ -386,7 +399,7 @@ public final class AppViewModel: ObservableObject {
     /// is nowhere further to go.
     private func goBack() {
         switch route {
-        case .thread, .compose, .palette: route = .list
+        case .thread, .compose, .palette, .analytics: route = .list
         case .search:
             search.clear()
             route = .list
