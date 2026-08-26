@@ -12,6 +12,7 @@ public enum ComposeError: Error, Equatable {
 @MainActor
 public final class ComposeViewModel: ObservableObject {
     @Published public var to: String = ""
+    @Published public var cc: String = ""
     @Published public var subject: String = ""
     /// Observed rather than plain, because a snippet expands off the character
     /// you just typed and `TextEditor` gives no other hook to hang that on.
@@ -48,7 +49,14 @@ public final class ComposeViewModel: ObservableObject {
 
     // MARK: - Drafts
 
-    public var hasStoredDraft: Bool { (try? drafts?.load()) as? StoredDraft != nil }
+    /// What the composer calls itself, so a forward does not claim to be a
+    /// reply and a reply-all does not look like a reply.
+    public var headline: String {
+        if isReply { return cc.isEmpty ? "Reply" : "Reply all" }
+        return subject.lowercased().hasPrefix("fwd:") ? "Forward" : "New message"
+    }
+
+    public var hasStoredDraft: Bool { storedDraft != nil }
 
     /// Persists what is in the composer, if it amounts to anything.
     ///
@@ -65,15 +73,22 @@ public final class ComposeViewModel: ObservableObject {
 
     /// Puts the stored draft back in the composer. A no-op when there is none.
     public func resumeDraft() {
-        guard let stored = (try? drafts?.load()) as? StoredDraft else { return }
+        guard let stored = storedDraft else { return }
         let draft = stored.draft
         to = draft.to.joined(separator: ", ")
+        cc = draft.cc.joined(separator: ", ")
         subject = draft.subject
         body = draft.bodyText
         attachments = draft.attachments
         isReply = draft.threadID != nil
         resumedContext = (threadID: draft.threadID, inReplyTo: draft.inReplyTo,
                           references: draft.references)
+    }
+
+    /// Flattens the double optional a `try?` on an optional store produces.
+    private var storedDraft: StoredDraft? {
+        guard let drafts, let stored = try? drafts.load() else { return nil }
+        return stored
     }
 
     public func discardDraft() {
@@ -86,6 +101,7 @@ public final class ComposeViewModel: ObservableObject {
     /// closing it would leave a phantom draft to resume forever.
     private var hasContent: Bool {
         !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !cc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !attachments.isEmpty
             || body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -120,8 +136,30 @@ public final class ComposeViewModel: ObservableObject {
     public var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
 
     public func startNew() {
-        to = ""; subject = ""; body = signatureBlock
+        to = ""; cc = ""; subject = ""; body = signatureBlock
         attachments = []
+        isReply = false
+        replyContext = nil
+        resumedContext = nil
+    }
+
+    /// A reply to everyone on the message, minus you.
+    public func startReplyAll(to message: Message) {
+        startReply(to: message)
+        cc = Draft.replyAll(to: message, from: identity).cc.joined(separator: ", ")
+    }
+
+    /// Forwards `message` to somebody new, carrying its files.
+    ///
+    /// Not a reply: `replyContext` stays nil so the sent draft is not threaded,
+    /// which would otherwise deliver the forward to the original participants.
+    public func startForward(of message: Message, attachments files: [DraftAttachment]) {
+        let draft = Draft.forward(message, from: identity, attachments: files)
+        to = ""
+        cc = ""
+        subject = draft.subject
+        body = draft.bodyText
+        attachments = files
         isReply = false
         replyContext = nil
         resumedContext = nil
@@ -130,6 +168,7 @@ public final class ComposeViewModel: ObservableObject {
     public func startReply(to message: Message) {
         let draft = Draft.reply(to: message, from: identity)
         to = draft.to.joined(separator: ", ")
+        cc = ""
         subject = draft.subject
         // The quote goes in the editor, not on at send time: what the user sees
         // is what gets sent, and they can trim it like in any other client.
@@ -158,10 +197,11 @@ public final class ComposeViewModel: ObservableObject {
         if let message = replyContext {
             var reply = Draft.reply(to: message, from: identity, bodyText: body)
             reply.to = recipients
+            reply.cc = addresses(in: cc)
             reply.subject = subject
             draft = reply
         } else {
-            draft = Draft(to: recipients, subject: subject, bodyText: body)
+            draft = Draft(to: recipients, cc: addresses(in: cc), subject: subject, bodyText: body)
             // A resumed reply has no parent message to hand, so its threading
             // comes from what was stored. Losing it would turn the reply into a
             // new message to the same person.
@@ -200,8 +240,10 @@ public final class ComposeViewModel: ObservableObject {
         }
     }
 
-    private var recipients: [String] {
-        to.split(separator: ",")
+    private var recipients: [String] { addresses(in: to) }
+
+    private func addresses(in field: String) -> [String] {
+        field.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }

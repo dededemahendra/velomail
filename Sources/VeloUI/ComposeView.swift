@@ -14,7 +14,7 @@ struct ComposeView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Text(model.isReply ? "Reply" : "New message")
+                Text(model.headline)
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
@@ -27,6 +27,10 @@ struct ComposeView: View {
 
             VStack(spacing: 0) {
                 field("To", placeholder: "name@example.com", text: $model.to)
+                Divider()
+                // Always present rather than revealed by a control: a hidden Cc
+                // is one people forget exists, and reply-all fills it.
+                field("Cc", placeholder: "Optional", text: $model.cc)
                 Divider()
                 field("Subject", placeholder: "Subject", text: $model.subject)
                 Divider()

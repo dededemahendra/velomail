@@ -236,6 +236,8 @@ public final class AppViewModel: ObservableObject {
         case .openSelected: openSelected()
         case .archiveSelected: try? inbox.archiveSelected()
         case .reply: startReply()
+        case .replyAll: startReply(toEveryone: true)
+        case .forward: startForward()
         case .compose:
             compose.startNew()
             // Resuming is what someone expects on reopening the app after being
@@ -281,9 +283,27 @@ public final class AppViewModel: ObservableObject {
         Task { await operation(assistant, messages) }
     }
 
-    private func startReply() {
+    private func startReply(toEveryone: Bool = false) {
         guard let message = inbox.selectedMessages.last else { return }
-        compose.startReply(to: message)
+        if toEveryone {
+            compose.startReplyAll(to: message)
+        } else {
+            compose.startReply(to: message)
+        }
+        route = .compose
+    }
+
+    /// Forwards the open message, carrying its files -- forwarding an invoice
+    /// without the invoice is useless.
+    private func startForward() {
+        guard let message = inbox.selectedMessages.last else { return }
+        let files = inbox.attachments(forMessage: message.id).compactMap { attachment -> DraftAttachment? in
+            guard let inline = attachment.inlineData,
+                  let data = AttachmentService.decodeBase64URL(inline) else { return nil }
+            return DraftAttachment(filename: attachment.filename,
+                                   mimeType: attachment.mimeType, data: data)
+        }
+        compose.startForward(of: message, attachments: files)
         route = .compose
     }
 

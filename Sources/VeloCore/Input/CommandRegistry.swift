@@ -28,6 +28,8 @@ public struct CommandRegistry: Equatable, Sendable {
     public static let v1 = CommandRegistry(commands: [
         Command(title: "Archive", action: .archiveSelected),
         Command(title: "Reply", action: .reply),
+        Command(title: "Reply All", action: .replyAll),
+        Command(title: "Forward", action: .forward),
         Command(title: "Compose", action: .compose),
         Command(title: "Send", action: .send),
         Command(title: "Open", action: .openSelected),

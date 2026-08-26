@@ -130,6 +130,25 @@ public struct Draft: Codable, Equatable, Sendable {
                      references: chainedReferences(of: message))
     }
 
+    /// A forward of `message` to somebody new.
+    ///
+    /// Deliberately **not** threaded. A forward is a new conversation with a
+    /// different person; attaching it to the original thread would deliver it to
+    /// everyone already on it -- the people you were forwarding *away* from.
+    public static func forward(_ message: Message, from _: String,
+                               attachments: [DraftAttachment] = []) -> Draft {
+        Draft(to: [],
+              subject: forwardSubject(message.subject),
+              bodyText: "\n\n" + QuotedReply.forwardedText(message),
+              bodyHTML: message.bodyHTML == nil ? nil : QuotedReply.forwardedHTML(message),
+              threadID: nil, inReplyTo: nil, references: [],
+              attachments: attachments)
+    }
+
+    private static func forwardSubject(_ subject: String) -> String {
+        subject.lowercased().hasPrefix("fwd:") ? subject : "Fwd: \(subject)"
+    }
+
     // MARK: - Internals
 
     /// Composes the reply body: what the user wrote, then the quoted parent.

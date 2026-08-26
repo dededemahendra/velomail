@@ -10,6 +10,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// Archive and auto-advance — the core triage gesture.
     case archiveSelected
     case reply
+    case replyAll
+    case forward
     case send
     case compose
     case goToInbox
