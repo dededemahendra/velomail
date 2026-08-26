@@ -30,6 +30,7 @@ public final class AppViewModel: ObservableObject {
     public let compose: ComposeViewModel
     public let assistant: AssistantViewModel
     public let search: SearchViewModel
+    public let attachments: AttachmentViewModel
 
     /// The still-cancellable send, if any. Drives the undo banner.
     @Published public private(set) var undoableSend: Int64?
@@ -68,17 +69,19 @@ public final class AppViewModel: ObservableObject {
                             identity: String, isSignedIn: Bool = false,
                             assistant: MailAssistant = MailAssistant(provider: nil),
                             search: SearchViewModel? = nil,
-                            snippets: SnippetLibrary = .empty) {
+                            snippets: SnippetLibrary = .empty,
+                            attachmentModel: AttachmentViewModel? = nil) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
-                  search: search, snippets: snippets)
+                  search: search, snippets: snippets, attachmentModel: attachmentModel)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
                 identity: @escaping () -> String, isSignedIn: Bool = false,
                 assistant: MailAssistant = MailAssistant(provider: nil),
                 search: SearchViewModel? = nil,
-                snippets: SnippetLibrary = .empty) {
+                snippets: SnippetLibrary = .empty,
+                attachmentModel: AttachmentViewModel? = nil) {
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
@@ -87,6 +90,10 @@ public final class AppViewModel: ObservableObject {
         self.followUp = FollowUpService(store)
         self.resolveIdentity = identity
         self.assistant = AssistantViewModel(assistant: assistant)
+        // Without a source, saving fails with "not available" rather than
+        // pretending to work.
+        self.attachments = attachmentModel
+            ?? AttachmentViewModel(service: AttachmentService(source: UnavailableSource()))
         self.search = search ?? SearchViewModel(
             search: SearchService(store.database),
             translator: QueryTranslator(assistant: assistant))
@@ -336,5 +343,19 @@ public final class AppViewModel: ObservableObject {
             route = .list
         case .list, .setup, .signIn: break
         }
+    }
+}
+
+
+/// Stands in when no Gmail source is wired (demo, or signed out). Saving fails
+/// honestly instead of writing an empty file.
+struct UnavailableSource: GmailReading {
+    func getProfile() async throws -> GmailProfile { throw AttachmentError.unavailable }
+    func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
+        throw AttachmentError.unavailable
+    }
+    func getMessage(id: String) async throws -> GmailMessageDTO { throw AttachmentError.unavailable }
+    func fetchHistory(startHistoryId: String, pageToken: String?) async throws -> GmailHistoryResponse {
+        throw AttachmentError.unavailable
     }
 }

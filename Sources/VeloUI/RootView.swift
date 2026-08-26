@@ -82,6 +82,8 @@ public struct RootView: View {
                                    messages: app.inbox.selectedMessages,
                                    isExpanded: { app.inbox.isExpanded($0) },
                                    onToggle: { app.inbox.toggleExpansion($0) },
+                                   attachments: { app.inbox.attachments(forMessage: $0) },
+                                   attachmentModel: app.attachments,
                                    onUnsubscribe: { app.unsubscribeSelected() })
                     }
                 } else {

@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-691 tests, no XCTest, no `.xcodeproj`.
+725 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -138,7 +138,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 691 tests; offline and deterministic
+swift test          # 725 tests; offline and deterministic
 swift build
 ```
 
@@ -263,6 +263,19 @@ unauthenticated HTTP write to a URL taken out of untrusted mail.
 want off a list and still want to read this issue — and coupling them would make
 `Cmd+Z` ambiguous about which half it took back. `e` is the next key over.
 
+## Attachments
+
+Files on a message appear as chips under its header; clicking one saves it to
+Downloads. Only metadata is synced — a 500-message backfill would otherwise drag
+hundreds of megabytes for files that are mostly never opened — so content is
+fetched when you ask for it.
+
+Filenames arriving from strangers are never trusted as paths: a save is confined
+to the directory you picked, and a collision is numbered rather than overwriting
+what you already had.
+
+Attaching files to outgoing mail is **not** supported yet.
+
 ## Search
 
 `/` opens search. Plain keywords work with no setup — full-text over sender,
@@ -281,7 +294,7 @@ plain search terms.
 
 ## Not done yet
 
-Attachments, server-side drafts (`users.drafts`), multiple accounts, pinning a
+Sending attachments, server-side drafts (`users.drafts`), multiple accounts, pinning a
 thread to the top, collapsing the quoted part of a reply (parsing someone
 else's quoting is its own problem), desktop notifications, local filters and
 rules, calendar and contacts, anything needing a server (team features), and

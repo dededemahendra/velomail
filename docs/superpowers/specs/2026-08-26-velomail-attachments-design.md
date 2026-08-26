@@ -77,3 +77,28 @@ traversal, absolute paths, empty names, collisions.
 - Fetched bytes are not cached; saving the same file twice fetches twice.
 - No progress reporting on a large download.
 - Inline images are listed as attachments rather than rendered in place.
+
+---
+
+## Completion record
+
+691 → 725 tests, clean build, no warnings. Verified by launching: chips render
+with the right icon and a human-readable size.
+
+**Caught by tests, not by luck:**
+
+- Seeding the demo attachment before its message existed tripped the foreign
+  key. The constraint did its job; the ordering was mine.
+- `Attachment` collides with Swift Testing's own generic `Attachment`, hence
+  `MailAttachment`.
+- Comparing `deletingLastPathComponent()` against the target directory failed on
+  a trailing slash while the *security* property held perfectly — an assertion
+  bug that would have been easy to misread as a traversal escape.
+
+**Also fixed on the way in:** the observation test polled two seconds for an
+emission GRDB delivers on the main queue, which passed alone and failed once the
+suite reached 691 parallel tests. And the README's "not done" list had drifted
+in both directions, claiming shipped work was missing and vice versa.
+
+**Not verified:** clicking a chip to save, since that needs synthetic input.
+The save path itself is covered by tests written as attacks.
