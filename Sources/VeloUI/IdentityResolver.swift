@@ -23,6 +23,9 @@ public struct IdentityResolver: Sendable {
     }
 
     /// Gmail's answer, then the configured override, then a placeholder.
+    /// `@Sendable` because it is handed to `OutboundService`, which crosses
+    /// task boundaries in the sync actor.
+    @Sendable
     public func identity() -> String {
         if let stored = nonBlank(try? syncState.load(accountID: accountID)?.emailAddress) {
             return stored

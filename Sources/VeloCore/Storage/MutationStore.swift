@@ -3,7 +3,7 @@ import GRDB
 
 /// Durable FIFO queue of outbound `PendingMutation`s. Ordering is by
 /// autoincrement `id`. Success removes a row; failure flips it to `.failed`.
-public final class MutationStore {
+public final class MutationStore: Sendable {
     private let database: AppDatabase
 
     public init(_ database: AppDatabase) {
