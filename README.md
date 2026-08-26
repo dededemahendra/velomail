@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-811 tests, no XCTest, no `.xcodeproj`.
+821 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -47,11 +47,17 @@ You need a Google Cloud OAuth client id. In
 
 Then give the app the id, either way:
 
+If you created a **Desktop app** client, Google also issues a **client secret**,
+and the token exchange fails with `client_secret is missing` without it. An
+**iOS** client has no secret. Either works — supply what your client type has.
+
 ```bash
 export VELOMAIL_CLIENT_ID="…apps.googleusercontent.com"
+export VELOMAIL_CLIENT_SECRET="GOCSPX-…"   # Desktop clients only
 # or
 mkdir -p ~/.config/velomail
-echo '{"clientID":"…apps.googleusercontent.com"}' > ~/.config/velomail/config.json
+echo '{"clientID":"…apps.googleusercontent.com","clientSecret":"GOCSPX-…"}' \
+  > ~/.config/velomail/config.json
 ```
 
 Optionally set `VELOMAIL_IDENTITY` to your own address (it becomes the `From`
@@ -147,7 +153,7 @@ Every key is also in the command palette, so nothing is keyboard-only.
 ## Development
 
 ```bash
-swift test          # 811 tests; offline and deterministic
+swift test          # 821 tests; offline and deterministic
 swift build
 ```
 

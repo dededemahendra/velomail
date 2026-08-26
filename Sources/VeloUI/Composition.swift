@@ -64,7 +64,7 @@ public enum Composition {
 
         let httpClient = URLSessionHTTPClient()
         // The redirect is derived from the client id; see AuthConfig.
-        let authConfig = AuthConfig.gmail(clientID: clientID)
+        let authConfig = AuthConfig.gmail(clientID: clientID, clientSecret: config.clientSecret)
         let tokenService = TokenService(config: authConfig, httpClient: httpClient)
         let tokenStore = KeychainTokenStore()
         let tokenProvider = AccessTokenProvider(store: tokenStore, service: tokenService)
