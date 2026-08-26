@@ -83,4 +83,13 @@ private let liveModel = ProcessInfo.processInfo.environment["VELOMAIL_OLLAMA_MOD
         print("[live] plain: terms=\(query.terms)")
         #expect(query.terms.lowercased().contains("plot") || query.terms.lowercased().contains("map"))
     }
+
+    @Test func draftsAReplyFromAnInstructionThroughARealModel() async throws {
+        let reply = try await makeAssistant().draftReply(
+            to: thread, instruction: "agree, but ask for it by Thursday instead")
+
+        print("[live] draft: \(reply)")
+        #expect(!reply.isEmpty)
+        #expect(reply.count > 20)
+    }
 }

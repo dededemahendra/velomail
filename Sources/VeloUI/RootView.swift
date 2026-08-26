@@ -80,7 +80,8 @@ public struct RootView: View {
                 if let thread = app.inbox.selectedThread {
                     VStack(spacing: 0) {
                         AssistantPanel(model: app.assistant,
-                                       onUseSuggestion: { app.startReply(with: $0) })
+                                       onUseSuggestion: { app.startReply(with: $0) },
+                                       onRunDraft: { app.runAssistantDraft() })
                         ThreadView(thread: thread,
                                    messages: app.inbox.selectedMessages,
                                    isExpanded: { app.inbox.isExpanded($0) },

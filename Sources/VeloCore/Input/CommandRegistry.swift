@@ -52,6 +52,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Unsubscribe", action: .unsubscribe),
         Command(title: "Summarise Thread", action: .summarizeThread),
         Command(title: "Suggest Replies", action: .suggestReplies),
+        Command(title: "Write a Reply", action: .draftReplyWithAI),
         Command(title: "Triage Thread", action: .triageThread),
     ])
 

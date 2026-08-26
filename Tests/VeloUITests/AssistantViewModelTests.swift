@@ -105,4 +105,82 @@ private func msg(_ text: String = "are you free Friday?") -> Message {
         // Returning "" here would silently delete what the user wrote.
         #expect(await model.rewrite("orig", tone: .formal) == nil)
     }
+
+    // MARK: - Drafting from an instruction
+
+    @Test func askingToDraftOpensAPrompt() {
+        let model = AssistantViewModel(assistant: MailAssistant(provider: ScriptedProvider()))
+
+        model.beginDraft()
+
+        #expect(model.state == .prompting)
+        #expect(model.instruction.isEmpty)
+    }
+
+    @Test func draftingWithoutAProviderDoesNotPrompt() {
+        let model = AssistantViewModel(assistant: MailAssistant(provider: nil))
+        model.beginDraft()
+        // Offering to write something it cannot write is worse than not offering.
+        #expect(model.state == .idle)
+    }
+
+    @Test func theInstructionReachesTheModelAndTheDraftComesBack() async {
+        let provider = ScriptedProvider("Thanks, but I am away that week.")
+        let model = AssistantViewModel(assistant: MailAssistant(provider: provider))
+        model.beginDraft()
+        model.instruction = "decline politely"
+
+        await model.runDraft(messages: [msg()])
+
+        #expect(model.state == .draft("Thanks, but I am away that week."))
+    }
+
+    @Test func aDraftIsADistinctStateFromASummary() async {
+        // The panel offers "Use this" for a draft and must not for a summary.
+        let model = AssistantViewModel(assistant: MailAssistant(provider: ScriptedProvider("text")))
+        await model.summarize(messages: [msg()])
+        #expect(model.state == .result("text"))
+
+        model.beginDraft()
+        model.instruction = "x"
+        await model.runDraft(messages: [msg()])
+        #expect(model.state == .draft("text"))
+    }
+
+    @Test func anEmptyInstructionDoesNotCallTheModel() async {
+        let provider = ScriptedProvider("should not be used")
+        let model = AssistantViewModel(assistant: MailAssistant(provider: provider))
+        model.beginDraft()
+        model.instruction = "   "
+
+        await model.runDraft(messages: [msg()])
+
+        // Still waiting for something to act on, rather than spending a call.
+        #expect(model.state == .prompting)
+    }
+
+    @Test func aFailedDraftReportsRatherThanSilentlyClosing() async {
+        let model = AssistantViewModel(
+            assistant: MailAssistant(provider: ScriptedProvider(error: .unavailable)))
+        model.beginDraft()
+        model.instruction = "decline politely"
+
+        await model.runDraft(messages: [msg()])
+
+        guard case .failed = model.state else {
+            Issue.record("expected .failed, got \(model.state)")
+            return
+        }
+    }
+
+    @Test func dismissingClearsTheInstructionToo() async {
+        let model = AssistantViewModel(assistant: MailAssistant(provider: ScriptedProvider()))
+        model.beginDraft()
+        model.instruction = "decline politely"
+
+        model.dismiss()
+
+        #expect(model.state == .idle)
+        #expect(model.instruction.isEmpty)
+    }
 }

@@ -9,11 +9,18 @@ public final class AssistantViewModel: ObservableObject {
         case idle
         case working
         case result(String)
+        /// Waiting for the user to say what the reply should do.
+        case prompting
+        /// A written reply, kept distinct from `result` so the panel can offer
+        /// "Use this" for a draft and never for a summary.
+        case draft(String)
         case suggestions([String])
         case failed(String)
     }
 
     @Published public private(set) var state: State = .idle
+    /// What the reply should do, in the user's words.
+    @Published public var instruction: String = ""
 
     private let assistant: MailAssistant
 
@@ -24,7 +31,28 @@ public final class AssistantViewModel: ObservableObject {
     public var isAvailable: Bool { assistant.isAvailable }
     public var providerName: String? { assistant.providerName }
 
-    public func dismiss() { state = .idle }
+    public func dismiss() {
+        state = .idle
+        instruction = ""
+    }
+
+    /// Asks what the reply should say.
+    ///
+    /// Nothing happens without a provider: offering to write something it
+    /// cannot write is worse than not offering.
+    public func beginDraft() {
+        guard isAvailable else { return }
+        instruction = ""
+        state = .prompting
+    }
+
+    /// Writes a reply following `instruction`.
+    public func runDraft(messages: [Message]) async {
+        let asked = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        // No instruction, nothing to act on -- and no call to spend.
+        guard !asked.isEmpty else { return }
+        await run { .draft(try await assistant.draftReply(to: messages, instruction: asked)) }
+    }
 
     public func summarize(messages: [Message]) async {
         await run { .result(try await assistant.summarize(messages: messages)) }
