@@ -308,6 +308,25 @@ public final class ComposeViewModel: ObservableObject {
 
     public var attachmentBytes: Int { attachments.reduce(0) { $0 + $1.data.count } }
 
+    /// What the size line should say, or nothing when there is nothing
+    /// attached.
+    ///
+    /// The total alone told you nothing about how much room was left, so the
+    /// first you knew of the limit was a file being refused.
+    public var attachmentAllowance: String? {
+        guard !attachments.isEmpty else { return nil }
+        let used = AttachmentViewModel.formattedSize(attachmentBytes)
+        guard isNearAttachmentLimit else { return used }
+        return "\(used) of \(AttachmentViewModel.formattedSize(Draft.maximumAttachmentBytes))"
+    }
+
+    /// True once the total is close enough that the next file might not fit.
+    /// Three quarters: far enough along to be worth a warning, not so early
+    /// that it cries wolf on a single photograph.
+    public var isNearAttachmentLimit: Bool {
+        attachmentBytes * 4 >= Draft.maximumAttachmentBytes * 3
+    }
+
     public func startNew() {
         refreshContacts()
         // A new message is a new row. Reusing the id is exactly how the last

@@ -305,9 +305,13 @@ struct ComposeView: View {
                 }
                 .buttonStyle(.borderless)
 
-                if !model.attachments.isEmpty {
-                    Text(AttachmentViewModel.formattedSize(model.attachmentBytes))
-                        .font(.caption2).foregroundStyle(.secondary)
+                if let allowance = model.attachmentAllowance {
+                    Text(allowance)
+                        .font(.caption2)
+                        .foregroundStyle(model.isNearAttachmentLimit ? .orange : .secondary)
+                        .accessibilityLabel(model.isNearAttachmentLimit
+                                            ? "Attachments \(allowance), near the limit"
+                                            : "Attachments \(allowance)")
                 }
                 Spacer()
                 if let attachmentError {
