@@ -61,7 +61,12 @@ public enum GmailMessageMapper {
             lastMessageDate: date(from: newest.internalDate),
             isUnread: isUnread,
             hasAttachments: dtos.contains { hasAttachment($0.payload) },
-            labelIDs: labelIDs)
+            labelIDs: labelIDs,
+            messageCount: dtos.count,
+            recipientCount: {
+                let newest = message(from: newest)
+                return newest.recipients.count + newest.cc.count
+            }())
     }
 
     /// Aggregates a thread's per-message labels: the sorted union of all message

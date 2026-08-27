@@ -11,6 +11,12 @@ public struct MailThread: Codable, FetchableRecord, PersistableRecord, Identifia
     public var isUnread: Bool
     public var hasAttachments: Bool
     public var labelIDs: [String]
+    /// How many messages the thread holds. Stored rather than counted on
+    /// demand: a list row cannot afford a query each.
+    public var messageCount: Int
+    /// How many people the newest message went to, To and Cc together. One
+    /// means it was written to you and nobody else.
+    public var recipientCount: Int
     /// When a snoozed thread should return to the inbox. `nil` means awake.
     ///
     /// Local rather than a Gmail label: the *label* change is what syncs, while
@@ -22,6 +28,7 @@ public struct MailThread: Codable, FetchableRecord, PersistableRecord, Identifia
 
     public init(id: String, sender: String = "", snippet: String, lastMessageDate: Date,
                 isUnread: Bool, hasAttachments: Bool, labelIDs: [String],
+                messageCount: Int = 1, recipientCount: Int = 0,
                 snoozedUntil: Date? = nil) {
         self.id = id
         self.sender = sender
@@ -30,6 +37,8 @@ public struct MailThread: Codable, FetchableRecord, PersistableRecord, Identifia
         self.isUnread = isUnread
         self.hasAttachments = hasAttachments
         self.labelIDs = labelIDs
+        self.messageCount = messageCount
+        self.recipientCount = recipientCount
         self.snoozedUntil = snoozedUntil
     }
 }
