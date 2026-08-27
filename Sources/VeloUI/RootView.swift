@@ -122,6 +122,8 @@ public struct RootView: View {
                                     markedIndices: app.inbox.markedIndices,
                                     name: { app.inbox.correspondent(of: $0) },
                                     date: { app.inbox.rowDate(of: $0) },
+                                    rowHeight: app.preferences.listRowHeight,
+                                    previewLines: app.preferences.previewLines,
                                     onSelect: { app.inbox.select(index: $0) },
                                     onOpen: { app.perform(.openSelected) })
                 }

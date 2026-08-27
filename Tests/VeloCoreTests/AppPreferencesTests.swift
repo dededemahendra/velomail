@@ -152,4 +152,56 @@ import Foundation
         let (preferences, _) = makePreferences()
         #expect(preferences.opensAt == "inbox")
     }
+
+    // MARK: - Display
+
+    @Test func aThreadReadsOldestFirstByDefault() {
+        // That is the order the conversation happened in, and the order every
+        // other client shows it.
+        let (preferences, _) = makePreferences()
+        #expect(!preferences.newestFirstInThread)
+    }
+
+    @Test func onePreviewLineByDefault() {
+        let (preferences, _) = makePreferences()
+        #expect(preferences.previewLines == 1)
+        #expect(!preferences.compactList)
+    }
+
+    @Test func previewLinesStayWithinWhatARowCanShow() {
+        let (preferences, _) = makePreferences()
+        preferences.previewLines = 9
+        #expect(preferences.previewLines == 3)
+    }
+
+    @Test func noPreviewAtAllIsAllowed() {
+        // Someone who reads by subject alone should be able to say so.
+        let (preferences, _) = makePreferences()
+        preferences.previewLines = 0
+        #expect(preferences.previewLines == 0)
+    }
+
+    @Test func aCompactRowIsShorterThanAComfortableOne() {
+        let (preferences, _) = makePreferences()
+        let comfortable = preferences.listRowHeight
+        preferences.compactList = true
+
+        #expect(preferences.listRowHeight < comfortable)
+    }
+
+    @Test func fewerPreviewLinesMeansAShorterRow() {
+        let (preferences, _) = makePreferences()
+        let withOne = preferences.listRowHeight
+        preferences.previewLines = 0
+
+        #expect(preferences.listRowHeight < withOne)
+    }
+
+    @Test func aRowIsNeverTooShortToRead() {
+        let (preferences, _) = makePreferences()
+        preferences.compactList = true
+        preferences.previewLines = 0
+
+        #expect(preferences.listRowHeight >= 30)
+    }
 }

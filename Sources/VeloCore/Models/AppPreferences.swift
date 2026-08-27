@@ -22,6 +22,9 @@ public final class AppPreferences: @unchecked Sendable {
         static let recipientLimit = "velomail.recipientLimit"
         static let opensAt = "velomail.opensAt"
         static let marksReadAfter = "velomail.marksReadAfter"
+        static let newestFirst = "velomail.newestFirstInThread"
+        static let previewLines = "velomail.previewLines"
+        static let compactList = "velomail.compactList"
     }
 
     private let defaults: UserDefaults
@@ -114,6 +117,36 @@ public final class AppPreferences: @unchecked Sendable {
     public var marksReadAfter: TimeInterval {
         get { value(Key.marksReadAfter) ?? 0 }
         set { defaults.set(min(max(newValue, -1), 30), forKey: Key.marksReadAfter) }
+    }
+
+    // MARK: - Display
+
+    /// Whether a thread reads newest first.
+    ///
+    /// Oldest first by default, because that is the order a conversation
+    /// happened in and the order every other client shows it.
+    public var newestFirstInThread: Bool {
+        get { value(Key.newestFirst) ?? false }
+        set { defaults.set(newValue, forKey: Key.newestFirst) }
+    }
+
+    /// How many lines of a message to show in the list. Two make prose easier
+    /// to triage and alerts no easier at all, so this is worth asking.
+    public var previewLines: Int {
+        get { value(Key.previewLines) ?? 1 }
+        set { defaults.set(min(max(newValue, 0), 3), forKey: Key.previewLines) }
+    }
+
+    public var compactList: Bool {
+        get { value(Key.compactList) ?? false }
+        set { defaults.set(newValue, forKey: Key.compactList) }
+    }
+
+    /// The height a list row wants, given the two settings that decide it.
+    /// Kept here so the list and anything measuring it cannot disagree.
+    public var listRowHeight: CGFloat {
+        let base: CGFloat = compactList ? 34 : 44
+        return base + CGFloat(previewLines) * (compactList ? 15 : 20)
     }
 
     /// Absent means "never set", which is not the same as zero.
