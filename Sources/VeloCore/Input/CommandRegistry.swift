@@ -52,6 +52,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Snooze until tomorrow", action: .snoozeUntilTomorrow),
         Command(title: "Snooze until next week", action: .snoozeUntilNextWeek),
         Command(title: "Unsnooze", action: .unsnoozeSelected),
+        Command(title: "Toggle remote images", action: .toggleRemoteImages),
         Command(title: "Undo", action: .undo),
         Command(title: "Awaiting Reply", action: .showFollowUps),
         Command(title: "Focus Mode", action: .toggleFocus),
