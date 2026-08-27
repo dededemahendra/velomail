@@ -374,6 +374,7 @@ struct ThreadView: View {
                             Label("Unsubscribe", systemImage: "hand.raised")
                                 .font(.caption)
                         }
+                        .accessibilityHint("Asks the sender to stop mailing you")
                         .buttonStyle(.borderless)
                         .help("Unsubscribe (u)")
                     }
@@ -508,6 +509,11 @@ private struct MessageCard: View {
             .buttonStyle(.plain)
             // A one-message thread has nothing to collapse into.
             .disabled(isOnly)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(MailFormatting.messageDescription(
+                message, time: row.time, isExpanded: isExpanded))
+            .accessibilityHint(isOnly ? "" : (isExpanded ? "Collapses this message"
+                                                         : "Opens this message"))
             .padding(.horizontal, 24)
             .padding(.vertical, row.showsSender ? 10 : 6)
 

@@ -290,6 +290,23 @@ enum MailFormatting {
         return parts.joined(separator: ", ")
     }
 
+    /// One message in a thread, as one sentence.
+    ///
+    /// The transcript deliberately hides a repeated sender and a repeated
+    /// preview, which is right on screen and wrong out loud: someone listening
+    /// has no row above to have read it from.
+    static func messageDescription(_ message: Message, time: String,
+                                   isExpanded: Bool) -> String {
+        var parts = ["From \(displayName(message.sender))"]
+        let preview = (message.bodyText ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(120)
+        if !preview.isEmpty { parts.append(String(preview)) }
+        parts.append(time)
+        if !isExpanded { parts.append("collapsed") }
+        return parts.joined(separator: ", ")
+    }
+
     static func displayName(_ value: String) -> String {
         guard let open = value.firstIndex(of: "<") else { return value }
         let name = value[value.startIndex..<open]

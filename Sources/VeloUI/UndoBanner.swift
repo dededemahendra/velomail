@@ -11,6 +11,7 @@ struct UndoBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol).font(.caption)
+                .accessibilityHidden(true)
             Text(prompt).font(.callout)
             Spacer()
             // The shortcut is the way this is meant to be used; the button is
@@ -60,6 +61,8 @@ struct FailureBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .floatingSurface()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(prompt)
         .overlay(
             RoundedRectangle(cornerRadius: 12).strokeBorder(.orange.opacity(0.45), lineWidth: 1))
         .padding(.horizontal, 16).padding(.bottom, 12)

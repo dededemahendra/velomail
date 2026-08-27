@@ -300,6 +300,7 @@ struct SettingsView: View {
                             Image(systemName: "trash").font(.caption)
                         }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel("Delete snippet \(snippet.name)")
                     }
                     Divider().opacity(0.4)
                     TextField("What it types", text: $snippet.body, axis: .vertical)
@@ -332,34 +333,34 @@ struct SettingsView: View {
 
             group("Opening",
                   footnote: "Which list is on screen when the app starts.") {
-                Picker("", selection: $model.opensAt) {
+                Picker("Opening list", selection: $model.opensAt) {
                     Text("Inbox").tag("inbox")
                     Text("Starred").tag("starred")
                     Text("Snoozed").tag("snoozed")
                     Text("Sent").tag("sent")
                 }
-                .pickerStyle(.radioGroup).labelsHidden()
+                .pickerStyle(.radioGroup).labelsHidden().accessibilityElement(children: .contain)
             }
 
             group("Marking as read",
                   footnote: "Never is for triaging: open a thread to look at it without "
                   + "losing track of what you have not dealt with.") {
-                Picker("", selection: $model.marksReadAfter) {
+                Picker("Mark as read", selection: $model.marksReadAfter) {
                     Text("As soon as it opens").tag(0.0)
                     Text("After 2 seconds").tag(2.0)
                     Text("After 5 seconds").tag(5.0)
                     Text("Never").tag(-1.0)
                 }
-                .pickerStyle(.radioGroup).labelsHidden()
+                .pickerStyle(.radioGroup).labelsHidden().accessibilityElement(children: .contain)
             }
 
             group("The list",
                   footnote: "Compact fits about half again as many messages on screen.") {
-                Picker("", selection: $model.compactList) {
+                Picker("List density", selection: $model.compactList) {
                     Text("Comfortable").tag(false)
                     Text("Compact").tag(true)
                 }
-                .pickerStyle(.radioGroup).labelsHidden()
+                .pickerStyle(.radioGroup).labelsHidden().accessibilityElement(children: .contain)
                 Divider().opacity(0.4)
                 Stepper(value: $model.previewLines, in: 0...3, step: 1) {
                     HStack {
@@ -376,11 +377,11 @@ struct SettingsView: View {
 
             group("Threads",
                   footnote: "Oldest first is the order the conversation happened in.") {
-                Picker("", selection: $model.newestFirstInThread) {
+                Picker("Thread order", selection: $model.newestFirstInThread) {
                     Text("Oldest message first").tag(false)
                     Text("Newest message first").tag(true)
                 }
-                .pickerStyle(.radioGroup).labelsHidden()
+                .pickerStyle(.radioGroup).labelsHidden().accessibilityElement(children: .contain)
             }
 
             group("Notifications",
@@ -458,7 +459,11 @@ struct SettingsView: View {
             ForEach($model.rules) { $rule in
                 group {
                     HStack(spacing: 8) {
-                        Toggle("", isOn: $rule.isEnabled).labelsHidden().controlSize(.small)
+                        Toggle("", isOn: $rule.isEnabled)
+                            .labelsHidden().controlSize(.small)
+                            .accessibilityLabel(rule.isEnabled
+                                                ? "Rule on, \(rule.name)"
+                                                : "Rule off, \(rule.name)")
                         TextField("Name", text: $rule.name)
                             .textFieldStyle(.plain)
                             .font(.system(size: 13, weight: .medium))
@@ -469,6 +474,7 @@ struct SettingsView: View {
                             Image(systemName: "trash").font(.caption)
                         }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel("Delete rule \(rule.name)")
                     }
                     Divider().opacity(0.4)
                     HStack(spacing: 8) {
@@ -515,6 +521,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
                 .labelsHidden()
+                .accessibilityLabel("AI provider")
             }
 
             if !model.aiProvider.isEmpty {
