@@ -81,25 +81,62 @@ struct SearchView: View {
     }
 
     private func row(_ thread: MailThread, isSelected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(MailFormatting.displayName(thread.sender))
-                    .font(.callout.weight(thread.isUnread ? .semibold : .regular))
-                Spacer()
-                Text(MailFormatting.relativeDate(thread.lastMessageDate))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            HStack(spacing: 5) {
-                if thread.hasAttachments {
-                    Image(systemName: "paperclip").font(.caption2).foregroundStyle(.tertiary)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(MailFormatting.displayName(thread.sender))
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    if thread.hasAttachments {
+                        Image(systemName: "paperclip").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    if thread.isUnread {
+                        Text("Unread")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tint)
+                    }
                 }
-                Text(thread.snippet)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                // The matched words, marked. Without them a result looks
+                // arbitrary: searching "youtube" returns marketing mail whose
+                // subject never says it, and nothing on the row explains why.
+                highlighted(HTMLText.decoded(thread.snippet))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
+            Spacer(minLength: 8)
+            Text(MailFormatting.relativeDate(thread.lastMessageDate))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 20).padding(.vertical, 10)
-        .background(isSelected ? Color.accentColor.opacity(0.18) : .clear)
+        .padding(.horizontal, 20).padding(.vertical, 9)
+        .background(isSelected
+                    ? AnyShapeStyle(.tint.opacity(0.18)) : AnyShapeStyle(Color.clear))
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(MailFormatting.rowDescription(
+            thread, name: MailFormatting.displayName(thread.sender),
+            date: MailFormatting.relativeDate(thread.lastMessageDate)))
+    }
+
+    /// The searched words picked out of the line they were found in.
+    private func highlighted(_ text: String) -> Text {
+        let words = model.text
+            .components(separatedBy: .whitespaces)
+            .filter { $0.count > 2 && !$0.contains(":") }
+        guard !words.isEmpty else { return Text(text) }
+
+        var result = Text("")
+        var remainder = Substring(text)
+        while let match = words.compactMap({ word in
+            remainder.range(of: word, options: .caseInsensitive)
+        }).min(by: { $0.lowerBound < $1.lowerBound }) {
+            result = result + Text(remainder[remainder.startIndex..<match.lowerBound])
+            result = result + Text(remainder[match]).foregroundColor(.primary)
+                .font(.system(size: 12, weight: .semibold))
+            remainder = remainder[match.upperBound...]
+        }
+        return result + Text(remainder)
     }
 
     /// Says what can be typed rather than only that something can be.

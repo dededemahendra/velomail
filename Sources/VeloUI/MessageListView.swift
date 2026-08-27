@@ -229,7 +229,9 @@ private final class ThreadRowView: NSView {
         date.textColor = .tertiaryLabelColor
         date.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let snippet = NSTextField(labelWithString: thread.snippet)
+        // Gmail sends this escaped; without decoding the list reads
+        // "It&#39;s Friday".
+        let snippet = NSTextField(labelWithString: HTMLText.decoded(thread.snippet))
         snippet.font = .systemFont(ofSize: 12)
         // Secondary, not tertiary: the snippet is the thing you actually read
         // when deciding whether to open something.
@@ -284,7 +286,7 @@ enum MailFormatting {
         if thread.isUnread { parts.append("Unread") }
         if thread.labelIDs.contains("STARRED") { parts.append("starred") }
         parts.append("from \(name)")
-        if !thread.snippet.isEmpty { parts.append(thread.snippet) }
+        if !thread.snippet.isEmpty { parts.append(HTMLText.decoded(thread.snippet)) }
         if thread.hasAttachments { parts.append("has attachment") }
         parts.append(date)
         return parts.joined(separator: ", ")
