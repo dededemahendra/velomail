@@ -130,7 +130,7 @@ public enum QuotedReply {
     /// between them standing as text, and a newsletter carries kilobytes of
     /// `@font-face` rules -- which is exactly what a quote filled up with. The
     /// blocks whose contents are not prose go first, whole.
-    static func strippedTags(_ html: String) -> String {
+    public static func strippedTags(_ html: String) -> String {
         var text = html
         for tag in ["style", "script", "head"] {
             text = removingBlock(tag, from: text)

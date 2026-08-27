@@ -211,6 +211,21 @@ private final class ThreadRowView: NSView {
 
         // Unread carries weight; read carries none. One signal, not two, so the
         // list reads as a single column of names rather than a checkerboard.
+        // Beside the name rather than in the date column: it belongs to the
+        // conversation, not to when it last moved.
+        let count = NSTextField(labelWithString: MailFormatting.threadCount(thread.messageCount) ?? "")
+        count.font = .systemFont(ofSize: 10, weight: .medium)
+        count.textColor = .tertiaryLabelColor
+
+        // A mark, not a word: it appears on a good fraction of rows and must
+        // not compete with the sender. A middle dot was too quiet to read as
+        // anything but a smudge; the guillemet is the convention other clients
+        // already use for mail addressed to you and nobody else.
+        let direct = NSTextField(labelWithString:
+            MailFormatting.isToYouAlone(recipientCount: thread.recipientCount) ? "\u{00BB}" : "")
+        direct.font = .systemFont(ofSize: 11, weight: .medium)
+        direct.textColor = .secondaryLabelColor
+
         let sender = NSTextField(labelWithString: name)
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
@@ -257,7 +272,7 @@ private final class ThreadRowView: NSView {
         // removed rather than left as an empty gap.
         snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [mark, dot, sender, NSView(), tag, clip, star, date])
+        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), tag, clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
@@ -297,6 +312,36 @@ enum MailFormatting {
     /// six unlabelled fragments and the paperclip says nothing at all. Unread
     /// comes first because it is what decides whether to keep listening, and
     /// "read" is never said -- it would be noise on the great majority of rows.
+    /// The date and time in full, for a tooltip.
+    ///
+    /// The transcript names days relatively -- "Today", "Yesterday", "Monday"
+    /// -- which is what you want at a glance and useless when you need to
+    /// quote the date. Nothing in the app would tell you.
+    static func fullStamp(_ date: Date, calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateStyle = .full
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    /// The count that goes beside a sender, or nothing for a thread of one.
+    ///
+    /// A twelve-message thread and a one-message thread looked identical in the
+    /// list, and how long a conversation has run is most of what tells you
+    /// whether opening it is a minute or ten.
+    static func threadCount(_ count: Int) -> String? {
+        count > 1 ? "\(count)" : nil
+    }
+
+    /// True when the newest message went to one person, which in your own
+    /// inbox is you. Mail written to you alone is not the same object as mail
+    /// copied to forty, and the list gave no way to tell them apart.
+    static func isToYouAlone(recipientCount: Int) -> Bool {
+        recipientCount == 1
+    }
+
     /// Cuts a label name down to something a row can carry beside a sender.
     ///
     /// At a word boundary where that leaves most of the allowance, and mid-word
@@ -316,6 +361,9 @@ enum MailFormatting {
         if thread.isUnread { parts.append("Unread") }
         if thread.labelIDs.contains("STARRED") { parts.append("starred") }
         parts.append("from \(name)")
+        if thread.messageCount > 1 { parts.append("\(thread.messageCount) messages") }
+        // Spelled out: a listener has no dot to see.
+        if isToYouAlone(recipientCount: thread.recipientCount) { parts.append("to you only") }
         if !thread.snippet.isEmpty { parts.append(HTMLText.decoded(thread.snippet)) }
         if thread.hasAttachments { parts.append("has attachment") }
         // Every label, not just the one the row has room to draw: a listener

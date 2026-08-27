@@ -8,8 +8,12 @@ import Testing
         registry.matches(query).map(\.title)
     }
 
-    @Test func emptyQueryReturnsEveryCommandInRegistrationOrder() {
-        #expect(registry.matches("") == registry.commands)
+    @Test func emptyQueryReturnsEveryCommandInGroupOrder() {
+        // Registration order once, now grouped: fifty commands in one flat
+        // column is a list nobody reads to the end of. Nothing is lost.
+        #expect(Set(registry.matches("").map(\.title)) == Set(registry.commands.map(\.title)))
+        #expect(registry.matches("").count == registry.commands.count)
+        #expect(registry.matches("").first?.group == .triage)
     }
 
     @Test func matchesAPlainPrefix() {

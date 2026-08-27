@@ -60,6 +60,7 @@ public struct RootView: View {
                 }
                 if let prompt = app.undoPrompt {
                     UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
+                               deadline: app.undoDeadline,
                                onUndo: { app.undo() })
                 }
             }
@@ -82,6 +83,9 @@ public struct RootView: View {
                             onConfirm: { app.confirmTime($0) },
                             onCancel: { app.cancelTime() })
         }
+        .sheet(isPresented: $app.isShowingShortcuts) {
+            ShortcutsView(onClose: { app.isShowingShortcuts = false })
+        }
         .sheet(isPresented: $app.isShowingSettings) {
             SettingsView(model: settings,
                          accounts: app.accounts,
@@ -99,6 +103,7 @@ public struct RootView: View {
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
+                                   recents: app.recentCommands,
                                    onRun: { app.run($0) },
                                    onCancel: { app.perform(.back) })
                     .padding(.top, 90)

@@ -25,6 +25,19 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case loadOlderMail
     /// Ask for a sync pass now instead of waiting out the backoff.
     case syncNow
+    /// Mark every row in the list, so one keystroke stands in for forty.
+    case selectAll
+    /// Clear the unread state of everything in the list at once.
+    case markAllRead
+    /// Send the selected thread to Gmail's spam folder.
+    case reportSpam
+    /// Open the selected thread in Gmail on the web, for whatever this client
+    /// cannot do.
+    case openInGmail
+    /// Write the selected thread out as a text file.
+    case exportThread
+    /// Show the whole keymap on one card.
+    case showShortcuts
     /// Which label is on the `Command`, not the action: there is one per
     /// account and they are renamed and deleted, so a case each is not on the
     /// cards and a raw-valued enum cannot carry one anyway.
@@ -70,7 +83,9 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// True for actions that need an LLM provider.
     public var isAI: Bool {
         switch self {
-        case .summarizeThread, .suggestReplies, .triageThread: return true
+        // draftReplyWithAI belongs here too. Left out, it stayed in the
+        // palette with no provider configured and did nothing when run.
+        case .summarizeThread, .suggestReplies, .triageThread, .draftReplyWithAI: return true
         default: return false
         }
     }

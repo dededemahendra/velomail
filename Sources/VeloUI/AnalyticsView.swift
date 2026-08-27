@@ -191,11 +191,23 @@ struct AnalyticsView: View {
 
     // MARK: - Formatting
 
+    /// A span, to two units at most.
+    ///
+    /// It rounded to a single unit, which put a ninety minute median on screen
+    /// as "2h" -- a third out, on the one number anyone would quote. The
+    /// smaller unit is dropped when it is zero, so a clean hour stays "1h".
     static func duration(_ seconds: TimeInterval?) -> String {
-        guard let seconds else { return "—" }
-        if seconds < 3600 { return "\(Int((seconds / 60).rounded()))m" }
-        if seconds < 86_400 { return "\(Int((seconds / 3600).rounded()))h" }
-        return "\(Int((seconds / 86_400).rounded()))d"
+        guard let seconds, seconds >= 0 else { return "\u{2014}" }
+        let total = Int(seconds.rounded())
+        if total < 60 { return "\(total)s" }
+        if total < 3600 { return "\(total / 60)m" }
+        if total < 86_400 { return pair(total / 3600, "h", (total % 3600) / 60, "m") }
+        return pair(total / 86_400, "d", (total % 86_400) / 3600, "h")
+    }
+
+    private static func pair(_ big: Int, _ bigUnit: String,
+                             _ small: Int, _ smallUnit: String) -> String {
+        small == 0 ? "\(big)\(bigUnit)" : "\(big)\(bigUnit) \(small)\(smallUnit)"
     }
 
     static func hour(_ hour: Int?) -> String {

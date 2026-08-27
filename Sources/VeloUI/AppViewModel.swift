@@ -37,6 +37,9 @@ public final class AppViewModel: ObservableObject {
     /// One slot, not a stack: offering to undo something the user stopped
     /// thinking about two actions ago is worse than offering nothing.
     @Published public private(set) var undoable: Undoable?
+    /// When the offer runs out. Published so the banner can show how much of
+    /// the window is left rather than making the reader guess.
+    @Published public private(set) var undoDeadline: Date?
 
     /// What the banner says, or nil when there is nothing to undo.
     public var undoPrompt: String? { undoable?.prompt }
@@ -56,6 +59,11 @@ public final class AppViewModel: ObservableObject {
             case send(Int64)
             /// Threads to put back in the inbox.
             case disposal([String])
+            /// Threads whose unread state to restore. Bulk marking cleared
+            /// forty at once with no way back, where archiving one had one.
+            case markedRead([String])
+            /// Threads to take back out of spam.
+            case spam([String])
         }
         public let kind: Kind
         public let prompt: String
@@ -63,6 +71,15 @@ public final class AppViewModel: ObservableObject {
         public var symbol: String {
             if case .send = kind { return "paperplane.fill" }
             return "arrow.uturn.backward"
+        }
+
+        /// Every thread this offer would touch, for a caller that needs to
+        /// know whether an offer is worth making at all.
+        public var threadIDs: [String] {
+            switch kind {
+            case .send: return []
+            case let .disposal(ids), let .markedRead(ids), let .spam(ids): return ids
+            }
         }
     }
 
@@ -81,6 +98,9 @@ public final class AppViewModel: ObservableObject {
     /// A one-line answer to something the writer just did. Not an error
     /// channel: silence after pressing a button reads as a broken button.
     @Published public private(set) var notice: String?
+    /// The last few commands run from the palette, newest first, so what you
+    /// keep reaching for stops being fifty rows down.
+    @Published public private(set) var recentCommands: [MailAction] = []
     /// How long a passing message stays up. Long enough to read one short
     /// sentence, short enough that it is gone before it becomes furniture.
     /// Settable so a four-second wait is not four seconds of test.
@@ -170,6 +190,9 @@ public final class AppViewModel: ObservableObject {
     /// is about the app rather than about the mail, and closing it should put
     /// the reader back exactly where they were.
     @Published public var isShowingSettings = false
+    /// The keymap on a card. A sheet like Settings rather than a route: it is
+    /// something you glance at beside your mail, not somewhere you go.
+    @Published public var isShowingShortcuts = false
 
     /// Something worth asking about before this message goes. Nothing has been
     /// queued while it is set: the writer can still fix it.
@@ -201,6 +224,11 @@ public final class AppViewModel: ObservableObject {
 
     /// Runs a palette command, which may carry what it is about.
     public func run(_ command: Command) {
+        // Before the switch, so a command that changes route still counts. Only
+        // from the palette: keystrokes are already fast, and folding them in
+        // would fill Recent with j and k.
+        recentCommands = CommandRegistry.remember(command.action, in: recentCommands)
+        preferences.recentCommands = recentCommands.map(\.rawValue)
         switch command.action {
         case .goToLabel:
             command.argument.flatMap(label(withID:)).map { show(label: $0) }
@@ -323,6 +351,9 @@ public final class AppViewModel: ObservableObject {
                 preferences: AppPreferences = AppPreferences()) {
         self.preferences = preferences
         self.alwaysLoadsImages = preferences.loadsRemoteImages
+        // Unknown raw values are dropped rather than failing the whole read: a
+        // command removed in a later version must not wipe the rest.
+        self.recentCommands = preferences.recentCommands.compactMap(MailAction.init(rawValue:))
         self.loadOlder = loadOlder
         self.syncNow = syncNow
         self.config = config
@@ -348,7 +379,8 @@ public final class AppViewModel: ObservableObject {
             ?? AttachmentViewModel(service: AttachmentService(source: UnavailableSource()))
         self.search = search ?? SearchViewModel(
             search: SearchService(store.database),
-            translator: QueryTranslator(assistant: assistant))
+            translator: QueryTranslator(assistant: assistant),
+            preferences: preferences)
         self.route = .setup
         self.route = landingRoute
         self.inboxChanges = inbox.objectWillChange.sink { [weak self] _ in
@@ -508,6 +540,12 @@ public final class AppViewModel: ObservableObject {
         case .goToStarred: show(.starred)
         case .loadOlderMail: Task { await loadOlderMail() }
         case .syncNow: Task { await syncMailNow() }
+        case .selectAll: inbox.markAll()
+        case .markAllRead: markEverythingRead()
+        case .reportSpam: reportSpamOnSelected()
+        case .openInGmail: openSelectedInGmail()
+        case .exportThread: exportSelectedThread()
+        case .showShortcuts: isShowingShortcuts = true
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
@@ -556,20 +594,24 @@ public final class AppViewModel: ObservableObject {
         route = .thread
     }
 
-    /// Runs an assistant operation over the open thread. Silently ignored when
-    /// there is no provider or no thread -- both are states, not errors.
+    /// Runs an assistant operation over the open thread.
+    ///
+    /// No open thread is a state and stays silent -- you can see that nothing
+    /// is selected. No provider is not: the palette hides these commands when
+    /// none is configured, but the chords stay bound, and a key that does
+    /// nothing at all reads as a broken key rather than as a missing setting.
     private func runAssistant(_ operation: @escaping (AssistantViewModel, [Message]) async -> Void) {
-        guard assistant.isAvailable else { return }
+        guard assistant.isAvailable else { return sayAIIsNotSetUp() }
         let messages = inbox.selectedMessages
         guard !messages.isEmpty else { return }
         if route == .palette { route = .list }
         Task { await operation(assistant, messages) }
     }
 
-    /// Asks the assistant what the reply should say. Silently ignored without a
-    /// provider or an open thread -- both are states, not errors.
+    /// Asks the assistant what the reply should say.
     public func beginAssistantDraft() {
-        guard assistant.isAvailable, !inbox.selectedMessages.isEmpty else { return }
+        guard assistant.isAvailable else { return sayAIIsNotSetUp() }
+        guard !inbox.selectedMessages.isEmpty else { return }
         if route == .palette { route = .list }
         assistant.beginDraft()
     }
@@ -813,6 +855,65 @@ public final class AppViewModel: ObservableObject {
         noticeToken += 1
     }
 
+    /// Points at the setting rather than leaving the keystroke unanswered.
+    private func sayAIIsNotSetUp() {
+        show(notice: "AI is not set up. Add a key under Settings \u{203A} AI.")
+    }
+
+    /// Clears the unread state of everything in the list at once.
+    ///
+    /// The whole list, not the marked rows: "mark all as read" that quietly
+    /// meant "mark the two rows you ticked" would be a trap.
+    private func markEverythingRead() {
+        let unread = inbox.threads.filter(\.isUnread)
+        guard !unread.isEmpty else {
+            show(notice: "Nothing unread here")
+            return
+        }
+        for thread in unread { try? outbound.markRead(threadID: thread.id) }
+        try? inbox.reload()
+        // Only the ones actually changed, so undo cannot make unread something
+        // that was already read before the press.
+        offerUndo(.init(kind: .markedRead(unread.map(\.id)),
+                        prompt: "\(unread.count) marked read"))
+    }
+
+    private func reportSpamOnSelected() {
+        let targets = inbox.targetThreads
+        guard !targets.isEmpty else { return }
+        for thread in targets { try? outbound.reportSpam(threadID: thread.id) }
+        try? inbox.reload()
+        offerUndo(.init(kind: .spam(targets.map(\.id)),
+                        prompt: targets.count == 1
+                            ? "Reported as spam"
+                            : "\(targets.count) reported as spam"))
+    }
+
+    /// Hands the selected thread to Gmail on the web.
+    ///
+    /// The escape hatch for everything this client does not do -- printing,
+    /// filters, the settings Google keeps to itself -- rather than an admission
+    /// of defeat on each of them separately.
+    private func openSelectedInGmail() {
+        guard let thread = inbox.selectedThread else { return }
+        guard let url = URL(string: "https://mail.google.com/mail/u/0/#all/\(thread.id)") else { return }
+        openURL(url)
+    }
+
+    private func exportSelectedThread() {
+        guard let thread = inbox.selectedThread else { return }
+        let messages = inbox.selectedMessages
+        guard !messages.isEmpty else { return }
+        let text = ThreadExport.plainText(of: messages)
+        let name = ThreadExport.fileName(for: messages, threadID: thread.id)
+        do {
+            let url = try ThreadExport.write(text, named: name)
+            show(notice: "Saved to \(url.lastPathComponent)")
+        } catch {
+            show(notice: "Could not save the thread")
+        }
+    }
+
     /// Asks for a sync pass now rather than waiting out the backoff.
     ///
     /// The engine coalesces a call made while a pass is already in flight, so
@@ -894,8 +995,13 @@ public final class AppViewModel: ObservableObject {
             try? outbound.cancelSend(mutationID: id)
         case let .disposal(threadIDs):
             for threadID in threadIDs { try? outbound.unarchive(threadID: threadID) }
+        case let .markedRead(threadIDs):
+            for threadID in threadIDs { try? outbound.markUnread(threadID: threadID) }
+        case let .spam(threadIDs):
+            for threadID in threadIDs { try? outbound.notSpam(threadID: threadID) }
         }
         self.undoable = nil
+        undoDeadline = nil
         try? inbox.reload()
     }
 
@@ -913,6 +1019,9 @@ public final class AppViewModel: ObservableObject {
     private func offerUndo(_ action: Undoable) {
         undoable = action
         let window = preferences.undoWindow
+        // The banner offered ten seconds and gave no sign of how many were
+        // left, which makes a deliberate wait feel like a gamble.
+        undoDeadline = Date().addingTimeInterval(window)
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
             await MainActor.run { self?.expireUndo(action) }
@@ -922,7 +1031,10 @@ public final class AppViewModel: ObservableObject {
     /// Clears the banner only if it still refers to *this* action; a newer one
     /// must not have its window cut short.
     private func expireUndo(_ action: Undoable) {
-        if undoable == action { undoable = nil }
+        if undoable == action {
+            undoable = nil
+            undoDeadline = nil
+        }
     }
 
     public func snoozeSelected(hours: Double) {

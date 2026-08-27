@@ -6,6 +6,8 @@ import VeloCore
 struct UndoBanner: View {
     let prompt: String
     var symbol: String = "arrow.uturn.backward"
+    /// When the offer runs out, when there is one worth drawing.
+    var deadline: Date?
     let onUndo: () -> Void
 
     var body: some View {
@@ -17,6 +19,19 @@ struct UndoBanner: View {
             // The shortcut is the way this is meant to be used; the button is
             // for the times the writer has already reached for the mouse.
             Text("\u{2318}Z").font(.caption2).foregroundStyle(.tertiary)
+            if let deadline, deadline > Date() {
+                // A hairline rather than a number: it answers "how long have I
+                // got" at a glance without asking to be read.
+                ProgressView(timerInterval: Date()...deadline, countsDown: true) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.linear)
+                .frame(width: 46)
+                .tint(.secondary)
+                .accessibilityHidden(true)
+            }
             Button("Undo", action: onUndo)
                 .buttonStyle(.borderless)
                 .keyboardShortcut("z", modifiers: .command)

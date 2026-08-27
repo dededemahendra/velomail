@@ -35,6 +35,13 @@ struct ComposeView: View {
             HStack(spacing: 10) {
                 Text(model.headline)
                     .font(.system(size: 13, weight: .semibold))
+                if !model.sendingAs.isEmpty {
+                    Text("from \(model.sendingAs)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .accessibilityLabel("Sending as \(model.sendingAs)")
+                }
                 Spacer()
                 Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
                 Menu("Later") {
@@ -298,9 +305,13 @@ struct ComposeView: View {
                 }
                 .buttonStyle(.borderless)
 
-                if !model.attachments.isEmpty {
-                    Text(AttachmentViewModel.formattedSize(model.attachmentBytes))
-                        .font(.caption2).foregroundStyle(.secondary)
+                if let allowance = model.attachmentAllowance {
+                    Text(allowance)
+                        .font(.caption2)
+                        .foregroundStyle(model.isNearAttachmentLimit ? .orange : .secondary)
+                        .accessibilityLabel(model.isNearAttachmentLimit
+                                            ? "Attachments \(allowance), near the limit"
+                                            : "Attachments \(allowance)")
                 }
                 Spacer()
                 if let attachmentError {

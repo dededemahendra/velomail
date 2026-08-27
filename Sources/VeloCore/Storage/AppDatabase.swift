@@ -288,6 +288,34 @@ public final class AppDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v21_add_thread_counts") { db in
+            // How long a thread is and how many people are on it. Derived from
+            // the messages, but stored: a list row cannot afford a query each,
+            // and the list is the one place these two facts are worth anything.
+            try db.alter(table: "thread") { t in
+                t.add(column: "messageCount", .integer).notNull().defaults(to: 1)
+                t.add(column: "recipientCount", .integer).notNull().defaults(to: 0)
+            }
+            // Filled in for what is already here. Without this every existing
+            // thread reads as one message until it happens to be re-synced,
+            // which for old mail is never.
+            try db.execute(sql: """
+                UPDATE thread SET messageCount = MAX(1, (
+                    SELECT COUNT(*) FROM message WHERE message.threadID = thread.id
+                ))
+                """)
+            // The newest message's recipients, which is what a row is about.
+            // json_array_length rather than parsing: the column is a JSON array
+            // and SQLite can already count one.
+            try db.execute(sql: """
+                UPDATE thread SET recipientCount = COALESCE((
+                    SELECT json_array_length(m.recipients) + json_array_length(m.cc)
+                    FROM message m WHERE m.threadID = thread.id
+                    ORDER BY m.date DESC LIMIT 1
+                ), 0)
+                """)
+        }
+
         return migrator
     }
 }
