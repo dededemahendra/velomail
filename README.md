@@ -9,7 +9,7 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 - **`VeloUI`** — view models and views.
 - **`VeloMail`** — the app.
 
-957 tests, no XCTest, no `.xcodeproj`.
+1446 tests, no XCTest, no `.xcodeproj`.
 
 ## Build and run
 
@@ -149,24 +149,38 @@ untouched.
 | `s` | star / unstar |
 | `x` | mark the row for a bulk action |
 | `Cmd+Enter` | send |
-| `g` `i` | go to inbox |
 | `Cmd+K` | command palette (shows every shortcut) |
+| `Cmd+,` | settings |
 | `/` or `Cmd+F` | search |
-| `h` | snooze for 4 hours |
+| `h` | snooze (4 hours by default) |
 | `u` | unsubscribe from the open thread |
-| `Cmd+Z` | undo send (10s window) |
-| `g` `f` | threads awaiting a reply |
-| `g` `d` | focus mode (hides counts, silences banners) |
-| `g` `a` | analytics for the last 7 days |
+| `Cmd+Z` | undo the last send, archive, delete, snooze or filing |
 | `a` `s` / `a` `r` / `a` `t` | summarise / suggest replies / triage (AI) |
 | `Esc` | back, or cancel a half-typed chord |
+
+Going places:
+
+| Key | Goes to |
+|---|---|
+| `g` `i` | inbox |
+| `g` `s` | sent |
+| `g` `h` | snoozed |
+| `g` `d` | drafts |
+| `g` `t` | starred |
+| `g` `e` | archive |
+| `g` `f` | threads awaiting a reply |
+| `g` `a` | analytics for the last 7 days |
+| `g` `z` | focus mode (hides counts, silences banners) |
+
+Labels get a palette entry each rather than a key: which labels exist is a
+question about the account, not about the app.
 
 Every key is also in the command palette, so nothing is keyboard-only.
 
 ## Development
 
 ```bash
-swift test          # 821 tests; offline and deterministic
+swift test          # 1446 tests; offline and deterministic
 swift build
 ```
 
@@ -372,6 +386,21 @@ device. A malformed rules file disables rules rather than guessing.
 
 ## Search
 
+Operators first, model second. `from:`, `is:unread`, `is:read`, `before:` and
+`after:` are parsed before anything is sent anywhere, so a typed query is
+honoured exactly rather than reinterpreted — and works with no AI configured at
+all. Dates take `2026-08-01` or `today`, `yesterday`, `week`, `month`, `year`.
+
+Anything that does not parse is left as words: `after:soon` searches for
+"after:soon", which is a worse answer than filtering and a much better one than
+silently dropping it.
+
+What a query narrowed on is named back above the results, because otherwise
+`from:cloudflare` filtering and searching for the literal string look identical
+when the answer is empty.
+
+## Full-text search
+
 `/` opens search. Plain keywords work with no setup — full-text over sender,
 subject and body, with stemming, so "meeting" finds "meet".
 
@@ -386,10 +415,42 @@ and run against the same index. **The model only ever sees your query string —
 never your mail.** With no provider, or if translation fails, the text is used as
 plain search terms.
 
+## Settings
+
+`Cmd+,`. Accounts, writing, composing, snippets, reading, timing, rules and AI.
+
+It writes the same files the app already reads — `~/.config/velomail/` — so
+nothing here is a second source of truth and the rules stay readable in a text
+editor, which is the whole reason they are a file. `config.json` is merged
+rather than replaced, because it also holds the OAuth client id and secret.
+
+What can't work isn't saved: a snippet with no shortcut could never be
+triggered, and a rule with no condition matches everything.
+
+## Labels
+
+Names are fetched each sync pass, so a label renamed in Gmail does not keep its
+old name here. Gmail's own categories read as words — `CATEGORY_PROMOTIONS` is
+"Promotions" — and the structural ones (INBOX, SENT, TRASH…) are left out
+because they have views of their own.
+
+Filing goes through the same queue as everything else and is undoable.
+Unfiling is offered only while looking at the label it would remove.
+
+## Accounts
+
+One database and one Keychain entry per account. Accounts share no mail, no
+tokens and no sync cursor, so keeping them apart is cheaper than threading a
+predicate through every query. Switching rebuilds the whole assembly.
+
+The first account keeps the filename and Keychain entry it already had, so
+adding a second does not orphan an existing mailbox.
+
 ## Not done yet
 
-Draft sync to other devices (`users.drafts`), resumable upload for very large
-attachments, multiple accounts, pinning a
-thread to the top, collapsing the quoted part of a reply (parsing someone
-else's quoting is its own problem),  calendar and contacts, anything needing a server (team features), and
-code signing / notarisation.
+Resumable upload for very large attachments, pinning a thread to the top,
+calendar and contacts, anything needing a server (team features), and code
+signing / notarisation.
+
+A second real account has never been signed into end to end — the switching is
+covered by tests, the OAuth path for account two is not.
