@@ -102,3 +102,35 @@ import VeloCore
                 date: date, bodyHTML: nil, bodyText: "b", isUnread: false, labelIDs: [])
     }
 }
+
+@Suite struct ThreadChipTests {
+    private let known = (0..<7).map { MailLabel(id: "L\($0)", name: "Name \($0)", kind: .user) }
+    private var allIDs: [String] { ["INBOX"] + known.map(\.id) }
+
+    @Test func aHeaderDrawsOnlyWhatItHasRoomFor() {
+        // Seven chips squashed until the words wrapped inside their own
+        // capsules, and pushed the message count off the row entirely.
+        let chips = ThreadDetail.chips(on: allIDs, known: known)
+        #expect(chips.shown.count == 3)
+        #expect(chips.extra == 4)
+    }
+
+    @Test func aFewLabelsAreAllShownWithNoCount() {
+        let chips = ThreadDetail.chips(on: ["INBOX", "L0", "L1"], known: known)
+        #expect(chips.shown.count == 2)
+        #expect(chips.extra == 0)
+    }
+
+    @Test func exactlyTheLimitIsNotOverflowed() {
+        // An off-by-one here would render "Name 0 Name 1 Name 2 +0".
+        let chips = ThreadDetail.chips(on: ["L0", "L1", "L2"], known: known)
+        #expect(chips.shown.count == 3)
+        #expect(chips.extra == 0)
+    }
+
+    @Test func theHiddenOnesAreTheLaterOnesInSidebarOrder() {
+        let chips = ThreadDetail.chips(on: allIDs, known: known, limit: 2)
+        #expect(chips.shown.map(\.displayName) == ["Name 0", "Name 1"])
+        #expect(chips.extra == 5)
+    }
+}

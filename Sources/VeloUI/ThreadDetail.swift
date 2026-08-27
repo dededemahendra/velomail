@@ -17,6 +17,19 @@ enum ThreadDetail {
         return MailLabel.browsableOrder(ids.compactMap { byID[$0] })
     }
 
+    /// The labels a header has room to draw, and how many it had to leave out.
+    ///
+    /// Seven labels on a narrow pane squashed every chip until the words wrapped
+    /// inside their own capsules -- "Somerville" came out as "Somerv ille" --
+    /// and pushed the message count and the attachment mark off the row
+    /// entirely. A few legible names and a count beats seven unreadable ones.
+    static func chips(on ids: [String], known: [MailLabel],
+                      limit: Int = 3) -> (shown: [MailLabel], extra: Int) {
+        let all = labels(on: ids, known: known)
+        guard all.count > limit else { return (all, 0) }
+        return (Array(all.prefix(limit)), all.count - limit)
+    }
+
     /// How long the thread is, when that is worth saying. "1 message" is a
     /// fact nobody needed.
     static func messageCount(_ count: Int) -> String? {

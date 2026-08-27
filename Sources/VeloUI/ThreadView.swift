@@ -388,24 +388,39 @@ struct ThreadView: View {
                 if !detail.isEmpty {
                     // Under the subject rather than beside it: a subject is
                     // long and this must not push it into a second line.
+                    let chips = ThreadDetail.chips(on: thread.labelIDs, known: knownLabels)
                     HStack(spacing: 6) {
-                        ForEach(ThreadDetail.labels(on: thread.labelIDs, known: knownLabels)) { label in
+                        ForEach(chips.shown) { label in
                             Text(label.displayName)
                                 .font(.system(size: 10, weight: .medium))
+                                // Never squashed: without this the words wrap
+                                // inside their own capsules.
+                                .lineLimit(1).fixedSize()
                                 .padding(.horizontal, 7).padding(.vertical, 2)
                                 .background(.tint.opacity(0.16), in: Capsule())
                         }
+                        if chips.extra > 0 {
+                            Text("+\(chips.extra)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
                         if let count = ThreadDetail.messageCount(messages.count) {
                             Text(count).font(.system(size: 10)).foregroundStyle(.tertiary)
+                                .fixedSize()
                         }
                         if attachmentCount > 0 {
                             Label("\(attachmentCount)", systemImage: "paperclip")
                                 .font(.system(size: 10)).foregroundStyle(.tertiary)
+                                .fixedSize()
                         }
                         Spacer()
                     }
                     .padding(.horizontal, 24).padding(.bottom, 10)
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .ignore)
+                    // Spelled out rather than combined: a listener hearing
+                    // "plus four" learns nothing, and has no chips to look at.
+                    .accessibilityLabel(detail.joined(separator: ", "))
                 }
 
                 Divider()
@@ -450,11 +465,18 @@ struct ThreadView: View {
         }
     }
 
-    /// True when the header has anything to add beyond the subject.
+    /// Everything the header has to add beyond the subject, in words.
+    ///
+    /// Also what a listener hears: every label, not the three the row had room
+    /// to draw, since "plus four" tells them nothing and they have no chips to
+    /// look at.
     private var detail: [String] {
-        var parts = ThreadDetail.labels(on: thread.labelIDs, known: knownLabels).map(\.displayName)
+        var parts = ThreadDetail.labels(on: thread.labelIDs, known: knownLabels)
+            .map { "Filed in \($0.displayName)" }
         if let count = ThreadDetail.messageCount(messages.count) { parts.append(count) }
-        if attachmentCount > 0 { parts.append("attachments") }
+        if attachmentCount > 0 {
+            parts.append("\(attachmentCount) attachment\(attachmentCount == 1 ? "" : "s")")
+        }
         return parts
     }
 
