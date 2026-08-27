@@ -362,9 +362,10 @@ public final class ComposeViewModel: ObservableObject {
             + "\(ComposeViewModel.quoteDate.string(from: message.date))"
     }
 
-    /// The quoted parent as the reader would see it, for the expander.
+    /// The quoted parent as something to read, for the expander. Tidier than
+    /// what goes on the wire, which keeps the sender's words exactly.
     public var quotedPreview: String? {
-        replyContext.map { QuotedReply.text(quoting: $0) }
+        replyContext.map { QuotedReply.preview(of: $0) }
     }
 
     private static let quoteDate: DateFormatter = {
