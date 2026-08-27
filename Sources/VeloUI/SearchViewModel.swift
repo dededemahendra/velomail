@@ -17,6 +17,15 @@ public final class SearchViewModel: ObservableObject {
     /// The last few searches, newest first. Typing the same query again from
     /// memory is the commonest thing anyone does in a search field.
     @Published public private(set) var recents: [String] = []
+    /// True when the search matched more than it is willing to draw.
+    ///
+    /// It capped at two hundred and said nothing, so a search that found five
+    /// hundred looked like a search that found two hundred.
+    @Published public private(set) var truncated = false
+
+    /// How many results a list will show. One more than this is fetched, so
+    /// "there are more" is known rather than guessed at from a round number.
+    public static let resultLimit = 200
 
     /// How many to keep. Beyond a handful the empty state becomes a wall.
     public static let recentLimit = 5
@@ -59,9 +68,12 @@ public final class SearchViewModel: ObservableObject {
         let query = await translator.translate(raw)
         filterLabels = query.filterLabels()
         do {
-            results = try search.search(query)
+            let found = try search.search(query, limit: Self.resultLimit + 1)
+            truncated = found.count > Self.resultLimit
+            results = Array(found.prefix(Self.resultLimit))
         } catch {
             results = []
+            truncated = false
             failure = "Search failed."
         }
         cursor = SelectionCursor(count: results.count)
@@ -91,6 +103,7 @@ public final class SearchViewModel: ObservableObject {
 
     private func clearResults() {
         results = []
+        truncated = false
         filterLabels = []
         cursor = SelectionCursor(count: 0)
         failure = nil

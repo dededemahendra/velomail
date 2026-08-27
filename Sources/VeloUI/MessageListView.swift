@@ -312,6 +312,20 @@ enum MailFormatting {
     /// six unlabelled fragments and the paperclip says nothing at all. Unread
     /// comes first because it is what decides whether to keep listening, and
     /// "read" is never said -- it would be noise on the great majority of rows.
+    /// The date and time in full, for a tooltip.
+    ///
+    /// The transcript names days relatively -- "Today", "Yesterday", "Monday"
+    /// -- which is what you want at a glance and useless when you need to
+    /// quote the date. Nothing in the app would tell you.
+    static func fullStamp(_ date: Date, calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateStyle = .full
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
     /// The count that goes beside a sender, or nothing for a thread of one.
     ///
     /// A twelve-message thread and a one-message thread looked identical in the

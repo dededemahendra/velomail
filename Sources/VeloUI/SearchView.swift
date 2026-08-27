@@ -75,6 +75,15 @@ struct SearchView: View {
                         row(thread, isSelected: index == model.selectedIndex)
                             .onTapGesture { onOpen(thread) }
                     }
+                    if model.truncated {
+                        // Said nothing before, so a search that found five
+                        // hundred looked exactly like one that found two.
+                        Text("First \(SearchViewModel.resultLimit) shown. Narrow the search to see the rest.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20).padding(.vertical, 12)
+                    }
                 }
             }
         }

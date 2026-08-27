@@ -561,9 +561,14 @@ private struct MessageCard: View {
                         }
                         Spacer()
                         // The clock only; the day is on the heading above.
+                        // The full stamp lives in the tooltip: a transcript
+                        // said "Yesterday" and "17.28" and nowhere at all what
+                        // date that actually was.
                         Text(row.time)
                             .font(.caption).foregroundStyle(.tertiary)
                             .monospacedDigit()
+                            .help(MailFormatting.fullStamp(message.date))
+                            .accessibilityLabel(MailFormatting.fullStamp(message.date))
                     }
                     if isExpanded {
                         // The full address earns its space only once opened.
