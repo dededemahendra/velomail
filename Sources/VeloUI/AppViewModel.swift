@@ -79,7 +79,7 @@ public final class AppViewModel: ObservableObject {
     @Published public private(set) var notice: String?
 
     /// True when every message's pictures load without being asked for.
-    @Published public private(set) var alwaysLoadsImages = AppPreferences().loadsRemoteImages
+    @Published public private(set) var alwaysLoadsImages = false
     /// The choices the app makes on the reader's behalf. Read at the moment
     /// each is used, so changing one in settings takes effect immediately
     /// rather than at the next launch.
@@ -260,10 +260,11 @@ public final class AppViewModel: ObservableObject {
                 loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
                 preferences: AppPreferences = AppPreferences()) {
         self.preferences = preferences
+        self.alwaysLoadsImages = preferences.loadsRemoteImages
         self.loadOlder = loadOlder
         self.config = config
         self.isSignedIn = isSignedIn
-        self.inbox = InboxViewModel(store: store, outbound: outbound)
+        self.inbox = InboxViewModel(store: store, outbound: outbound, preferences: preferences)
         self.compose = ComposeViewModel(
             outbound: outbound, identity: identity, library: snippets, drafts: drafts,
             // Derived from mail already stored, so completion needs no contacts
@@ -271,7 +272,8 @@ public final class AppViewModel: ObservableObject {
             contacts: { try? AddressBook.build(from: store, identity: identity()) },
             // Lets a reply picked up again still quote what it is answering.
             parentLookup: { threadID in try? store.messages(inThread: threadID).last },
-            attachmentLookup: { (try? store.attachments(forMessage: $0)) ?? [] })
+            attachmentLookup: { (try? store.attachments(forMessage: $0)) ?? [] },
+            preferences: preferences)
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.store = store

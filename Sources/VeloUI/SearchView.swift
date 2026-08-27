@@ -38,9 +38,11 @@ struct SearchView: View {
     /// with whether a model is actually configured rather than promising
     /// something the app cannot do.
     private var placeholder: String {
+        // The operators work either way, so they are the hint that is always
+        // true. Plain English is offered only when something can read it.
         isAIEnabled
-            ? "Search, or describe it — \"unread from natalie last week\""
-            : "Search mail"
+            ? "Search, from:someone, is:unread, or just describe it"
+            : "Search, or from:someone, is:unread, after:week"
     }
 
     @ViewBuilder

@@ -52,8 +52,9 @@ public final class ComposeViewModel: ObservableObject {
     /// year of mail, which is cheap once and not cheap sixty times a minute.
     private let contacts: (() -> AddressBook?)?
     /// Read at send time, so a change in settings applies to the next message
-    /// rather than the next launch.
-    private let preferences = AppPreferences()
+    /// rather than the next launch. Injected so a test's isolated preferences
+    /// reach the composer rather than stopping at the app.
+    private let preferences: AppPreferences
     /// Finds the message a resumed draft is answering. Without it a reply put
     /// down and picked up again would go out unquoted, with nothing to say one
     /// was ever meant to be there.
@@ -80,7 +81,9 @@ public final class ComposeViewModel: ObservableObject {
                 contacts: (() -> AddressBook?)? = nil,
                 parentLookup: ((String) -> Message?)? = nil,
                 attachmentLookup: ((String) -> [MailAttachment])? = nil,
-                newDraftID: @escaping () -> String = { UUID().uuidString }) {
+                newDraftID: @escaping () -> String = { UUID().uuidString },
+                preferences: AppPreferences = AppPreferences()) {
+        self.preferences = preferences
         self.parentLookup = parentLookup
         self.attachmentLookup = attachmentLookup
         self.newDraftID = newDraftID
@@ -99,11 +102,12 @@ public final class ComposeViewModel: ObservableObject {
                             contacts: (() -> AddressBook?)? = nil,
                             parentLookup: ((String) -> Message?)? = nil,
                             attachmentLookup: ((String) -> [MailAttachment])? = nil,
-                            newDraftID: @escaping () -> String = { UUID().uuidString }) {
+                            newDraftID: @escaping () -> String = { UUID().uuidString },
+                            preferences: AppPreferences = AppPreferences()) {
         self.init(outbound: outbound, identity: { identity }, library: library,
                   drafts: drafts, addressBook: addressBook, contacts: contacts,
                   parentLookup: parentLookup, attachmentLookup: attachmentLookup,
-                  newDraftID: newDraftID)
+                  newDraftID: newDraftID, preferences: preferences)
     }
 
     // MARK: - Drafts
