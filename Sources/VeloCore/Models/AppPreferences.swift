@@ -13,6 +13,7 @@ public final class AppPreferences: @unchecked Sendable {
         static let blockImages = "velomail.blockRemoteImages"
         static let notifications = "velomail.showsNotifications"
         static let recentCommands = "velomail.recentCommands"
+        static let recentSearches = "velomail.recentSearches"
         static let undoWindow = "velomail.undoWindow"
         static let snoozeHours = "velomail.snoozeHours"
         static let morningHour = "velomail.morningHour"
@@ -144,6 +145,12 @@ public final class AppPreferences: @unchecked Sendable {
     public var recentCommands: [String] {
         get { value(Key.recentCommands) ?? [] }
         set { defaults.set(newValue, forKey: Key.recentCommands) }
+    }
+
+    /// The last few things searched for, newest first.
+    public var recentSearches: [String] {
+        get { value(Key.recentSearches) ?? [] }
+        set { defaults.set(newValue, forKey: Key.recentSearches) }
     }
 
     public var compactList: Bool {

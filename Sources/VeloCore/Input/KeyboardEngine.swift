@@ -70,6 +70,19 @@ public struct KeyboardEngine {
             .min { ($0.count, $0) < ($1.count, $1) }
     }
 
+    /// Every action the keyboard can reach, with the keys that reach it.
+    ///
+    /// Derived from the keymap rather than written beside it, so a card that
+    /// claims to list the shortcuts cannot come to disagree with the shortcuts.
+    public static var everyShortcut: [(action: MailAction, keys: String)] {
+        var found: [MailAction: String] = [:]
+        for action in MailAction.allCases {
+            if let label = shortcutLabel(for: action) { found[action] = label }
+        }
+        return found.map { (action: $0.key, keys: $0.value) }
+            .sorted { $0.action.rawValue < $1.action.rawValue }
+    }
+
     private static func label(for input: KeyInput) -> String {
         var text = ""
         if input.modifiers.contains(.command) { text += "⌘" }

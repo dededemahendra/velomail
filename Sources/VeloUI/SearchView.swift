@@ -140,24 +140,66 @@ struct SearchView: View {
     }
 
     /// Says what can be typed rather than only that something can be.
-    private var emptyState: some View {
-        VStack(spacing: 7) {
-            Image(systemName: model.text.isEmpty ? "magnifyingglass" : "tray")
-                .font(.system(size: 22))
-                .foregroundStyle(.tertiary)
-            Text(model.text.isEmpty ? "Search your mail" : "No matching mail")
-                .font(.system(size: 13, weight: .medium))
-            Text(model.text.isEmpty
-                 ? (isAIEnabled
-                    ? "Keywords, or plain English like “unread from natalie last week”."
-                    : "Searches senders, subjects and message text.")
-                 : "Try fewer words, or a different sender.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+    /// What fills the pane when there is nothing to list.
+    ///
+    /// Three different situations, not one: nothing typed and nothing to go on,
+    /// nothing typed but a history to offer, and a query that found nothing.
+    @ViewBuilder private var emptyState: some View {
+        if model.text.isEmpty, !model.recents.isEmpty {
+            recentSearches
+        } else {
+            VStack(spacing: 7) {
+                Image(systemName: model.text.isEmpty ? "magnifyingglass" : "tray")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.tertiary)
+                Text(model.text.isEmpty ? "Search your mail" : "No matching mail")
+                    .font(.system(size: 13, weight: .medium))
+                Text(model.text.isEmpty
+                     ? (isAIEnabled
+                        ? "Keywords, or plain English like \u{201C}unread from natalie last week\u{201D}."
+                        : "Searches senders, subjects and message text.")
+                     : "Try fewer words, or a different sender.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: 380, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: 380, maxHeight: .infinity)
-        .frame(maxWidth: .infinity)
+    }
+
+    /// The last few searches, ready to run again.
+    ///
+    /// Typing the same query from memory is the commonest thing anyone does in
+    /// a search field, and this app was asking for it every time.
+    private var recentSearches: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("RECENT")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 20)
+                .padding(.top, 12).padding(.bottom, 4)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(model.recents, id: \.self) { query in
+                Button {
+                    Task { await model.rerun(query) }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                        Text(query).font(.system(size: 13)).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 20).padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func message(_ text: String) -> some View {

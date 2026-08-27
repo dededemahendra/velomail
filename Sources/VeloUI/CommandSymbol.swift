@@ -41,6 +41,7 @@ enum CommandSymbol {
         case .reportSpam: return "exclamationmark.octagon"
         case .openInGmail: return "safari"
         case .exportThread: return "square.and.arrow.down"
+        case .showShortcuts: return "keyboard"
         case .goToLabel: return "tag"
         case .switchAccount: return "person.crop.circle"
         case .addAccount: return "person.badge.plus"

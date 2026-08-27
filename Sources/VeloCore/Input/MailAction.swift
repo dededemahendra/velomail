@@ -36,6 +36,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case openInGmail
     /// Write the selected thread out as a text file.
     case exportThread
+    /// Show the whole keymap on one card.
+    case showShortcuts
     /// Which label is on the `Command`, not the action: there is one per
     /// account and they are renamed and deleted, so a case each is not on the
     /// cards and a raw-valued enum cannot carry one anyway.

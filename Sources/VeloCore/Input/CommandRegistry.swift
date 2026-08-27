@@ -5,7 +5,7 @@ import Foundation
 /// Fifty commands in one flat column is a list nobody reads to the end of.
 /// The order is how someone would go looking: what to do with what is in front
 /// of you, then writing, then going elsewhere, then the mailbox as a whole.
-public enum CommandGroup: String, CaseIterable, Equatable, Sendable {
+public enum CommandSection: String, CaseIterable, Equatable, Sendable {
     case triage = "Triage"
     case write = "Write"
     case navigate = "Go"
@@ -20,10 +20,10 @@ public struct Command: Equatable, Sendable {
     public let action: MailAction
     /// What the action is about, when it needs telling. A label id, today.
     public let argument: String?
-    public let group: CommandGroup
+    public let group: CommandSection
 
     public init(title: String, action: MailAction, argument: String? = nil,
-                group: CommandGroup = .mailbox) {
+                group: CommandSection = .mailbox) {
         self.title = title
         self.action = action
         self.argument = argument
@@ -78,6 +78,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Export thread", action: .exportThread, group: .mailbox),
         Command(title: "Add another account", action: .addAccount, group: .app),
         Command(title: "Settings", action: .openSettings, group: .app),
+        Command(title: "Keyboard shortcuts", action: .showShortcuts, group: .app),
         Command(title: "Send tomorrow morning", action: .sendTomorrow, group: .write),
         Command(title: "Send next week", action: .sendNextWeek, group: .write),
         Command(title: "Send at\u{2026}", action: .sendAtTime, group: .write),
@@ -143,7 +144,7 @@ public struct CommandRegistry: Equatable, Sendable {
     /// list, so a heading covered whatever happened to follow it rather than
     /// the group it named.
     private func grouped(_ commands: [Command]) -> [Command] {
-        CommandGroup.allCases.flatMap { group in
+        CommandSection.allCases.flatMap { group in
             commands.filter { $0.group == group }
         }
     }
@@ -154,7 +155,7 @@ public struct CommandRegistry: Equatable, Sendable {
 
     /// `used` put at the front of `previous`, capped, with no repeats.
     public static func remember(_ used: MailAction, in previous: [MailAction]) -> [MailAction] {
-        ([used] + previous.filter { $0 != used }).prefix(recentLimit).map { $0 }
+        RecentList.remember(used, in: previous, limit: recentLimit)
     }
 
     // MARK: - Internals

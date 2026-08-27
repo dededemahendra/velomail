@@ -19,7 +19,7 @@ import Foundation
     }
 
     @Test func theObviousOnesLandWhereYouWouldLook() {
-        func group(_ title: String) -> CommandGroup? {
+        func group(_ title: String) -> CommandSection? {
             registry.commands.first { $0.title == title }?.group
         }
         #expect(group("Archive") == .triage)
@@ -56,7 +56,7 @@ import Foundation
         // group it named.
         let listed = registry.matches("", recents: [])
         let order = listed.map(\.group)
-        let firstSeen = order.enumerated().reduce(into: [CommandGroup: Int]()) { seen, pair in
+        let firstSeen = order.enumerated().reduce(into: [CommandSection: Int]()) { seen, pair in
             if seen[pair.element] == nil { seen[pair.element] = pair.offset }
         }
         for (index, group) in order.enumerated() {

@@ -83,6 +83,9 @@ public struct RootView: View {
                             onConfirm: { app.confirmTime($0) },
                             onCancel: { app.cancelTime() })
         }
+        .sheet(isPresented: $app.isShowingShortcuts) {
+            ShortcutsView(onClose: { app.isShowingShortcuts = false })
+        }
         .sheet(isPresented: $app.isShowingSettings) {
             SettingsView(model: settings,
                          accounts: app.accounts,

@@ -176,6 +176,9 @@ public final class AppViewModel: ObservableObject {
     /// is about the app rather than about the mail, and closing it should put
     /// the reader back exactly where they were.
     @Published public var isShowingSettings = false
+    /// The keymap on a card. A sheet like Settings rather than a route: it is
+    /// something you glance at beside your mail, not somewhere you go.
+    @Published public var isShowingShortcuts = false
 
     /// Something worth asking about before this message goes. Nothing has been
     /// queued while it is set: the writer can still fix it.
@@ -362,7 +365,8 @@ public final class AppViewModel: ObservableObject {
             ?? AttachmentViewModel(service: AttachmentService(source: UnavailableSource()))
         self.search = search ?? SearchViewModel(
             search: SearchService(store.database),
-            translator: QueryTranslator(assistant: assistant))
+            translator: QueryTranslator(assistant: assistant),
+            preferences: preferences)
         self.route = .setup
         self.route = landingRoute
         self.inboxChanges = inbox.objectWillChange.sink { [weak self] _ in
@@ -527,6 +531,7 @@ public final class AppViewModel: ObservableObject {
         case .reportSpam: reportSpamOnSelected()
         case .openInGmail: openSelectedInGmail()
         case .exportThread: exportSelectedThread()
+        case .showShortcuts: isShowingShortcuts = true
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.

@@ -14,11 +14,22 @@ public final class SearchViewModel: ObservableObject {
     private let translator: QueryTranslator
     /// What the last query actually narrowed on, in words.
     @Published public private(set) var filterLabels: [String] = []
+    /// The last few searches, newest first. Typing the same query again from
+    /// memory is the commonest thing anyone does in a search field.
+    @Published public private(set) var recents: [String] = []
+
+    /// How many to keep. Beyond a handful the empty state becomes a wall.
+    public static let recentLimit = 5
     private var cursor = SelectionCursor(count: 0)
 
-    public init(search: SearchService, translator: QueryTranslator) {
+    private let preferences: AppPreferences?
+
+    public init(search: SearchService, translator: QueryTranslator,
+                preferences: AppPreferences? = nil) {
         self.search = search
         self.translator = translator
+        self.preferences = preferences
+        self.recents = preferences?.recentSearches ?? []
     }
 
     public var selectedIndex: Int? { cursor.index }
@@ -44,6 +55,7 @@ public final class SearchViewModel: ObservableObject {
         defer { isSearching = false }
         failure = nil
 
+        remember(raw)
         let query = await translator.translate(raw)
         filterLabels = query.filterLabels()
         do {
@@ -58,6 +70,19 @@ public final class SearchViewModel: ObservableObject {
     public func moveDown() { cursor.moveDown() }
     public func moveUp() { cursor.moveUp() }
     public func select(index: Int) { cursor.select(index) }
+
+    /// Puts a search back in the field and runs it.
+    public func rerun(_ query: String) async {
+        text = query
+        await run()
+    }
+
+    /// Kept whatever the search returns: a query that found nothing is one you
+    /// are most likely to want to edit and try again.
+    private func remember(_ raw: String) {
+        recents = RecentList.remember(raw, in: recents, limit: Self.recentLimit)
+        preferences?.recentSearches = recents
+    }
 
     public func clear() {
         text = ""
