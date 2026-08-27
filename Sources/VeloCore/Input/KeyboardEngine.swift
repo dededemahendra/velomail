@@ -124,6 +124,10 @@ public struct KeyboardEngine {
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("i"))): .goToInbox,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("s"))): .goToSent,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("h"))): .goToSnoozed,
+        // `t` for starred and `e` for archive, matching the keys that *do*
+        // those things: `s` stars and `e` archives, and `g s` was already Sent.
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("t"))): .goToStarred,
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("e"))): .goToArchive,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("f"))): .showFollowUps,
         // `g d` is drafts in every other mail client; focus mode is ours to
         // place, so it moved to `g z` rather than holding the conventional key.

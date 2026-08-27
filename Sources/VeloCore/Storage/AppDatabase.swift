@@ -244,6 +244,29 @@ public final class AppDatabase: Sendable {
             }
         }
 
+
+        migrator.registerMigration("v17_add_syncstate_backfilledLabels") { db in
+            try db.alter(table: "syncState") { t in
+                t.add(column: "backfilledLabels", .text)
+            }
+            // An account that finished a backfill before labels were tracked
+            // pulled INBOX and nothing else. Claiming it had done everything is
+            // what left the Sent list working and empty; claiming it had done
+            // nothing would re-fetch a mailbox it already has.
+            try db.execute(sql: """
+                UPDATE syncState SET backfilledLabels = '["INBOX"]' WHERE backfillComplete = 1
+                """)
+        }
+
+        migrator.registerMigration("v18_add_syncstate_olderCursors") { db in
+            // Left NULL: an account synced before this has no record of where
+            // its listing stopped, so there is nothing honest to claim and
+            // "load older" simply starts from the next full pass.
+            try db.alter(table: "syncState") { t in
+                t.add(column: "olderCursors", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -54,33 +54,95 @@ public struct BackfillService: Sendable {
         }
     }
 
-    /// The labels a first sync pulls down. Sent as well as Inbox, because a
-    /// Sent view holding only what this app itself sent would show three
-    /// messages against a mailbox of thousands.
-    public static let backfilledLabels = ["INBOX", "SENT"]
+    /// The labels a sync pulls down. Inbox, plus the two that have views of
+    /// their own: a Sent or Starred list holding only what happened in this app
+    /// would show a handful of threads against a mailbox of thousands.
+    ///
+    /// Adding to this list is enough -- `SyncState` tracks each label
+    /// separately, so an existing account fetches the new one on its next pass
+    /// without re-fetching the rest.
+    public static let backfilledLabels = ["INBOX", "SENT", "STARRED"]
 
-    /// Fetches up to `maxMessages` of the most recent messages in each
-    /// backfilled label, upserts their threads/messages, then records the sync
-    /// cursor for `accountID`.
+    /// Fetches the next `maxMessages` older messages for every label that has
+    /// more behind it, and reports how many arrived.
+    ///
+    /// The history cursor is untouched: older mail says nothing about what has
+    /// happened since, and moving it would skip everything in between.
+    @discardableResult
+    public func loadOlder(accountID: String, maxMessages: Int) async throws -> Int {
+        guard let state = try syncState.load(accountID: accountID) else { return 0 }
+
+        var ids: [String] = []
+        var seen: Set<String> = []
+        var cursors = state.olderCursors
+        for label in Self.backfilledLabels {
+            guard let from = state.olderCursor(for: label) else { continue }
+            let page = try await list(label: label, from: from, upTo: maxMessages)
+            ids.append(contentsOf: page.ids.filter { seen.insert($0).inserted })
+            cursors[label] = page.next
+        }
+        guard !ids.isEmpty else {
+            try syncState.save(withCursors: cursors, on: state)
+            return 0
+        }
+
+        try await hydrate(ids)
+        try syncState.save(withCursors: cursors, on: state)
+        return ids.count
+    }
+
+    /// One label's ids from `from`, stopping at `upTo`, plus where to carry on.
+    private func list(label: String, from: String?,
+                      upTo limit: Int) async throws -> (ids: [String], next: String?) {
+        var found: [String] = []
+        var pageToken = from
+        repeat {
+            let page = try await source.listMessageIDs(labelID: label, pageToken: pageToken)
+            found.append(contentsOf: page.ids)
+            pageToken = page.nextPageToken
+        } while pageToken != nil && found.count < limit
+        // More was listed than asked for only when the last page overshot, and
+        // the token then still points at what has not been taken.
+        return (Array(found.prefix(limit)), found.count >= limit ? pageToken : nil)
+    }
+
+    /// Fetches and stores message bodies in bounded-concurrency chunks.
+    private func hydrate(_ ids: [String]) async throws {
+        for chunk in stride(from: 0, to: ids.count, by: Self.chunkSize).map({
+            Array(ids[$0..<min($0 + Self.chunkSize, ids.count)])
+        }) {
+            let dtos = try await fetch(chunk)
+            try InboxReconciler.reconcile(dtos, into: store)
+        }
+    }
+
+    /// Fetches up to `maxMessages` of the most recent messages in each label
+    /// that has not been fetched yet, upserts them, and records each label as
+    /// it lands.
+    ///
+    /// Per label rather than all-or-nothing: adding a label to the app should
+    /// pull that label's history without re-fetching a mailbox already here.
     public func backfillInbox(accountID: String, maxMessages: Int) async throws {
         // Capture the baseline BEFORE listing: messages arriving mid-backfill are
         // then re-delivered by history.list from this cursor (upserts make it idempotent).
         let profile = try await source.getProfile()
         let baseline = profile.historyId
 
+        let existing = try syncState.load(accountID: accountID)
+        let outstanding = (existing ?? SyncState(accountID: accountID, historyId: nil,
+                                                 backfillComplete: false))
+            .labelsNeedingBackfill(of: Self.backfilledLabels)
+        guard !outstanding.isEmpty else { return }
+
         var ids: [String] = []
         var seen: Set<String> = []
-        for label in Self.backfilledLabels {
-            var pageToken: String?
-            var forLabel: [String] = []
-            repeat {
-                let page = try await source.listMessageIDs(labelID: label, pageToken: pageToken)
-                forLabel.append(contentsOf: page.ids)
-                pageToken = page.nextPageToken
-            } while pageToken != nil && forLabel.count < maxMessages
+        var cursors: [String: String] = existing?.olderCursors ?? [:]
+        for label in outstanding {
+            let page = try await list(label: label, from: nil, upTo: maxMessages)
             // A replied-to thread is listed under both labels; hydrating it
             // twice would double the slowest part of a first sync.
-            ids.append(contentsOf: forLabel.prefix(maxMessages).filter { seen.insert($0).inserted })
+            ids.append(contentsOf: page.ids.filter { seen.insert($0).inserted })
+            cursors[label] = page.next
         }
 
         // Fetched in bounded-concurrency chunks and stored per chunk, which is
@@ -88,18 +150,21 @@ public struct BackfillService: Sendable {
         // progressively". Hydrating all 500 first meant an empty inbox for
         // minutes on a real account, and one failed fetch discarding every
         // message before it.
-        for chunk in stride(from: 0, to: ids.count, by: Self.chunkSize).map({
-            Array(ids[$0..<min($0 + Self.chunkSize, ids.count)])
-        }) {
-            let dtos = try await fetch(chunk)
-            try InboxReconciler.reconcile(dtos, into: store)
-        }
+        try await hydrate(ids)
 
         // Persist the cursor only after reconcile succeeds.
         // Record the account's own address too: it is on the wire either way,
         // and without it a send has no correct `From` to use.
-        try syncState.save(SyncState(accountID: accountID, historyId: baseline,
-                                     backfillComplete: true,
-                                     emailAddress: profile.emailAddress))
+        // The cursor is only moved on a first backfill. A later label's pass
+        // must not rewind history to now, or everything that arrived since the
+        // original sync would be skipped.
+        let alreadySynced = existing?.backfillComplete == true
+        try syncState.save(SyncState(
+            accountID: accountID,
+            historyId: alreadySynced ? existing?.historyId : baseline,
+            backfillComplete: true,
+            emailAddress: profile.emailAddress ?? existing?.emailAddress,
+            backfilledLabels: (existing?.backfilledLabels ?? []) + outstanding,
+            olderCursors: cursors))
     }
 }

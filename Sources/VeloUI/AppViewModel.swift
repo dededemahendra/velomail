@@ -66,6 +66,18 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
+    /// Fetches the next page of older mail, reporting how many arrived. Nil
+    /// when there is no account to fetch from.
+    private let loadOlder: (@Sendable (Int) async throws -> Int)?
+
+    /// How many older messages one press asks for. The same page the first
+    /// sync takes, so the wait is one the writer has already seen.
+    public static let olderPageSize = 500
+
+    /// A one-line answer to something the writer just did. Not an error
+    /// channel: silence after pressing a button reads as a broken button.
+    @Published public private(set) var notice: String?
+
     /// True when every message's pictures load without being asked for.
     @Published public private(set) var alwaysLoadsImages = ImagePreference().alwaysLoads
     private let imagePreference = ImagePreference()
@@ -128,11 +140,12 @@ public final class AppViewModel: ObservableObject {
                             search: SearchViewModel? = nil,
                             snippets: SnippetLibrary = .empty,
                             attachmentModel: AttachmentViewModel? = nil,
-                            drafts: DraftStore? = nil) {
+                            drafts: DraftStore? = nil,
+                            loadOlder: (@Sendable (Int) async throws -> Int)? = nil) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
                   search: search, snippets: snippets, attachmentModel: attachmentModel,
-                  drafts: drafts)
+                  drafts: drafts, loadOlder: loadOlder)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
@@ -141,7 +154,9 @@ public final class AppViewModel: ObservableObject {
                 search: SearchViewModel? = nil,
                 snippets: SnippetLibrary = .empty,
                 attachmentModel: AttachmentViewModel? = nil,
-                drafts: DraftStore? = nil) {
+                drafts: DraftStore? = nil,
+                loadOlder: (@Sendable (Int) async throws -> Int)? = nil) {
+        self.loadOlder = loadOlder
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound)
@@ -315,6 +330,9 @@ public final class AppViewModel: ObservableObject {
         case .goToInbox: show(.inbox)
         case .goToSent: show(.sent)
         case .goToSnoozed: show(.snoozed)
+        case .goToStarred: show(.starred)
+        case .loadOlderMail: Task { await loadOlderMail() }
+        case .goToArchive: show(.archive)
         case .goToDrafts: showDrafts()
         case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })
@@ -483,6 +501,21 @@ public final class AppViewModel: ObservableObject {
     private func show(_ scope: MailScope) {
         try? inbox.show(scope)
         route = .list
+    }
+
+    /// Asks for another page of older mail and says what came back.
+    public func loadOlderMail() async {
+        guard let loadOlder else { return }
+        notice = nil
+        do {
+            let found = try await loadOlder(AppViewModel.olderPageSize)
+            try? inbox.reload()
+            notice = found == 0
+                ? "Nothing older to fetch"
+                : "\(found) older message\(found == 1 ? "" : "s")"
+        } catch {
+            notice = "Could not fetch older mail"
+        }
     }
 
     // MARK: - Drafts

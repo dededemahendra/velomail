@@ -195,19 +195,49 @@ private final class ObservingSource: GmailReading, @unchecked Sendable {
         #expect(log.firstIndex(of: "profile")! < log.firstIndex(of: "list")!)
     }
 
-    @Test func reRunOverwritesBaselineAndKeepsComplete() async throws {
+    @Test func aLaterLabelsPassKeepsTheCursorItAlreadyHad() async throws {
+        // Adding a label must not rewind the history cursor to now: everything
+        // that arrived since the original sync would be skipped, silently.
         let source = ScriptedSource(
             pages: [(["m1"], nil)],
             messages: [makeDTO(id: "m1", thread: "t1", labels: ["INBOX"], internalDate: "1000", snippet: "a")],
             profileHistoryId: "9000")
         let (service, _, syncStore) = try makeContext(source)
-        try syncStore.save(SyncState(accountID: account, historyId: "1", backfillComplete: true))
+        try syncStore.save(SyncState(accountID: account, historyId: "1", backfillComplete: true,
+                                     backfilledLabels: ["INBOX"]))
 
         try await service.backfillInbox(accountID: account, maxMessages: 10)
 
         let state = try syncStore.load(accountID: account)
-        #expect(state?.historyId == "9000")
+        #expect(state?.historyId == "1")                 // kept, not rewound to 9000
         #expect(state?.backfillComplete == true)
+        #expect(state?.backfilledLabels == BackfillService.backfilledLabels)
+    }
+
+    @Test func aFirstBackfillTakesTheBaselineCursor() async throws {
+        let source = ScriptedSource(
+            pages: [(["m1"], nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", labels: ["INBOX"], internalDate: "1000", snippet: "a")],
+            profileHistoryId: "9000")
+        let (service, _, syncStore) = try makeContext(source)
+
+        try await service.backfillInbox(accountID: account, maxMessages: 10)
+
+        #expect(try syncStore.load(accountID: account)?.historyId == "9000")
+    }
+
+    @Test func everyLabelDoneMeansNothingToFetch() async throws {
+        let source = ScriptedSource(
+            pages: [(["m1"], nil)],
+            messages: [makeDTO(id: "m1", thread: "t1", labels: ["INBOX"], internalDate: "1000", snippet: "a")],
+            profileHistoryId: "9000")
+        let (service, _, syncStore) = try makeContext(source)
+        try syncStore.save(SyncState(accountID: account, historyId: "1", backfillComplete: true,
+                                     backfilledLabels: BackfillService.backfilledLabels))
+
+        try await service.backfillInbox(accountID: account, maxMessages: 10)
+
+        #expect(source.getCallCount == 0)
     }
 
     @Test func backfillPersistsTheProfileEmailAddress() async throws {

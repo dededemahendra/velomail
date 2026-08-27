@@ -66,7 +66,7 @@ import Foundation
 
         try await service.backfillInbox(accountID: "me@x.com", maxMessages: 50)
 
-        #expect(source.requestedLabels.sorted() == ["INBOX", "SENT"])
+        #expect(source.requestedLabels.sorted() == BackfillService.backfilledLabels.sorted())
         #expect(try store.inboxThreads().map(\.id) == ["t-i1"])
         #expect(try store.sentThreads().map(\.id) == ["t-s1"])
     }
