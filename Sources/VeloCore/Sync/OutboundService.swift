@@ -294,6 +294,16 @@ public struct OutboundService: Sendable {
         try enqueueLabelChange(threadID: threadID, kind: .star, add: ["STARRED"], remove: [])
     }
 
+    /// Sends a thread to Gmail's spam folder.
+    ///
+    /// One queued change, not two: SPAM on and INBOX off have to land together
+    /// or a half-applied pair leaves the thread in both places.
+    public func reportSpam(threadID: String) throws {
+        guard try store.thread(id: threadID) != nil else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .label,
+                               add: ["SPAM"], remove: ["INBOX"])
+    }
+
     /// Puts a label on a thread. Nothing happens if it is already there.
     public func addLabel(_ labelID: String, toThread threadID: String) throws {
         guard let thread = try store.thread(id: threadID),

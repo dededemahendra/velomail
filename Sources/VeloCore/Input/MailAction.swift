@@ -25,6 +25,17 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case loadOlderMail
     /// Ask for a sync pass now instead of waiting out the backoff.
     case syncNow
+    /// Mark every row in the list, so one keystroke stands in for forty.
+    case selectAll
+    /// Clear the unread state of everything in the list at once.
+    case markAllRead
+    /// Send the selected thread to Gmail's spam folder.
+    case reportSpam
+    /// Open the selected thread in Gmail on the web, for whatever this client
+    /// cannot do.
+    case openInGmail
+    /// Write the selected thread out as a text file.
+    case exportThread
     /// Which label is on the `Command`, not the action: there is one per
     /// account and they are renamed and deleted, so a case each is not on the
     /// cards and a raw-valued enum cannot carry one anyway.

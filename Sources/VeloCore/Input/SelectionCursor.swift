@@ -43,6 +43,18 @@ public struct SelectionCursor: Equatable, Sendable {
         }
     }
 
+    /// Marks every row, so one keystroke can stand in for forty.
+    ///
+    /// Toggles: pressing it again on a fully marked list clears them, which is
+    /// what every other select-all in the system does.
+    public mutating func markAll() {
+        if marked.count == count {
+            marked.removeAll()
+        } else {
+            marked = Set(0..<count)
+        }
+    }
+
     public mutating func clearMarks() {
         marked.removeAll()
     }

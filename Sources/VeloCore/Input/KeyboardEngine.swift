@@ -127,6 +127,10 @@ public struct KeyboardEngine {
         KeyInput(.character("c")): .compose,
         KeyInput(.character("s")): .toggleStar,
         KeyInput(.character("x")): .toggleMark,
+        // Shift-x rather than Cmd+A: while a message is open, Cmd+A is the
+        // system's gesture for selecting the text inside it, and the monitor
+        // would swallow it. This one composes with x, which marks one row.
+        KeyInput(.character("x"), [.shift]): .selectAll,
         KeyInput(.character("h")): .snoozeSelected,
         KeyInput(.character("u")): .unsubscribe,
         KeyInput(.character("u"), [.shift]): .markUnreadSelected,

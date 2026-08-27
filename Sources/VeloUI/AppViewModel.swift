@@ -511,6 +511,11 @@ public final class AppViewModel: ObservableObject {
         case .goToStarred: show(.starred)
         case .loadOlderMail: Task { await loadOlderMail() }
         case .syncNow: Task { await syncMailNow() }
+        case .selectAll: inbox.markAll()
+        case .markAllRead: markEverythingRead()
+        case .reportSpam: reportSpamOnSelected()
+        case .openInGmail: openSelectedInGmail()
+        case .exportThread: exportSelectedThread()
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
@@ -814,6 +819,56 @@ public final class AppViewModel: ObservableObject {
     private func clearNotice() {
         notice = nil
         noticeToken += 1
+    }
+
+    /// Clears the unread state of everything in the list at once.
+    ///
+    /// The whole list, not the marked rows: "mark all as read" that quietly
+    /// meant "mark the two rows you ticked" would be a trap.
+    private func markEverythingRead() {
+        let unread = inbox.threads.filter(\.isUnread)
+        guard !unread.isEmpty else {
+            show(notice: "Nothing unread here")
+            return
+        }
+        for thread in unread { try? outbound.markRead(threadID: thread.id) }
+        try? inbox.reload()
+        show(notice: "\(unread.count) marked read")
+    }
+
+    private func reportSpamOnSelected() {
+        let targets = inbox.targetThreads
+        guard !targets.isEmpty else { return }
+        for thread in targets { try? outbound.reportSpam(threadID: thread.id) }
+        try? inbox.reload()
+        show(notice: targets.count == 1
+            ? "Reported as spam"
+            : "\(targets.count) reported as spam")
+    }
+
+    /// Hands the selected thread to Gmail on the web.
+    ///
+    /// The escape hatch for everything this client does not do -- printing,
+    /// filters, the settings Google keeps to itself -- rather than an admission
+    /// of defeat on each of them separately.
+    private func openSelectedInGmail() {
+        guard let thread = inbox.selectedThread else { return }
+        guard let url = URL(string: "https://mail.google.com/mail/u/0/#all/\(thread.id)") else { return }
+        openURL(url)
+    }
+
+    private func exportSelectedThread() {
+        guard let thread = inbox.selectedThread else { return }
+        let messages = inbox.selectedMessages
+        guard !messages.isEmpty else { return }
+        let text = ThreadExport.plainText(of: messages)
+        let name = ThreadExport.fileName(for: messages, threadID: thread.id)
+        do {
+            let url = try ThreadExport.write(text, named: name)
+            show(notice: "Saved to \(url.lastPathComponent)")
+        } catch {
+            show(notice: "Could not save the thread")
+        }
     }
 
     /// Asks for a sync pass now rather than waiting out the backoff.

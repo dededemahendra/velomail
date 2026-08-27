@@ -75,6 +75,12 @@ public final class InboxViewModel: ObservableObject {
     /// The rows explicitly marked for a bulk action, for the list to indicate.
     public var markedIndices: Set<Int> { cursor.marked }
 
+    /// Marks every row, so one keystroke stands in for forty. Toggles, like
+    /// every other select-all in the system.
+    public func markAll() {
+        cursor.markAll()
+    }
+
     public func isMarked(index: Int) -> Bool { cursor.marked.contains(index) }
 
     public var markedThreadIDs: [String] {
