@@ -29,4 +29,105 @@ public struct SearchQuery: Equatable, Sendable, Codable {
         terms.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && from == nil && isUnread == nil && after == nil && before == nil
     }
+
+    /// True when something narrower than free text was asked for.
+    ///
+    /// What distinguishes a query worth honouring exactly from one worth
+    /// handing to a model to interpret.
+    public var hasOperators: Bool {
+        from != nil || isUnread != nil || after != nil || before != nil
+    }
+
+    // MARK: - Typed queries
+
+    /// Reads the operators people already know from other mail clients.
+    ///
+    /// The filtering has always been here; until now the only thing that could
+    /// fill it in was the AI translator, so anyone without a provider
+    /// configured got plain text and a search for the literal string
+    /// "from:cloudflare".
+    ///
+    /// Anything that does not parse is left as words. Searching for what was
+    /// typed is a worse answer than filtering, but a much better one than
+    /// silently dropping it.
+    public static func parse(_ text: String, now: Date = Date(),
+                             calendar: Calendar = .current) -> SearchQuery {
+        var query = SearchQuery()
+        var words: [String] = []
+
+        for token in tokens(of: text) {
+            guard let colon = token.firstIndex(of: ":"), colon != token.startIndex else {
+                words.append(token)
+                continue
+            }
+            let name = token[token.startIndex..<colon].lowercased()
+            let value = String(token[token.index(after: colon)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+
+            // An operator with nothing after it is somebody mid-typing.
+            guard !value.isEmpty else { words.append(token); continue }
+
+            switch name {
+            case "from":
+                query.from = value
+            case "is" where value.lowercased() == "unread":
+                query.isUnread = true
+            case "is" where value.lowercased() == "read":
+                query.isUnread = false
+            case "after":
+                guard let date = date(from: value, now: now, calendar: calendar) else {
+                    words.append(token); continue
+                }
+                query.after = date
+            case "before":
+                guard let date = date(from: value, now: now, calendar: calendar) else {
+                    words.append(token); continue
+                }
+                query.before = date
+            default:
+                words.append(token)
+            }
+        }
+
+        query.terms = words.joined(separator: " ")
+        return query
+    }
+
+    /// Splits on spaces, except inside quotes: `from:"team tailscale"` is one
+    /// sender, not a sender and a stray word.
+    private static func tokens(of text: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var quoted = false
+
+        for character in text {
+            if character == "\"" {
+                quoted.toggle()
+                current.append(character)
+            } else if character == " " && !quoted {
+                if !current.isEmpty { tokens.append(current); current = "" }
+            } else {
+                current.append(character)
+            }
+        }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens
+    }
+
+    /// A date, either written out or said the way people say it.
+    private static func date(from value: String, now: Date, calendar: Calendar) -> Date? {
+        switch value.lowercased() {
+        case "today": return calendar.startOfDay(for: now)
+        case "yesterday":
+            return calendar.startOfDay(for: now.addingTimeInterval(-86_400))
+        case "week": return calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: now))
+        case "month": return calendar.date(byAdding: .month, value: -1, to: calendar.startOfDay(for: now))
+        case "year": return calendar.date(byAdding: .year, value: -1, to: calendar.startOfDay(for: now))
+        default: break
+        }
+
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
 }

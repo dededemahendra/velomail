@@ -21,7 +21,14 @@ public struct QueryTranslator: Sendable {
     public func translate(_ text: String) async -> SearchQuery {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return SearchQuery() }
-        guard assistant.isAvailable else { return SearchQuery(terms: trimmed) }
+
+        // What was typed wins. Someone who writes `from:cloudflare` has said
+        // exactly what they want, and asking a model to reinterpret it can only
+        // make it worse -- and costs a round trip to do so.
+        let typed = SearchQuery.parse(trimmed, now: now())
+        if typed.hasOperators { return typed }
+
+        guard assistant.isAvailable else { return typed }
 
         do {
             let raw = try await assistant.translateQuery(trimmed, today: isoDay(now()))

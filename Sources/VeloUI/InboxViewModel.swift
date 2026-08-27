@@ -46,7 +46,9 @@ public final class InboxViewModel: ObservableObject {
 
     private let store: MailStore
     private let outbound: OutboundService
-    private let preferences = AppPreferences()
+    /// Injected rather than made here, so a test can hand over an isolated
+    /// one and the app has a single answer to what the reader chose.
+    private let preferences: AppPreferences
     private var cursor = SelectionCursor(count: 0)
     /// The section each row was assigned, parallel to `threads`.
     ///
@@ -57,9 +59,11 @@ public final class InboxViewModel: ObservableObject {
     private var sectionIDs: [String] = []
     @Published private var transcript = ThreadTranscript()
 
-    public init(store: MailStore, outbound: OutboundService) {
+    public init(store: MailStore, outbound: OutboundService,
+                preferences: AppPreferences = AppPreferences()) {
         self.store = store
         self.outbound = outbound
+        self.preferences = preferences
     }
 
     public var selectedIndex: Int? { cursor.index }
