@@ -69,6 +69,10 @@ public final class AppViewModel: ObservableObject {
     /// Fetches the next page of older mail, reporting how many arrived. Nil
     /// when there is no account to fetch from.
     private let loadOlder: (@Sendable (Int) async throws -> Int)?
+    /// Asks the engine for a pass right now. The loop backs off further after
+    /// every failure, so without this a bad afternoon leaves the only way to
+    /// try again being to quit the app.
+    private let syncNow: (@Sendable () async throws -> Void)?
 
     /// How many older messages one press asks for. The same page the first
     /// sync takes, so the wait is one the writer has already seen.
@@ -291,11 +295,13 @@ public final class AppViewModel: ObservableObject {
                             attachmentModel: AttachmentViewModel? = nil,
                             drafts: DraftStore? = nil,
                             loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
+                            syncNow: (@Sendable () async throws -> Void)? = nil,
                             preferences: AppPreferences = AppPreferences()) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
                   search: search, snippets: snippets, attachmentModel: attachmentModel,
-                  drafts: drafts, loadOlder: loadOlder, preferences: preferences)
+                  drafts: drafts, loadOlder: loadOlder, syncNow: syncNow,
+                  preferences: preferences)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
@@ -306,10 +312,12 @@ public final class AppViewModel: ObservableObject {
                 attachmentModel: AttachmentViewModel? = nil,
                 drafts: DraftStore? = nil,
                 loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
+                syncNow: (@Sendable () async throws -> Void)? = nil,
                 preferences: AppPreferences = AppPreferences()) {
         self.preferences = preferences
         self.alwaysLoadsImages = preferences.loadsRemoteImages
         self.loadOlder = loadOlder
+        self.syncNow = syncNow
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound, preferences: preferences)
@@ -492,6 +500,7 @@ public final class AppViewModel: ObservableObject {
         case .goToSnoozed: show(.snoozed)
         case .goToStarred: show(.starred)
         case .loadOlderMail: Task { await loadOlderMail() }
+        case .syncNow: Task { await syncMailNow() }
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
@@ -767,6 +776,24 @@ public final class AppViewModel: ObservableObject {
                 : "\(found) older message\(found == 1 ? "" : "s")"
         } catch {
             notice = "Could not fetch older mail"
+        }
+    }
+
+    /// Asks for a sync pass now rather than waiting out the backoff.
+    ///
+    /// The engine coalesces a call made while a pass is already in flight, so
+    /// pressing this repeatedly is harmless.
+    public func syncMailNow() async {
+        guard let syncNow else { return }
+        notice = nil
+        do {
+            try await syncNow()
+            try? inbox.reload()
+            notice = "Up to date"
+        } catch {
+            // The status bar carries the detail; this only confirms the press
+            // was heard, since a failed pass can leave the list unchanged.
+            notice = "Could not reach Gmail"
         }
     }
 

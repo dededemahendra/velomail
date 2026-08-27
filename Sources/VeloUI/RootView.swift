@@ -124,7 +124,8 @@ public struct RootView: View {
                 Divider()
                 if app.inbox.threads.isEmpty {
                     EmptyListView(scope: app.inbox.scope, status: app.syncStatus,
-                                  hasSeenMail: app.inbox.hasSeenMail)
+                                  hasSeenMail: app.inbox.hasSeenMail,
+                                  onRetry: { Task { await app.syncMailNow() } })
                 } else {
                     MessageListView(sections: app.sections,
                                     selectedIndex: app.inbox.selectedIndex,
@@ -216,6 +217,9 @@ struct EmptyListView: View {
     /// Whether any mail has ever reached this session. Without it a fresh
     /// install and a finished morning of triage look identical.
     let hasSeenMail: Bool
+    /// What to do when the reader takes the app up on its offer. Absent in
+    /// demo mode, where there is no Gmail to reach.
+    var onRetry: (() -> Void)?
 
     var body: some View {
         let state = EmptyState.of(scope: scope, status: status, hasSeenMail: hasSeenMail)
@@ -235,6 +239,11 @@ struct EmptyListView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 260)
+            if let retry = state.retry, let onRetry {
+                Button(retry, action: onRetry)
+                    .controlSize(.small)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)

@@ -44,6 +44,15 @@ import VeloCore
         #expect(state(.syncing, seen: true).headline == "Inbox zero")
     }
 
+    @Test func onlyAStuckStateOffersAButton() {
+        // "Try again" over a sync that is already running invites the reader
+        // to press it and watch nothing change.
+        #expect(state(.syncing, seen: false).retry == nil)
+        #expect(state(.upToDate(lastSyncedAt: Date()), seen: true).retry == nil)
+        #expect(state(.offline(consecutiveFailures: 1), seen: false).retry == "Try again")
+        #expect(state(.failed(reason: "x"), seen: false).retry == "Try again")
+    }
+
     @Test func aSyncedAccountWithNoMailIsGenuinelyEmpty() {
         #expect(state(.upToDate(lastSyncedAt: Date()), seen: false).headline == "Inbox zero")
     }

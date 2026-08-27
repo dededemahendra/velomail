@@ -102,7 +102,8 @@ public enum Composition {
                                attachmentModel: AttachmentViewModel(
                                    service: AttachmentService(source: api)),
                                drafts: drafts,
-                               loadOlder: { try await sync.loadOlder(maxMessages: $0) })
+                               loadOlder: { try await sync.loadOlder(maxMessages: $0) },
+                               syncNow: { try await sync.syncNow() })
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }
