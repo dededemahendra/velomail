@@ -21,7 +21,7 @@ struct UndoBanner: View {
                 .keyboardShortcut("z", modifiers: .command)
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .floatingSurface()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -59,9 +59,9 @@ struct FailureBanner: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .floatingSurface()
         .overlay(
-            RoundedRectangle(cornerRadius: 9).strokeBorder(.orange.opacity(0.35), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 12).strokeBorder(.orange.opacity(0.45), lineWidth: 1))
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -79,7 +79,7 @@ struct NoticeBanner: View {
             Text(text).font(.callout)
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .floatingSurface()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
