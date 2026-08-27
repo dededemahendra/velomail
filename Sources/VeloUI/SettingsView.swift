@@ -353,6 +353,36 @@ struct SettingsView: View {
                 .pickerStyle(.radioGroup).labelsHidden()
             }
 
+            group("The list",
+                  footnote: "Compact fits about half again as many messages on screen.") {
+                Picker("", selection: $model.compactList) {
+                    Text("Comfortable").tag(false)
+                    Text("Compact").tag(true)
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
+                Divider().opacity(0.4)
+                Stepper(value: $model.previewLines, in: 0...3, step: 1) {
+                    HStack {
+                        Text("Lines of the message")
+                        Spacer()
+                        Text(model.previewLines == 0
+                             ? "None"
+                             : "\(Int(model.previewLines))")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+            }
+
+            group("Threads",
+                  footnote: "Oldest first is the order the conversation happened in.") {
+                Picker("", selection: $model.newestFirstInThread) {
+                    Text("Oldest message first").tag(false)
+                    Text("Newest message first").tag(true)
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
+            }
+
             group("Notifications",
                   footnote: "Focus mode silences these for a while without changing the setting.") {
                 Toggle("Announce new mail and badge the Dock", isOn: $model.showsNotifications)

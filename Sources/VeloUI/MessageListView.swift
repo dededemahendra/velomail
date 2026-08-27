@@ -18,6 +18,10 @@ struct MessageListView: NSViewRepresentable {
     let name: (MailThread) -> String
     /// The date a row shows. In Snoozed that is when it comes back.
     let date: (MailThread) -> String
+    /// How tall a row is and how much of the message it shows, both from the
+    /// reader's own settings.
+    var rowHeight: CGFloat = 64
+    var previewLines: Int = 1
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
 
@@ -51,7 +55,7 @@ struct MessageListView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let table = NSTableView()
         table.headerView = nil
-        table.rowHeight = 60
+        table.rowHeight = rowHeight
         table.intercellSpacing = NSSize(width: 0, height: 2)
         table.style = .inset
         // A full accent-filled row is loud in a list you stare at all day. The
@@ -124,14 +128,17 @@ struct MessageListView: NSViewRepresentable {
                 return ThreadRowView(thread: thread,
                                      isMarked: parent.markedIndices.contains(index),
                                      name: parent.name(thread),
-                                     dateText: parent.date(thread))
+                                     dateText: parent.date(thread),
+                                     previewLines: parent.previewLines)
             }
         }
 
         // AppKit can ask about a row that a reload has already taken away, so
         // both of these tolerate an index that is no longer there.
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            guard rows.indices.contains(row), case .header = rows[row] else { return 64 }
+            guard rows.indices.contains(row), case .header = rows[row] else {
+                return parent.rowHeight
+            }
             return 24
         }
 
@@ -184,7 +191,8 @@ private final class SectionHeaderView: NSView {
 
 /// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 private final class ThreadRowView: NSView {
-    init(thread: MailThread, isMarked: Bool, name: String, dateText: String) {
+    init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
+         previewLines: Int) {
         super.init(frame: .zero)
 
         // Fixed width whether or not it is showing, so marking a row does not
@@ -222,6 +230,10 @@ private final class ThreadRowView: NSView {
         // when deciding whether to open something.
         snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
+        snippet.maximumNumberOfLines = previewLines
+        // Zero lines is a reader who goes by subject alone; the field is
+        // removed rather than left as an empty gap.
+        snippet.isHidden = previewLines == 0
 
         let top = NSStackView(views: [mark, dot, sender, NSView(), star, date])
         top.orientation = .horizontal

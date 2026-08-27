@@ -80,11 +80,23 @@ public final class SettingsViewModel: ObservableObject {
         didSet { preferences.recipientLimit = Int(recipientLimit) }
     }
     @Published public var opensAt = "inbox" { didSet { preferences.opensAt = opensAt } }
+    @Published public var newestFirstInThread = false {
+        didSet { preferences.newestFirstInThread = newestFirstInThread }
+    }
+    @Published public var previewLines: Double = 1 {
+        didSet { preferences.previewLines = Int(previewLines) }
+    }
+    @Published public var compactList = false {
+        didSet { preferences.compactList = compactList }
+    }
     @Published public var marksReadAfter: Double = 0 {
         didSet {
             preferences.marksReadAfter = marksReadAfter
             if preferences.marksReadAfter != marksReadAfter {
                 marksReadAfter = preferences.marksReadAfter
+        newestFirstInThread = preferences.newestFirstInThread
+        previewLines = Double(preferences.previewLines)
+        compactList = preferences.compactList
             }
         }
     }

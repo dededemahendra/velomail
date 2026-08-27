@@ -291,7 +291,10 @@ public final class InboxViewModel: ObservableObject {
             selectedAttachments = [:]
             return
         }
-        selectedMessages = try store.messages(inThread: thread.id)
+        let ordered = try store.messages(inThread: thread.id)
+        // Newest first is a choice about reading, not about storage: the store
+        // always answers in the order the conversation happened.
+        selectedMessages = preferences.newestFirstInThread ? ordered.reversed() : ordered
         selectedAttachments = Dictionary(
             uniqueKeysWithValues: try selectedMessages.map {
                 ($0.id, try store.attachments(forMessage: $0.id))
