@@ -38,6 +38,56 @@ public final class AttachmentViewModel: ObservableObject {
 
     public func dismiss() { state = .idle }
 
+    /// Opens an attachment in Quick Look without keeping it.
+    ///
+    /// Saved to a temporary directory rather than Downloads: looking at
+    /// something is not the same as wanting a copy of it, and a Downloads
+    /// folder that fills up with everything glanced at is its own annoyance.
+    public func preview(_ attachment: MailAttachment) async {
+        state = .saving(attachment.filename)
+        do {
+            let url = try await service.save(attachment, to: AttachmentViewModel.previewFolder)
+            state = .idle
+            NSWorkspace.shared.open(url)
+        } catch {
+            state = .failed(Self.describe(error, filename: attachment.filename))
+        }
+    }
+
+    /// A file promise for dragging an attachment out.
+    ///
+    /// Written to the same temporary folder as a preview: dropping it on the
+    /// desktop copies it, and nothing is left in Downloads for a drag that was
+    /// abandoned halfway.
+    nonisolated public func provider(for attachment: MailAttachment) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.suggestedName = attachment.filename
+        let service = self.service
+        provider.registerFileRepresentation(forTypeIdentifier: "public.data",
+                                            fileOptions: [], visibility: .all) { completion in
+            Task {
+                do {
+                    let url = try await service.save(attachment,
+                                                     to: AttachmentViewModel.previewFolder)
+                    completion(url, false, nil)
+                } catch {
+                    completion(nil, false, error)
+                }
+            }
+            return nil
+        }
+        return provider
+    }
+
+    /// Cleared by the system, and per-launch so two runs cannot collide over
+    /// a name.
+    nonisolated static let previewFolder: URL = {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VeloMail-preview", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+
     /// Reveals a saved file in Finder.
     public func reveal(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])

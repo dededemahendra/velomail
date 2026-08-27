@@ -39,6 +39,8 @@ enum CommandSymbol {
         case .switchAccount: return "person.crop.circle"
         case .addAccount: return "person.badge.plus"
         case .openSettings: return "gearshape"
+        case .snoozeAtTime: return "calendar.badge.clock"
+        case .sendAtTime: return "calendar"
         case .fileInLabel: return "tag.fill"
         case .unfileFromLabel: return "tag.slash"
 

@@ -14,6 +14,8 @@ struct ComposeView: View {
     /// Bcc is revealed rather than always shown. A standing blind-copy field is
     /// how one gets filled in by accident.
     @State private var isShowingBcc = false
+    /// True while a file is over the window, so there is something to aim at.
+    @State private var isDropTarget = false
     /// The quote is collapsed by default. It is there to be sent, not read --
     /// the writer just saw the message they are answering.
     @State private var isShowingQuote = false
@@ -87,6 +89,39 @@ struct ComposeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Dropping a file on a message is the most reflexive thing anybody
+        // does with an attachment, and it did nothing at all.
+        .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+            receive(providers)
+            return true
+        }
+        .overlay {
+            if isDropTarget {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(.tint, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Loads what was dropped and attaches it, naming anything that would not
+    /// come. A drop that silently attaches four of five files is worse than one
+    /// that says which was refused.
+    private func receive(_ providers: [NSItemProvider]) {
+        Task {
+            var urls: [URL] = []
+            for provider in providers {
+                guard let url = try? await provider.loadItem(forTypeIdentifier: "public.file-url")
+                        as? Data,
+                      let resolved = URL(dataRepresentation: url, relativeTo: nil) else { continue }
+                urls.append(resolved)
+            }
+            let failed = model.attach(urls)
+            attachmentError = failed.isEmpty
+                ? nil
+                : "Could not attach \(failed.joined(separator: ", "))."
+        }
     }
 
     /// The marks `MarkdownBody` understands, as buttons.

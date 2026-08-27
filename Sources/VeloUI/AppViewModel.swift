@@ -164,6 +164,27 @@ public final class AppViewModel: ObservableObject {
     /// queued while it is set: the writer can still fix it.
     @Published public private(set) var sendWarning: SendWarning?
 
+    /// A time being asked for. Nothing happens to the mail while this is set:
+    /// the writer can still change their mind.
+    @Published public private(set) var timeRequest: TimeRequest?
+
+    public struct TimeRequest: Equatable, Identifiable {
+        public var id: String { "\(purpose)-\(suggested.timeIntervalSince1970)" }
+        public enum Purpose: Equatable { case snooze, send }
+        public let purpose: Purpose
+        /// Where the picker starts. Not now: every value worth choosing is in
+        /// the future, and starting in the past means every use begins by
+        /// fixing it.
+        public let suggested: Date
+
+        public var title: String {
+            switch purpose {
+            case .snooze: return "Snooze until"
+            case .send: return "Send at"
+            }
+        }
+    }
+
     /// The labels worth offering, refreshed when the mail is.
     @Published public private(set) var labels: [MailLabel] = []
 
@@ -182,6 +203,8 @@ public final class AppViewModel: ObservableObject {
             onAddAccount?()
         case .openSettings:
             isShowingSettings = true
+        case .snoozeAtTime, .sendAtTime:
+            perform(command.action)
         default:
             perform(command.action)
         }
@@ -472,6 +495,10 @@ public final class AppViewModel: ObservableObject {
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
+        case .snoozeAtTime:
+            timeRequest = TimeRequest(purpose: .snooze, suggested: suggestedTime())
+        case .sendAtTime:
+            timeRequest = TimeRequest(purpose: .send, suggested: suggestedTime())
         case .openSettings: isShowingSettings = true
         case .goToLabel, .fileInLabel, .unfileFromLabel, .switchAccount, .addAccount: break
         case .goToDrafts: showDrafts()
@@ -695,6 +722,37 @@ public final class AppViewModel: ObservableObject {
     private func show(_ scope: MailScope) {
         try? inbox.show(scope)
         route = .list
+    }
+
+    /// Acts on the time that was chosen.
+    public func confirmTime(_ moment: Date) {
+        guard let request = timeRequest else { return }
+        timeRequest = nil
+        switch request.purpose {
+        case .snooze: snoozeSelected(until: { moment })
+        case .send:
+            // A time that is not meaningfully in the future is an ordinary
+            // send, and an ordinary send can be taken back. Scheduling it
+            // instead would put it in a "waiting to send" list it leaves a
+            // second later, with no undo offered on the way past.
+            if moment.timeIntervalSinceNow <= OutboundService.scheduleThreshold {
+                perform(.send)
+            } else {
+                sendLater(moment)
+            }
+        }
+    }
+
+    public func cancelTime() { timeRequest = nil }
+
+    /// Tomorrow morning, unless that is less than an hour away, in which case
+    /// an hour from now: a picker that opens on a time already past is a form
+    /// to correct rather than a choice to make.
+    private func suggestedTime() -> Date {
+        let tomorrow = Horizon.tomorrow(hour: preferences.morningHour)
+        return tomorrow.timeIntervalSinceNow > 3_600
+            ? tomorrow
+            : Date().addingTimeInterval(3_600)
     }
 
     /// Asks for another page of older mail and says what came back.
