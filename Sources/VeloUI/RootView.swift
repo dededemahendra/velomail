@@ -132,6 +132,10 @@ public struct RootView: View {
                                     date: { app.inbox.rowDate(of: $0) },
                                     rowHeight: app.preferences.listRowHeight,
                                     previewLines: app.preferences.previewLines,
+                                    labelNames: { thread in
+                                        ThreadDetail.labels(on: thread.labelIDs, known: app.labels)
+                                            .map(\.displayName)
+                                    },
                                     onSelect: { app.inbox.select(index: $0) },
                                     onOpen: { app.perform(.openSelected) })
                 }
@@ -154,6 +158,7 @@ public struct RootView: View {
                                    attachments: { app.inbox.attachments(forMessage: $0) },
                                    attachmentModel: app.attachments,
                                    alwaysLoadsImages: app.alwaysLoadsImages,
+                                   knownLabels: app.labels,
                                    onUnsubscribe: { app.unsubscribeSelected() })
                     }
                 } else {

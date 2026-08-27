@@ -345,6 +345,9 @@ struct ThreadView: View {
     /// The standing answer to "load this message's pictures?", set once in the
     /// command palette rather than asked on every message.
     var alwaysLoadsImages = false
+    /// Named labels, so a thread can say what it was filed as. Filing was
+    /// possible and invisible before this.
+    var knownLabels: [MailLabel] = []
     let onUnsubscribe: () -> Void
 
     /// Whether this thread can be left. Parsed rather than merely present: a
@@ -382,6 +385,29 @@ struct ThreadView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
+                if !detail.isEmpty {
+                    // Under the subject rather than beside it: a subject is
+                    // long and this must not push it into a second line.
+                    HStack(spacing: 6) {
+                        ForEach(ThreadDetail.labels(on: thread.labelIDs, known: knownLabels)) { label in
+                            Text(label.displayName)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(.tint.opacity(0.16), in: Capsule())
+                        }
+                        if let count = ThreadDetail.messageCount(messages.count) {
+                            Text(count).font(.system(size: 10)).foregroundStyle(.tertiary)
+                        }
+                        if attachmentCount > 0 {
+                            Label("\(attachmentCount)", systemImage: "paperclip")
+                                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24).padding(.bottom, 10)
+                    .accessibilityElement(children: .combine)
+                }
+
                 Divider()
 
                 // GeometryReader so the transcript can be told to fill the pane.
@@ -422,6 +448,18 @@ struct ThreadView: View {
                 }
             }
         }
+    }
+
+    /// True when the header has anything to add beyond the subject.
+    private var detail: [String] {
+        var parts = ThreadDetail.labels(on: thread.labelIDs, known: knownLabels).map(\.displayName)
+        if let count = ThreadDetail.messageCount(messages.count) { parts.append(count) }
+        if attachmentCount > 0 { parts.append("attachments") }
+        return parts
+    }
+
+    private var attachmentCount: Int {
+        messages.reduce(0) { $0 + attachments($1.id).count }
     }
 
     private var subject: String {
