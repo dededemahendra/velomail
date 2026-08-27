@@ -68,6 +68,23 @@ public struct DraftStore: Sendable {
         }
     }
 
+    /// The Gmail draft this local row was last pushed to, if it has been.
+    ///
+    /// Kept beside the draft rather than inside it: it is a fact about
+    /// synchronisation, and a `Draft` is what someone wrote.
+    public func remoteID(of id: String) throws -> String? {
+        try database.dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT remoteID FROM draft WHERE id = ?", arguments: [id])
+        }
+    }
+
+    public func setRemoteID(_ remoteID: String, on id: String) throws {
+        _ = try database.dbQueue.write { db in
+            try db.execute(sql: "UPDATE draft SET remoteID = ? WHERE id = ?",
+                           arguments: [remoteID, id])
+        }
+    }
+
     public func discard(id: String) throws {
         _ = try database.dbQueue.write { db in
             try db.execute(sql: "DELETE FROM draft WHERE id = ?", arguments: [id])

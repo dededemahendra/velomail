@@ -278,6 +278,16 @@ public final class AppDatabase: Sendable {
             }
         }
 
+
+        migrator.registerMigration("v20_add_draft_remoteID") { db in
+            // Which Gmail draft a local one was pushed to. Nullable: a draft
+            // written here has none until it goes up, and one pulled down is
+            // identified by its row id instead.
+            try db.alter(table: "draft") { t in
+                t.add(column: "remoteID", .text)
+            }
+        }
+
         return migrator
     }
 }
