@@ -100,6 +100,7 @@ public struct RootView: View {
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
+                                   recents: app.recentCommands,
                                    onRun: { app.run($0) },
                                    onCancel: { app.perform(.back) })
                     .padding(.top, 90)

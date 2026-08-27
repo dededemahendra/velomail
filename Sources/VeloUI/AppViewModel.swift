@@ -84,6 +84,9 @@ public final class AppViewModel: ObservableObject {
     /// A one-line answer to something the writer just did. Not an error
     /// channel: silence after pressing a button reads as a broken button.
     @Published public private(set) var notice: String?
+    /// The last few commands run from the palette, newest first, so what you
+    /// keep reaching for stops being fifty rows down.
+    @Published public private(set) var recentCommands: [MailAction] = []
     /// How long a passing message stays up. Long enough to read one short
     /// sentence, short enough that it is gone before it becomes furniture.
     /// Settable so a four-second wait is not four seconds of test.
@@ -204,6 +207,11 @@ public final class AppViewModel: ObservableObject {
 
     /// Runs a palette command, which may carry what it is about.
     public func run(_ command: Command) {
+        // Before the switch, so a command that changes route still counts. Only
+        // from the palette: keystrokes are already fast, and folding them in
+        // would fill Recent with j and k.
+        recentCommands = CommandRegistry.remember(command.action, in: recentCommands)
+        preferences.recentCommands = recentCommands.map(\.rawValue)
         switch command.action {
         case .goToLabel:
             command.argument.flatMap(label(withID:)).map { show(label: $0) }
@@ -326,6 +334,9 @@ public final class AppViewModel: ObservableObject {
                 preferences: AppPreferences = AppPreferences()) {
         self.preferences = preferences
         self.alwaysLoadsImages = preferences.loadsRemoteImages
+        // Unknown raw values are dropped rather than failing the whole read: a
+        // command removed in a later version must not wipe the rest.
+        self.recentCommands = preferences.recentCommands.compactMap(MailAction.init(rawValue:))
         self.loadOlder = loadOlder
         self.syncNow = syncNow
         self.config = config

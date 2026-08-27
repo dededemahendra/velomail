@@ -5,6 +5,8 @@ import VeloCore
 /// only renders them.
 struct CommandPaletteView: View {
     let registry: CommandRegistry
+    /// The last few commands run, floated to the top when nothing is typed.
+    var recents: [MailAction] = []
     let onRun: (Command) -> Void
     let onCancel: () -> Void
 
@@ -12,7 +14,27 @@ struct CommandPaletteView: View {
     @State private var highlighted = 0
     @FocusState private var isFocused: Bool
 
-    private var results: [Command] { registry.matches(query) }
+    private var results: [Command] { registry.matches(query, recents: recents) }
+
+    /// Where a heading goes and what it says, by row.
+    ///
+    /// Computed against the flat result list rather than nesting the rows in
+    /// sections, so the arrow keys keep walking one continuous index and a
+    /// heading cannot be landed on.
+    private var headings: [Int: String] {
+        guard query.isEmpty else { return [:] }   // typed results are ranked, not grouped
+        var found: [Int: String] = [:]
+        var seen = Set<String>()
+        let recentCount = min(recents.count, results.count)
+        for (index, command) in results.enumerated() {
+            let title = index < recentCount ? "Recent" : command.group.rawValue
+            if !seen.contains(title) {
+                found[index] = title
+                seen.insert(title)
+            }
+        }
+        return found
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,7 +70,18 @@ struct CommandPaletteView: View {
     private var list: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
+                let headings = headings
                 ForEach(Array(results.enumerated()), id: \.offset) { index, command in
+                    if let heading = headings[index] {
+                        Text(heading.uppercased())
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.top, index == 0 ? 2 : 10)
+                            .padding(.bottom, 3)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     row(command, isHighlighted: index == highlighted)
                         .contentShape(Rectangle())
                         .onTapGesture { onRun(command) }
