@@ -390,15 +390,27 @@ struct ThreadView: View {
                 GeometryReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                                MessageCard(message: message,
-                                            isExpanded: isExpanded(message.id),
+                            ForEach(Array(TranscriptRows.build(messages).enumerated()),
+                                    id: \.element.id) { index, row in
+                                if let heading = row.dayHeading {
+                                    // The date once, above the messages it
+                                    // covers, rather than on every line.
+                                    Text(heading.uppercased())
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .tracking(0.5)
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.horizontal, 24)
+                                        .padding(.top, index == 0 ? 10 : 18)
+                                        .padding(.bottom, 4)
+                                }
+                                MessageCard(row: row,
+                                            isExpanded: isExpanded(row.message.id),
                                             isOnly: messages.count == 1,
-                                            attachments: attachments(message.id),
+                                            attachments: attachments(row.message.id),
                                             attachmentModel: attachmentModel,
                                             alwaysLoadsImages: alwaysLoadsImages,
                                             paneHeight: proxy.size.height,
-                                            onToggle: { onToggle(message.id) })
+                                            onToggle: { onToggle(row.message.id) })
                                 // No rule under the last message: it would draw
                                 // a line across empty space.
                                 if index < messages.count - 1 { Divider() }
@@ -420,7 +432,8 @@ struct ThreadView: View {
 /// One message: a header that is always shown and always clickable, plus the
 /// body when expanded.
 private struct MessageCard: View {
-    let message: Message
+    let row: TranscriptRows.Row
+    var message: Message { row.message }
     let isExpanded: Bool
     let isOnly: Bool
     let attachments: [MailAttachment]
@@ -458,25 +471,35 @@ private struct MessageCard: View {
             Button(action: onToggle) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        // Display name only: a full "Name <addr>" wraps to two
-                        // lines and makes the transcript look ragged.
-                        Text(MailFormatting.displayName(message.sender))
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
+                        // Named only when it changes. Twelve alerts from one
+                        // sender do not need the name twelve times, and the
+                        // eye should land on what actually differs.
+                        if row.showsSender {
+                            // Display name only: a full "Name <addr>" wraps to
+                            // two lines and makes the transcript look ragged.
+                            Text(MailFormatting.displayName(message.sender))
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(1)
+                        }
                         Spacer()
-                        Text(message.date.formatted(date: .abbreviated, time: .shortened))
-                            .font(.caption).foregroundStyle(.secondary)
+                        // The clock only; the day is on the heading above.
+                        Text(row.time)
+                            .font(.caption).foregroundStyle(.tertiary)
+                            .monospacedDigit()
                     }
                     if isExpanded {
                         // The full address earns its space only once opened.
                         Text(addressLine)
                             .font(.caption).foregroundStyle(.secondary)
                             .lineLimit(2)
-                    } else {
+                    } else if row.showsPreview {
                         // Collapsed: one line of what it said, so the thread can
-                        // be skimmed without opening every message.
+                        // be skimmed without opening every message. Left out
+                        // when it would repeat the line above word for word.
                         Text(preview)
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption)
+                            .foregroundStyle(row.showsSender
+                                             ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                             .lineLimit(1)
                     }
                 }
@@ -486,7 +509,7 @@ private struct MessageCard: View {
             // A one-message thread has nothing to collapse into.
             .disabled(isOnly)
             .padding(.horizontal, 24)
-            .padding(.vertical, 12)
+            .padding(.vertical, row.showsSender ? 10 : 6)
 
             if isExpanded {
                 if !attachments.isEmpty {
