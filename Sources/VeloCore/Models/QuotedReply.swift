@@ -9,11 +9,59 @@ public enum QuotedReply {
     /// `On <date>, <sender> wrote:` followed by the parent body, `> ` per line.
     public static func text(quoting message: Message) -> String {
         let body = message.bodyText ?? strippedTags(message.bodyHTML ?? "")
-        let quoted = body
-            .components(separatedBy: .newlines)
+        let quoted = collapsingBlankRuns(in: body)
             .map { $0.isEmpty ? ">" : "> \($0)" }
             .joined(separator: "\n")
         return "\(attribution(for: message))\n\(quoted)"
+    }
+
+    /// The quoted body as something to read, for a composer showing the writer
+    /// what they are about to send along.
+    ///
+    /// Not what goes on the wire. Quoting is no place to edit what somebody
+    /// wrote, but a preview is only ever read, so it can drop the parts of a
+    /// marketing email that exist for the sender's analytics rather than for
+    /// anyone's eyes.
+    public static func preview(of message: Message) -> String {
+        // An HTML message's plain half is a machine's rendering of it, with
+        // every link expanded inline. The rendered text is what the reader was
+        // looking at a moment ago.
+        let body = message.bodyHTML.map(strippedTags) ?? message.bodyText ?? ""
+        return collapsingBlankRuns(in: shortenedLinks(in: body)).joined(separator: "\n")
+    }
+
+    /// Lines with runs of blank ones flattened to a single break, and none left
+    /// trailing. A marketing email's plain half is double-spaced throughout, so
+    /// every paragraph arrived with two or three empty quote markers under it.
+    private static func collapsingBlankRuns(in body: String) -> [String] {
+        var lines: [String] = []
+        for line in body.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty && lines.last?.isEmpty == true { continue }
+            lines.append(trimmed.isEmpty ? "" : line)
+        }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines
+    }
+
+    /// How much of a URL is worth reading before it is just a token.
+    private static let readableURLLength = 48
+
+    /// Replaces tracking URLs with their host, so a line of prose is legible
+    /// again. Anything short enough to read is left as it is.
+    private static func shortenedLinks(in body: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: "https?://[^\\s)\\]]+") else { return body }
+        var out = body
+        let matches = regex.matches(in: body, range: NSRange(body.startIndex..., in: body))
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: body) else { continue }
+            let url = String(body[range])
+            guard url.count > readableURLLength,
+                  let host = URL(string: url)?.host else { continue }
+            let scheme = url.hasPrefix("https") ? "https" : "http"
+            out.replaceSubrange(range, with: "\(scheme)://\(host)/\u{2026}")
+        }
+        return out
     }
 
     /// The same attribution, with the parent body inside a `<blockquote>`.
