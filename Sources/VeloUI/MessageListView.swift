@@ -224,9 +224,14 @@ private final class ThreadRowView: NSView {
 
         // One label, not all of them: a row is a glance, and three chips push
         // the sender out of the space it needs. The thread header lists the rest.
-        let tag = NSTextField(labelWithString: labels.first ?? "")
+        let tag = NSTextField(labelWithString: MailFormatting.shortLabel(labels.first ?? ""))
         tag.font = .systemFont(ofSize: 9, weight: .medium)
         tag.textColor = .tertiaryLabelColor
+        tag.lineBreakMode = .byTruncatingTail
+        // Below the sender's own low resistance, so a long label gives up its
+        // space first. It used to win, and "Invoices to pay this quarter"
+        // printed in full while the sender read "Peta Bil...".
+        tag.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
 
         let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
         star.font = .systemFont(ofSize: 11)
@@ -292,6 +297,19 @@ enum MailFormatting {
     /// six unlabelled fragments and the paperclip says nothing at all. Unread
     /// comes first because it is what decides whether to keep listening, and
     /// "read" is never said -- it would be noise on the great majority of rows.
+    /// Cuts a label name down to something a row can carry beside a sender.
+    ///
+    /// At a word boundary where that leaves most of the allowance, and mid-word
+    /// otherwise, so one long word does not collapse to a single letter.
+    static func shortLabel(_ name: String, limit: Int = 16) -> String {
+        guard name.count > limit else { return name }
+        let cut = name.prefix(limit)
+        if let space = cut.lastIndex(of: " "), cut.distance(from: cut.startIndex, to: space) >= limit / 2 {
+            return cut[..<space] + "\u{2026}"
+        }
+        return cut.trimmingCharacters(in: .whitespaces) + "\u{2026}"
+    }
+
     static func rowDescription(_ thread: MailThread, name: String, date: String,
                                labels: [String] = []) -> String {
         var parts: [String] = []

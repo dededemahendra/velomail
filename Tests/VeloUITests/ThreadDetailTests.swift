@@ -134,3 +134,25 @@ import VeloCore
         #expect(chips.extra == 5)
     }
 }
+
+@Suite struct ShortLabelTests {
+    @Test func aShortNamePassesThroughUntouched() {
+        #expect(MailFormatting.shortLabel("Clients") == "Clients")
+    }
+
+    @Test func aLongNameIsCutAtAWord() {
+        // It printed in full and left the sender reading "Peta Bil...".
+        #expect(MailFormatting.shortLabel("Invoices to pay this quarter") == "Invoices to pay\u{2026}")
+    }
+
+    @Test func oneLongWordIsCutMidWordRatherThanToNothing() {
+        // Cutting at the only space would leave "A…".
+        #expect(MailFormatting.shortLabel("A supercalifragilistic label") == "A supercalifragi\u{2026}")
+    }
+
+    @Test func exactlyTheLimitIsNotCut() {
+        let sixteen = "Sixteen chars!!!"
+        #expect(sixteen.count == 16)
+        #expect(MailFormatting.shortLabel(sixteen) == sixteen)
+    }
+}
