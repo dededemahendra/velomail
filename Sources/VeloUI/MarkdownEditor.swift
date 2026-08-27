@@ -14,6 +14,14 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var pending: MarkdownFormatting.Style?
     var font: NSFont = .systemFont(ofSize: 13)
 
+    /// Where the first character sits, from the editor's own edges.
+    ///
+    /// Exposed so the placeholder drawn over the top can use the same numbers
+    /// rather than a pair that happen to look close. AppKit adds a
+    /// `lineFragmentPadding` of its own on top of `textContainerInset`, which
+    /// is what made the caret and the placeholder disagree.
+    static let textOrigin = NSSize(width: 20, height: 10)
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -25,7 +33,11 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isRichText = false           // the marks are the formatting
         textView.allowsUndo = true
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.textContainerInset = Self.textOrigin
+        // Zeroed so the inset above is the whole story; left at its default 5
+        // there are two paddings to keep in step and only one of them is
+        // visible in this file.
+        textView.textContainer?.lineFragmentPadding = 0
         scrollView.drawsBackground = false
         context.coordinator.textView = textView
         textView.string = text

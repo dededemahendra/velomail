@@ -22,6 +22,12 @@ struct ComposeView: View {
     /// Set by a toolbar press, consumed by the editor that owns the selection.
     @State private var pendingStyle: MarkdownFormatting.Style?
 
+    /// The composer's left edge. Every row uses it, so the labels, the toolbar
+    /// and the first character of the message all start in the same place --
+    /// three rows with three ideas of the margin is what "not balanced" looks
+    /// like even when no single row is wrong.
+    static let gutter: CGFloat = 20
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -69,7 +75,10 @@ struct ComposeView: View {
                         Text("Write your message…")
                             .font(.system(size: 13))
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 17).padding(.vertical, 14)
+                            // The editor's own numbers, so the placeholder sits
+                            // exactly where the first character will.
+                            .padding(.leading, MarkdownEditor.textOrigin.width)
+                            .padding(.top, MarkdownEditor.textOrigin.height)
                             .allowsHitTesting(false)
                     }
                     MarkdownEditor(text: $model.body, pending: $pendingStyle)
@@ -103,7 +112,8 @@ struct ComposeView: View {
                     .help("This message will be sent as formatted text as well as plain")
             }
         }
-        .padding(.horizontal, 18).padding(.vertical, 5)
+        .padding(.leading, ComposeView.gutter - 6).padding(.trailing, ComposeView.gutter)
+        .padding(.vertical, 5)
     }
 
     @ViewBuilder
@@ -114,7 +124,7 @@ struct ComposeView: View {
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 12))
-                .frame(width: 26, height: 22)
+                .frame(width: 24, height: 22)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
