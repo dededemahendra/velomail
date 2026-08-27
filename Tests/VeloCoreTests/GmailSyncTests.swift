@@ -166,11 +166,13 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
     @Test func alreadyBackfilledSkipsBackfill() async throws {
         let source = fresh()
         let (sync, _, syncStore, _) = try makeSync(
-            source: source, seedState: SyncState(accountID: account, historyId: "1000", backfillComplete: true))
+            source: source, seedState: SyncState(accountID: account, historyId: "1000",
+                                                 backfillComplete: true,
+                                                 backfilledLabels: BackfillService.backfilledLabels))
 
         try await sync.syncNow()
 
-        #expect(source.backfillCount == 0)   // backfill skipped
+        #expect(source.backfillCount == 0)   // every label already fetched
         #expect(try syncStore.load(accountID: account)?.historyId == "5100")   // incremental advanced cursor
     }
 
@@ -223,7 +225,9 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         let source = fresh()
         source.historyExpiredCalls = 1
         let (sync, mailStore, syncStore, _) = try makeSync(
-            source: source, seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true))
+            source: source, seedState: SyncState(accountID: account, historyId: "stale",
+                                                 backfillComplete: true,
+                                                 backfilledLabels: BackfillService.backfilledLabels))
 
         try await sync.syncNow()
 
@@ -239,7 +243,9 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         let source = fresh()
         source.historyExpiredCalls = 99                          // never recovers
         let (sync, _, _, _) = try makeSync(
-            source: source, seedState: SyncState(accountID: account, historyId: "stale", backfillComplete: true))
+            source: source, seedState: SyncState(accountID: account, historyId: "stale",
+                                                 backfillComplete: true,
+                                                 backfilledLabels: BackfillService.backfilledLabels))
 
         await #expect(throws: SyncError.historyExpired) {
             try await sync.syncNow()
@@ -251,7 +257,9 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
         let source = fresh()
         // Flagged complete but with no cursor: incremental cannot start.
         let (sync, _, syncStore, _) = try makeSync(
-            source: source, seedState: SyncState(accountID: account, historyId: nil, backfillComplete: true))
+            source: source, seedState: SyncState(accountID: account, historyId: nil,
+                                                 backfillComplete: true,
+                                                 backfilledLabels: BackfillService.backfilledLabels))
 
         try await sync.syncNow()
 
@@ -262,7 +270,9 @@ private final class FakeClock: SyncClock, @unchecked Sendable {
     @Test func aNormalPassDoesNotReBackfill() async throws {
         let source = fresh()
         let (sync, _, _, _) = try makeSync(
-            source: source, seedState: SyncState(accountID: account, historyId: "5000", backfillComplete: true))
+            source: source, seedState: SyncState(accountID: account, historyId: "5000",
+                                                 backfillComplete: true,
+                                                 backfilledLabels: BackfillService.backfilledLabels))
 
         try await sync.syncNow()
 

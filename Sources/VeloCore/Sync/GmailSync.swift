@@ -115,7 +115,12 @@ public actor GmailSync {
         try outbound.wakeSnoozed(now: now())
 
         let state = try syncState.load(accountID: accountID)
-        if state?.backfillComplete != true {
+        // Not "has this account synced" but "is any label still unfetched": a
+        // label added after the first sync has to be able to catch up.
+        let outstanding = (state ?? SyncState(accountID: accountID, historyId: nil,
+                                              backfillComplete: false))
+            .labelsNeedingBackfill(of: BackfillService.backfilledLabels)
+        if !outstanding.isEmpty {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
         }
 

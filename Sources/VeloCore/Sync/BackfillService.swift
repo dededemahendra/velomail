@@ -59,18 +59,27 @@ public struct BackfillService: Sendable {
     /// messages against a mailbox of thousands.
     public static let backfilledLabels = ["INBOX", "SENT"]
 
-    /// Fetches up to `maxMessages` of the most recent messages in each
-    /// backfilled label, upserts their threads/messages, then records the sync
-    /// cursor for `accountID`.
+    /// Fetches up to `maxMessages` of the most recent messages in each label
+    /// that has not been fetched yet, upserts them, and records each label as
+    /// it lands.
+    ///
+    /// Per label rather than all-or-nothing: adding a label to the app should
+    /// pull that label's history without re-fetching a mailbox already here.
     public func backfillInbox(accountID: String, maxMessages: Int) async throws {
         // Capture the baseline BEFORE listing: messages arriving mid-backfill are
         // then re-delivered by history.list from this cursor (upserts make it idempotent).
         let profile = try await source.getProfile()
         let baseline = profile.historyId
 
+        let existing = try syncState.load(accountID: accountID)
+        let outstanding = (existing ?? SyncState(accountID: accountID, historyId: nil,
+                                                 backfillComplete: false))
+            .labelsNeedingBackfill(of: Self.backfilledLabels)
+        guard !outstanding.isEmpty else { return }
+
         var ids: [String] = []
         var seen: Set<String> = []
-        for label in Self.backfilledLabels {
+        for label in outstanding {
             var pageToken: String?
             var forLabel: [String] = []
             repeat {
@@ -98,8 +107,15 @@ public struct BackfillService: Sendable {
         // Persist the cursor only after reconcile succeeds.
         // Record the account's own address too: it is on the wire either way,
         // and without it a send has no correct `From` to use.
-        try syncState.save(SyncState(accountID: accountID, historyId: baseline,
-                                     backfillComplete: true,
-                                     emailAddress: profile.emailAddress))
+        // The cursor is only moved on a first backfill. A later label's pass
+        // must not rewind history to now, or everything that arrived since the
+        // original sync would be skipped.
+        let alreadySynced = existing?.backfillComplete == true
+        try syncState.save(SyncState(
+            accountID: accountID,
+            historyId: alreadySynced ? existing?.historyId : baseline,
+            backfillComplete: true,
+            emailAddress: profile.emailAddress ?? existing?.emailAddress,
+            backfilledLabels: (existing?.backfilledLabels ?? []) + outstanding))
     }
 }
