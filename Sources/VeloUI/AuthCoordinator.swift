@@ -119,7 +119,11 @@ public final class AuthCoordinator: NSObject, ObservableObject {
             try tokenStore.save(tokens)
             state = .signedIn
         } catch {
-            state = .failed(String(describing: error))
+            // Plain English, not the Swift value. This is the screen that
+            // showed `server(code: "invalid_request", description:
+            // Optional("client_secret is missing."))` to somebody trying to
+            // sign in for the first time.
+            state = .failed(AuthError.message(for: error))
         }
     }
 }

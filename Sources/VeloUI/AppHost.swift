@@ -89,7 +89,16 @@ final class AppHost: ObservableObject {
         }
         statusTask = Task { [weak self] in
             while !Task.isCancelled {
-                if let status = await self?.sync?.status { self?.app.setSyncStatus(status) }
+                if let status = await self?.sync?.status {
+                    self?.app.setSyncStatus(status)
+                    // A sign-in that has expired is not a status to display and
+                    // wait out; it is the one failure the reader can fix, and
+                    // the app should say so where signing in happens.
+                    if case let .failed(reason) = status,
+                       reason.contains("Sign in again") {
+                        self?.app.setSignedIn(false)
+                    }
+                }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }

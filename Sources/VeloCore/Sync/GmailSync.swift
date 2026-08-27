@@ -108,9 +108,14 @@ public actor GmailSync {
             // from anyone driving syncNow() directly, and would leave status
             // stuck on .syncing.
             consecutiveFailures += 1
-            status = error is AuthError
+            // A dropped connection is not a failure: it resolves itself when
+            // the laptop comes off the train, and a red light for it teaches
+            // people to ignore the red light. Anything else says plainly what
+            // happened, rather than printing the Swift value.
+            let transient = (error as? AuthError)?.isTransient ?? (error is URLError)
+            status = transient
                 ? .offline(consecutiveFailures: consecutiveFailures)
-                : .failed(reason: String(describing: error))
+                : .failed(reason: AuthError.message(for: error))
             throw error
         }
 
