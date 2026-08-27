@@ -112,6 +112,12 @@ public final class AppViewModel: ObservableObject {
         let base = assistant.isAvailable
             ? CommandRegistry.v1.commands
             : CommandRegistry.v1.commands.filter { !$0.action.isAI }
+        // One per account that is not the one already open, plus a way to add
+        // another. Same reasoning as labels: no fixed key can name a thing the
+        // app learns about at runtime.
+        let perAccount = accounts.filter { $0.id != currentAccount }.map {
+            Command(title: "Switch to \($0.displayName)", action: .switchAccount, argument: $0.id)
+        } + [Command(title: "Add another account", action: .addAccount)]
         // One pair per label, built from what the account actually has. The
         // palette is where a keyboard-first client puts what cannot have a key
         // of its own, and labels are the clearest case of that.
@@ -119,8 +125,15 @@ public final class AppViewModel: ObservableObject {
             [Command(title: "Go to \(label.displayName)", action: .goToLabel, argument: label.id),
              Command(title: "File in \(label.displayName)", action: .fileInLabel, argument: label.id)]
         }
-        return CommandRegistry(commands: base + perLabel)
+        return CommandRegistry(commands: base + perAccount + perLabel)
     }
+
+    /// The mailboxes the app knows about, and which one is open. Set by the
+    /// host: the view model has no idea how an account is assembled.
+    @Published public var accounts: [Account] = []
+    @Published public var currentAccount: String = Account.primaryID
+    public var onSwitchAccount: ((String) -> Void)?
+    public var onAddAccount: (() -> Void)?
 
     /// The labels worth offering, refreshed when the mail is.
     @Published public private(set) var labels: [MailLabel] = []
@@ -132,6 +145,10 @@ public final class AppViewModel: ObservableObject {
             command.argument.flatMap(label(withID:)).map { show(label: $0) }
         case .fileInLabel:
             command.argument.flatMap(label(withID:)).map { applyLabel($0) }
+        case .switchAccount:
+            command.argument.map { onSwitchAccount?($0) }
+        case .addAccount:
+            onAddAccount?()
         default:
             perform(command.action)
         }
@@ -387,7 +404,7 @@ public final class AppViewModel: ObservableObject {
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
-        case .goToLabel, .fileInLabel: break
+        case .goToLabel, .fileInLabel, .switchAccount, .addAccount: break
         case .goToDrafts: showDrafts()
         case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })

@@ -36,6 +36,8 @@ enum CommandSymbol {
         case .unsubscribe: return "hand.raised"
         case .loadOlderMail: return "arrow.down.circle"
         case .goToLabel: return "tag"
+        case .switchAccount: return "person.crop.circle"
+        case .addAccount: return "person.badge.plus"
         case .fileInLabel: return "tag.fill"
 
         // Writing
