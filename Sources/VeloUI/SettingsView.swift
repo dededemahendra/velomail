@@ -491,6 +491,15 @@ struct SettingsView: View {
                             .frame(width: 92, alignment: .leading)
                         Toggle("Archive it", isOn: $rule.archives).controlSize(.small)
                     }
+                    if rule.hasMoreToIt {
+                        // Otherwise these two fields read as the whole rule,
+                        // and turning Archive off looks like turning the rule
+                        // off when it still does something else entirely.
+                        Label("Also \(rule.extraSummary). Edit rules.json to change that.",
+                              systemImage: "info.circle")
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .padding(.top, 2)
+                    }
                 }
                 .opacity(rule.isEnabled ? 1 : 0.55)
             }
