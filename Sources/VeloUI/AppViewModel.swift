@@ -66,6 +66,10 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
+    /// True when every message's pictures load without being asked for.
+    @Published public private(set) var alwaysLoadsImages = ImagePreference().alwaysLoads
+    private let imagePreference = ImagePreference()
+
     /// Every message being written, most recently touched first.
     @Published public private(set) var drafts: [StoredDraft] = []
 
@@ -176,6 +180,7 @@ public final class AppViewModel: ObservableObject {
         }
         try inbox.reload()
         refreshFailures()
+        alwaysLoadsImages = imagePreference.alwaysLoads
         route = .list
         openDemoRouteIfRequested()
     }
@@ -311,6 +316,7 @@ public final class AppViewModel: ObservableObject {
         case .goToSent: show(.sent)
         case .goToSnoozed: show(.snoozed)
         case .goToDrafts: showDrafts()
+        case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })
         case .snoozeUntilNextWeek: snoozeSelected(until: { Horizon.nextWeek() })
         case .sendTomorrow: sendLater(Horizon.tomorrow())

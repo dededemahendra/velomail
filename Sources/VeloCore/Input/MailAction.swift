@@ -25,6 +25,7 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case snoozeUntilTomorrow
     case snoozeUntilNextWeek
     case unsnoozeSelected
+    case toggleRemoteImages
     /// Leave the current view; also cancels a half-typed chord.
     case back
     case openCommandPalette

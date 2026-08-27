@@ -10,6 +10,13 @@ struct MessageBodyView: NSViewRepresentable {
     let message: Message
     /// The message's own parts, so `cid:` references in the body resolve.
     var attachments: [MailAttachment] = []
+    /// Set once the reader has asked for this message's pictures. Off by
+    /// default and never remembered: a sender learns a message was opened the
+    /// moment one loads, so it stays a per-message decision.
+    var loadsRemoteImages = false
+    /// Set to the document's own height once it has laid out, so the body can
+    /// be as tall as the message instead of scrolling inside a fixed box.
+    var onMeasure: (CGFloat) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -17,21 +24,25 @@ struct MessageBodyView: NSViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = PassThroughWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.attach(webView, document: document)
+        webView.navigationDelegate = context.coordinator
+        context.coordinator.onMeasure = onMeasure
+        context.coordinator.attach(webView, document: currentDocument,
+                                   allowingRemote: loadsRemoteImages)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.render(document)
+        context.coordinator.onMeasure = onMeasure
+        context.coordinator.render(currentDocument, allowingRemote: loadsRemoteImages)
     }
 
     /// Compiles the blocker once, then renders. Rendering genuinely waits for
     /// the rules: compilation is async, so loading immediately would let the
     /// first message fetch trackers before the blocker existed.
     @MainActor
-    final class Coordinator {
+    final class Coordinator: NSObject, WKNavigationDelegate {
         private enum State {
             case compiling
             case ready
@@ -41,6 +52,25 @@ struct MessageBodyView: NSViewRepresentable {
         private var state: State = .compiling
         private weak var webView: WKWebView?
         private var pending: String?
+        private var allowsRemote = false
+        /// What is already on screen. SwiftUI calls `updateNSView` for reasons
+        /// that have nothing to do with this message -- a sync tick republishes
+        /// the whole tree every second -- and reloading the page each time made
+        /// it flash and threw away wherever the reader had scrolled to.
+        private var loaded: String?
+        var onMeasure: (CGFloat) -> Void = { _ in }
+
+        /// Asks the page how tall it turned out.
+        ///
+        /// `evaluateJavaScript` still runs with `allowsContentJavaScript` off:
+        /// that setting stops the *sender's* scripts, not the host's. So the
+        /// measurement works without giving mail HTML a way to run anything.
+        nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.evaluateJavaScript("document.documentElement.scrollHeight") { value, _ in
+                guard let height = (value as? NSNumber)?.doubleValue, height > 0 else { return }
+                Task { @MainActor [weak self] in self?.onMeasure(CGFloat(height)) }
+            }
+        }
 
         /// Remote schemes only. A catch-all ".*" also matches the inline
         /// document `loadHTMLString` creates, which blocks the message itself
@@ -49,9 +79,10 @@ struct MessageBodyView: NSViewRepresentable {
         [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}}]
         """
 
-        func attach(_ webView: WKWebView, document: String) {
+        func attach(_ webView: WKWebView, document: String, allowingRemote: Bool) {
             self.webView = webView
             pending = document
+            allowsRemote = allowingRemote
 
             guard let store = WKContentRuleListStore.default() else {
                 state = .unavailable
@@ -73,8 +104,10 @@ struct MessageBodyView: NSViewRepresentable {
             }
         }
 
-        func render(_ document: String) {
+        func render(_ document: String, allowingRemote: Bool) {
+            guard document != loaded || allowingRemote != allowsRemote else { return }
             pending = document
+            allowsRemote = allowingRemote
             flush()
         }
 
@@ -85,18 +118,65 @@ struct MessageBodyView: NSViewRepresentable {
                 return                      // held until the blocker exists
             case .ready:
                 pending = nil
+                // The rules are removed for this web view only, and only once
+                // the reader has asked. Every other message keeps its blocker.
+                if allowsRemote {
+                    webView.configuration.userContentController.removeAllContentRuleLists()
+                }
+                loaded = document
                 webView.loadHTMLString(document, baseURL: nil)
             case .unavailable:
                 // Without a blocker, rendering raw mail HTML would leak
                 // tracking pixels. Strip what can fetch, rather than choosing
-                // between a blank pane and a privacy hole.
+                // between a blank pane and a privacy hole -- unless the reader
+                // has explicitly asked for this message's pictures.
                 pending = nil
-                webView.loadHTMLString(MessageBodyView.stripRemoteContent(from: document), baseURL: nil)
+                loaded = document
+                webView.loadHTMLString(
+                    allowsRemote ? document : MessageBodyView.stripRemoteContent(from: document),
+                    baseURL: nil)
             }
         }
     }
 
-    /// Last-resort fallback: drop every element that can pull a remote URL.
+    /// A web view that does not eat scroll gestures.
+///
+/// The message body is sized to its own content and the transcript around it
+/// does the scrolling. Without this the web view swallows the wheel and the
+/// thread will not move: a scroller inside a scroller, where the inner one has
+/// nothing left to scroll.
+private final class PassThroughWebView: WKWebView {
+    override func scrollWheel(with event: NSEvent) {
+        // The message is already as tall as its content, so this view has
+        // nothing of its own to scroll and the transcript should move instead.
+        //
+        // Re-dispatching the event to the enclosing scroll view does nothing:
+        // AppKit's scrolling is driven by the event reaching it through the
+        // normal routing, and a phase-carrying event handed over by hand is
+        // simply dropped. Moving the clip view is what actually scrolls it.
+        guard let scrollView = enclosingScrollView, let document = scrollView.documentView else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        let clip = scrollView.contentView
+        // A trackpad reports pixels; a wheel reports lines, which are worth
+        // about a line of text each.
+        let delta = event.hasPreciseScrollingDeltas
+            ? event.scrollingDeltaY
+            : event.scrollingDeltaY * 16
+
+        var origin = clip.bounds.origin
+        origin.y -= delta                       // the document view is flipped
+        let limit = max(0, document.frame.height - clip.bounds.height)
+        origin.y = min(max(0, origin.y), limit)
+
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
+}
+
+/// Last-resort fallback: drop every element that can pull a remote URL.
     static func stripRemoteContent(from document: String) -> String {
         var stripped = document
         for tag in ["img", "iframe", "video", "audio", "object", "embed", "source", "script"] {
@@ -132,37 +212,106 @@ struct MessageBodyView: NSViewRepresentable {
         return out
     }
 
-    private var document: String { Self.document(for: message, attachments: attachments) }
+    private var currentDocument: String {
+        Self.document(for: message, attachments: attachments, allowingRemote: loadsRemoteImages)
+    }
 
     /// Wraps the body so it inherits the system font and respects dark mode,
     /// rather than rendering as unstyled 1990s HTML on white.
-    static func document(for message: Message, attachments: [MailAttachment] = []) -> String {
-        let raw = message.bodyHTML ?? "<pre>\(escaped(message.bodyText ?? ""))</pre>"
+    static func document(for message: Message, attachments: [MailAttachment] = [],
+                         allowingRemote: Bool = false) -> String {
+        // Mail the sender wrote as HTML is painted on the surface they wrote it
+        // for; the plain-text fallback is ours to style, so it follows the app.
+        guard let html = message.bodyHTML else {
+            return wrap(plainText: "<pre>\(escaped(message.bodyText ?? ""))</pre>")
+        }
         // Before the styling, so a substituted data: URI is inside the document
         // the content rules are applied to rather than bolted on afterwards.
-        let body = InlineImages.embed(raw, using: attachments)
-        return """
+        return wrap(html: InlineImages.embed(html, using: attachments),
+                    hidingRemoteImages: !allowingRemote)
+    }
+
+    /// True when the message points at pictures that live on a server.
+    ///
+    /// Those are what the content blocker stops, and the reader deserves to be
+    /// told rather than left looking at gaps.
+    static func hasRemoteImages(_ message: Message) -> Bool {
+        guard let html = message.bodyHTML else { return false }
+        for quote in ["\"", "'"] where html.localizedCaseInsensitiveContains("src=\(quote)http") {
+            return true
+        }
+        return false
+    }
+
+    /// Wraps sender-authored HTML on a light page.
+    ///
+    /// `color-scheme: light` rather than `light dark`: the sender chose their
+    /// colours for a white background, and letting the system flip only the
+    /// parts they left unstyled produces dark text on a dark strip through half
+    /// the message. The surface fills the pane, so a short message does not
+    /// leave the rest of it a different colour.
+    private static func wrap(html body: String, hidingRemoteImages: Bool) -> String {
+        """
+        <!doctype html><html><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          :root { color-scheme: light; }
+          html { height: 100%; }
+          body { font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif;
+                 font-size: 14px;
+                 line-height: 1.55; margin: 0; padding: 20px 24px;
+                 min-height: 100%; box-sizing: border-box;
+                 color: #1d1d1f; background: #ffffff;
+                 word-wrap: break-word; }
+          \(sharedRules)
+          \(hidingRemoteImages ? Self.hiddenRemoteImages : "")
+        </style></head><body>\(body)</body></html>
+        """
+    }
+
+    /// A blocked image still lays out: an empty bordered box that reads as a
+    /// broken message rather than as a choice made on the reader's behalf.
+    /// Scoped to remote ones -- a picture carrying its own bytes fetches
+    /// nothing, so there is no reason to hide it.
+    private static let hiddenRemoteImages = """
+          img[src^="http"] { display: none; }
+    """
+
+    /// Wraps our own plain-text rendering, which can and should match the app
+    /// around it.
+    private static func wrap(plainText body: String) -> String {
+        """
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
           :root { color-scheme: light dark; }
+          html { height: 100%; }
           /* font-family, not the `font` shorthand: `font: -apple-system-body,
              system-ui, ...` is invalid and the whole rule gets dropped, which
              silently falls back to Times. */
           body { font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif;
                  font-size: 14px;
                  line-height: 1.55; margin: 0; padding: 20px 24px;
-                 color: canvastext; background: transparent;
+                 min-height: 100%; box-sizing: border-box;
+                 color: #1d1d1f; background: #ffffff;
                  word-wrap: break-word; }
-          img { max-width: 100%; height: auto; }
-          pre { white-space: pre-wrap; font-family: inherit; font-size: inherit; }
-          blockquote { margin: 0 0 0 12px; padding-left: 12px;
-                       border-left: 2px solid color-mix(in srgb, canvastext 25%, transparent);
-                       color: color-mix(in srgb, canvastext 65%, transparent); }
-          a { color: -apple-system-blue; }
+          @media (prefers-color-scheme: dark) {
+            body { color: #e8e8ed; background: #1e1e1e; }
+          }
+          \(sharedRules)
         </style></head><body>\(body)</body></html>
         """
     }
+
+    private static let sharedRules = """
+          img { max-width: 100%; height: auto; }
+          pre { white-space: pre-wrap; font-family: inherit; font-size: inherit; }
+          blockquote { margin: 0 0 0 12px; padding-left: 12px;
+                       border-left: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+                       color: color-mix(in srgb, currentColor 65%, transparent); }
+          a { color: #0b6fd4; }
+    """
+
 
     static func escaped(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;")
@@ -180,6 +329,9 @@ struct ThreadView: View {
     let onToggle: (String) -> Void
     let attachments: (String) -> [MailAttachment]
     @ObservedObject var attachmentModel: AttachmentViewModel
+    /// The standing answer to "load this message's pictures?", set once in the
+    /// command palette rather than asked on every message.
+    var alwaysLoadsImages = false
     let onUnsubscribe: () -> Void
 
     /// Whether this thread can be left. Parsed rather than merely present: a
@@ -231,6 +383,8 @@ struct ThreadView: View {
                                             isOnly: messages.count == 1,
                                             attachments: attachments(message.id),
                                             attachmentModel: attachmentModel,
+                                            alwaysLoadsImages: alwaysLoadsImages,
+                                            paneHeight: proxy.size.height,
                                             onToggle: { onToggle(message.id) })
                                 // No rule under the last message: it would draw
                                 // a line across empty space.
@@ -258,7 +412,33 @@ private struct MessageCard: View {
     let isOnly: Bool
     let attachments: [MailAttachment]
     @ObservedObject var attachmentModel: AttachmentViewModel
+    /// Set from the app-wide preference, so someone who has decided once is
+    /// not asked again on every message.
+    var alwaysLoadsImages = false
+    /// How tall the pane is, so an unmeasured body can fill it.
+    let paneHeight: CGFloat
     let onToggle: () -> Void
+
+    /// Per message and never persisted: asking once should not sign the reader
+    /// up to be counted by every sender afterwards.
+    @State private var showsRemoteImages = false
+
+    /// This message's answer, or the standing one.
+    private var loadsImages: Bool { showsRemoteImages || alwaysLoadsImages }
+
+    /// How tall the body turned out, once the page has said. Until then the
+    /// body fills the pane: a short one leaves the rest showing the
+    /// transcript's own dark ground, which is the flash of black on opening a
+    /// message -- and it is not the body that is black.
+    @State private var bodyHeight: CGFloat?
+
+
+    /// The colour the message is about to paint itself, so the wait for it is
+    /// invisible. HTML mail is authored for white; our plain-text rendering
+    /// follows the app.
+    private var bodyBackground: Color {
+        message.bodyHTML != nil ? .white : Color(nsColor: .textBackgroundColor)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -302,8 +482,18 @@ private struct MessageCard: View {
                 // Fills what is left of the pane. A fixed height leaves a hard
                 // seam where the web view stops and the window background
                 // resumes, which reads as a rendering fault.
-                MessageBodyView(message: message, attachments: attachments)
-                    .frame(minHeight: 260, maxHeight: .infinity)
+                if MessageBodyView.hasRemoteImages(message) && !loadsImages {
+                    RemoteImageBar { showsRemoteImages = true }
+                }
+                MessageBodyView(message: message, attachments: attachments,
+                                loadsRemoteImages: loadsImages,
+                                onMeasure: { bodyHeight = max($0, 60) })
+                    .frame(height: bodyHeight ?? paneHeight)
+                    // Painted behind the web view, which is transparent until
+                    // WebKit's first paint. Without it the window's own dark
+                    // ground shows through for half a second every time a
+                    // message is opened, which reads as a flash of breakage.
+                    .background(bodyBackground)
             }
         }
     }

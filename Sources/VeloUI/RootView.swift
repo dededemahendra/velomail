@@ -113,6 +113,7 @@ public struct RootView: View {
                                    onToggle: { app.inbox.toggleExpansion($0) },
                                    attachments: { app.inbox.attachments(forMessage: $0) },
                                    attachmentModel: app.attachments,
+                                   alwaysLoadsImages: app.alwaysLoadsImages,
                                    onUnsubscribe: { app.unsubscribeSelected() })
                     }
                 } else {
