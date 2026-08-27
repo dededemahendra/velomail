@@ -34,6 +34,11 @@ struct AnalyticsView: View {
     }
 
     private func content(_ report: MailAnalytics.Report) -> some View {
+        // The column is told to fill the pane, so the chart grows into the
+        // space rather than floating above it. Inside a ScrollView an
+        // unconstrained height means "as tall as the content", which for a
+        // fixed dashboard is a small block and a lot of nothing.
+        GeometryReader { proxy in
         ScrollView {
             // A measured column rather than the full window width: four numbers
             // and a week of bars stretched across a wide display read as a page
@@ -50,10 +55,13 @@ struct AnalyticsView: View {
                 }
                 Divider()
                 chart(report.daily)
+                    .frame(maxHeight: .infinity)
             }
             .frame(maxWidth: 620, alignment: .leading)
-            .padding(.horizontal, 28).padding(.top, 30).padding(.bottom, 40)
+            .padding(.horizontal, 28).padding(.top, 30).padding(.bottom, 34)
             .frame(maxWidth: .infinity, alignment: .center)
+            .frame(minHeight: proxy.size.height - 1, alignment: .top)
+        }
         }
     }
 
@@ -73,35 +81,77 @@ struct AnalyticsView: View {
     /// discrete things, and a line between them would imply values in between.
     private func chart(_ days: [MailAnalytics.Day]) -> some View {
         let peak = max(days.map { max($0.received, $0.sent) }.max() ?? 1, 1)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
                 legend("Received", .accentColor)
                 legend("Sent", .secondary)
+                Spacer()
             }
-            HStack(alignment: .bottom, spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                    VStack(spacing: 8) {
-                        HStack(alignment: .bottom, spacing: 4) {
-                            bar(day.received, peak: peak, color: .accentColor)
-                            bar(day.sent, peak: peak, color: .secondary)
+
+            GeometryReader { proxy in
+                let plot = max(proxy.size.height - 34, 40)
+                ZStack(alignment: .bottomLeading) {
+                    // A scale, because a bar with nothing to measure against
+                    // says only "more than that one".
+                    gridlines(peak: peak, height: plot)
+
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                            VStack(spacing: 7) {
+                                HStack(alignment: .bottom, spacing: 5) {
+                                    bar(day.received, peak: peak, plot: plot, color: .accentColor)
+                                    bar(day.sent, peak: peak, plot: plot, color: .secondary)
+                                }
+                                Text(Self.weekday(day.day))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(
+                                "\(Self.weekday(day.day)), \(day.received) received, \(day.sent) sent")
                         }
-                        Text(Self.weekday(day.day))
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 190, alignment: .bottom)
+            .frame(minHeight: 200)
         }
     }
 
-    private func bar(_ value: Int, peak: Int, color: Color) -> some View {
-        // A visible stub at zero, so an empty day reads as "none" rather than
-        // as a missing bar.
-        RoundedRectangle(cornerRadius: 2)
-            .fill(color.opacity(value == 0 ? 0.18 : 0.85))
-            .frame(width: 13, height: max(3, CGFloat(value) / CGFloat(peak) * 150))
+    /// A line at nothing and a line at the busiest day, with the number on it.
+    ///
+    /// Two only: a chart of seven days does not need five, and every line drawn
+    /// is one more thing between the reader and the shape.
+    private func gridlines(peak: Int, height: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Text("\(peak)")
+                        .font(.system(size: 9).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    Rectangle().fill(.quaternary).frame(height: 1)
+                }
+                Spacer(minLength: 0)
+                Rectangle().fill(.quaternary).frame(height: 1)
+            }
+            .frame(height: height)
+        }
+        .padding(.bottom, 24)
+    }
+
+    private func bar(_ value: Int, peak: Int, plot: CGFloat, color: Color) -> some View {
+        VStack(spacing: 3) {
+            // The number above the bar. Reading a height off a chart is
+            // guessing; this is the answer the reader came for.
+            Text(value > 0 ? "\(value)" : "")
+                .font(.system(size: 9, weight: .medium).monospacedDigit())
+                .foregroundStyle(.tertiary)
+            // A visible stub at zero, so an empty day reads as "none" rather
+            // than as a missing bar.
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color.opacity(value == 0 ? 0.18 : 0.85))
+                .frame(width: 16, height: max(3, CGFloat(value) / CGFloat(peak) * (plot - 14)))
+        }
     }
 
     private func legend(_ label: String, _ color: Color) -> some View {
