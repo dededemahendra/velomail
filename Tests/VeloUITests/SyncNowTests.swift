@@ -105,3 +105,64 @@ private actor Counter {
         #expect(app.notice == "Up to date")
     }
 }
+
+@MainActor
+@Suite struct BrokenAddressTests {
+    private func makeApp() throws -> AppViewModel {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: Quiet(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+        return app
+    }
+
+    @Test func aTypoStopsTheSendRatherThanFailingLater() throws {
+        let app = try makeApp()
+        app.perform(.compose)
+        app.compose.to = "petaexample.com"
+        app.compose.subject = "Hello"
+        app.compose.body = "hi"
+
+        app.perform(.send)
+
+        #expect(app.sendWarning == .malformedAddress("petaexample.com"))
+        #expect(app.undoPrompt == nil)   // nothing went
+    }
+
+    @Test func backingOutLeavesTheDraftThereToFix() throws {
+        // The whole point: catching it late meant the message was gone and the
+        // failure arrived as a line in a queue. Catching it here is only
+        // useful if what you typed is still in front of you.
+        let app = try makeApp()
+        app.perform(.compose)
+        app.compose.to = "petaexample.com"
+        app.compose.subject = "Revised invoice"
+        app.compose.body = "The planting moved to the 14th."
+        app.perform(.send)
+
+        app.cancelSend()
+
+        #expect(app.route == .compose)
+        #expect(app.compose.to == "petaexample.com")
+        #expect(app.compose.subject == "Revised invoice")
+        #expect(app.compose.body == "The planting moved to the 14th.")
+    }
+
+    @Test func aGoodAddressIsNotQuestioned() throws {
+        let app = try makeApp()
+        app.perform(.compose)
+        app.compose.to = "peta@example.com"
+        app.compose.subject = "Hello"
+        app.compose.body = "hi"
+
+        app.perform(.send)
+
+        #expect(app.sendWarning == nil)
+        #expect(app.undoPrompt == "Message sent")
+    }
+}
