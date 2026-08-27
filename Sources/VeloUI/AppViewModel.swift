@@ -37,6 +37,9 @@ public final class AppViewModel: ObservableObject {
     /// One slot, not a stack: offering to undo something the user stopped
     /// thinking about two actions ago is worse than offering nothing.
     @Published public private(set) var undoable: Undoable?
+    /// When the offer runs out. Published so the banner can show how much of
+    /// the window is left rather than making the reader guess.
+    @Published public private(set) var undoDeadline: Date?
 
     /// What the banner says, or nil when there is nothing to undo.
     public var undoPrompt: String? { undoable?.prompt }
@@ -896,6 +899,7 @@ public final class AppViewModel: ObservableObject {
             for threadID in threadIDs { try? outbound.unarchive(threadID: threadID) }
         }
         self.undoable = nil
+        undoDeadline = nil
         try? inbox.reload()
     }
 
@@ -913,6 +917,9 @@ public final class AppViewModel: ObservableObject {
     private func offerUndo(_ action: Undoable) {
         undoable = action
         let window = preferences.undoWindow
+        // The banner offered ten seconds and gave no sign of how many were
+        // left, which makes a deliberate wait feel like a gamble.
+        undoDeadline = Date().addingTimeInterval(window)
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
             await MainActor.run { self?.expireUndo(action) }
@@ -922,7 +929,10 @@ public final class AppViewModel: ObservableObject {
     /// Clears the banner only if it still refers to *this* action; a newer one
     /// must not have its window cut short.
     private func expireUndo(_ action: Undoable) {
-        if undoable == action { undoable = nil }
+        if undoable == action {
+            undoable = nil
+            undoDeadline = nil
+        }
     }
 
     public func snoozeSelected(hours: Double) {

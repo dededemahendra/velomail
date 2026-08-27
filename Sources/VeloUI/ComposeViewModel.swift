@@ -63,6 +63,11 @@ public final class ComposeViewModel: ObservableObject {
     private let attachmentLookup: ((String) -> [MailAttachment])?
     private var addressBook: AddressBook?
     private var identity: String { resolveIdentity() }
+
+    /// The address this message will go out as. Shown in the window because
+    /// with more than one account signed in there was nothing on screen saying
+    /// which one you were writing from.
+    public var sendingAs: String { identity }
     private var replyContext: Message?
     /// Threading restored from a stored draft, when the parent message itself
     /// is not to hand.

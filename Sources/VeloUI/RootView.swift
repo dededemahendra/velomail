@@ -60,6 +60,7 @@ public struct RootView: View {
                 }
                 if let prompt = app.undoPrompt {
                     UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
+                               deadline: app.undoDeadline,
                                onUndo: { app.undo() })
                 }
             }

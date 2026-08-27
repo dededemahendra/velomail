@@ -222,8 +222,16 @@ private final class PassThroughWebView: WKWebView {
                          allowingRemote: Bool = false) -> String {
         // Mail the sender wrote as HTML is painted on the surface they wrote it
         // for; the plain-text fallback is ours to style, so it follows the app.
-        guard let html = message.bodyHTML else {
-            return wrap(plainText: "<pre>\(escaped(message.bodyText ?? ""))</pre>")
+        let text = (message.bodyText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let html = message.bodyHTML, !html.isEmpty else {
+            // A message can genuinely arrive with nothing in it -- a bare
+            // attachment, a calendar invitation, a bounce. Rendering that as an
+            // empty white pane reads as a bug in this app rather than as an
+            // empty message.
+            guard !text.isEmpty else {
+                return wrap(plainText: "<p class=\"velo-empty\">This message has no text.</p>")
+            }
+            return wrap(plainText: "<pre>\(escaped(text))</pre>")
         }
         // Before the styling, so a substituted data: URI is inside the document
         // the content rules are applied to rather than bolted on afterwards.
@@ -319,6 +327,7 @@ private final class PassThroughWebView: WKWebView {
     private static let sharedRules = """
           img { max-width: 100%; height: auto; }
           pre { white-space: pre-wrap; font-family: inherit; font-size: inherit; }
+          .velo-empty { opacity: 0.5; font-style: italic; }
           blockquote { margin: 0 0 0 12px; padding-left: 12px;
                        border-left: 2px solid color-mix(in srgb, currentColor 25%, transparent);
                        color: color-mix(in srgb, currentColor 65%, transparent); }
@@ -367,6 +376,14 @@ struct ThreadView: View {
                 // The subject belongs to the thread, not to each message, so it
                 // sits above the transcript rather than repeating in every card.
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    // The list marks a starred thread and the thread itself did
+                    // not, so opening one lost the only sign it was kept.
+                    if thread.labelIDs.contains("STARRED") {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.yellow)
+                            .accessibilityLabel("Starred")
+                    }
                     Text(subject)
                         .font(.title3.weight(.semibold))
                     Spacer(minLength: 0)
