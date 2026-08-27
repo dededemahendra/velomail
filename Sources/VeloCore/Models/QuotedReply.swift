@@ -124,10 +124,73 @@ public enum QuotedReply {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
-    /// Crude de-HTML for quoting an HTML-only parent as plain text.
+    /// The readable prose of an HTML message.
+    ///
+    /// Order matters. Removing `<style>` and `</style>` as tags leaves the CSS
+    /// between them standing as text, and a newsletter carries kilobytes of
+    /// `@font-face` rules -- which is exactly what a quote filled up with. The
+    /// blocks whose contents are not prose go first, whole.
     static func strippedTags(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = html
+        for tag in ["style", "script", "head"] {
+            text = removingBlock(tag, from: text)
+        }
+        // Before the block breaks go in, not after: a newline in HTML source is
+        // insignificant -- the reader sees a space -- so collapsing everything
+        // first is what tells the two kinds of break apart.
+        text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        // Block elements are where a reader does see a line end; without this
+        // every paragraph runs into the next one.
+        text = text.replacingOccurrences(
+            of: "</(p|div|tr|li|h[1-6]|blockquote)>|<br\\s*/?>", with: "\n",
+            options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        text = decodingEntities(text)
+        text = removingInvisibles(text)
+        text = text.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: " *\n *", with: "\n", options: .regularExpression)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Drops `<tag ...>…</tag>` entirely, contents and all.
+    ///
+    /// An unclosed tag takes only itself: malformed markup is normal in mail,
+    /// and losing the whole message over one is not an acceptable trade.
+    private static func removingBlock(_ tag: String, from html: String) -> String {
+        html.replacingOccurrences(of: "<\(tag)\\b[^>]*>[\\s\\S]*?</\(tag)\\s*>", with: "",
+                                  options: [.regularExpression, .caseInsensitive])
+    }
+
+    /// Characters a mail client never draws, and neither should a quote.
+    ///
+    /// Newsletters pad the inbox preview line with hundreds of soft hyphens
+    /// and joiners. They are invisible where they were meant to be read, so a
+    /// quote that shows them is showing markup, not words.
+    /// Scalars, not characters: a combining joiner merges with the character
+    /// before it into one grapheme, so it is never a `Character` of its own and
+    /// filtering at that level silently does nothing.
+    private static let invisibles: Set<Unicode.Scalar> = [
+        "\u{00AD}",            // soft hyphen
+        "\u{034F}",            // combining grapheme joiner
+        "\u{200B}", "\u{200C}", "\u{200D}",   // zero-width space, non-joiner, joiner
+        "\u{2060}",            // word joiner
+        "\u{FEFF}",            // byte order mark
+    ]
+
+    private static func removingInvisibles(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { !invisibles.contains($0) }))
+    }
+
+    private static func decodingEntities(_ text: String) -> String {
+        var out = text
+        for (entity, character) in [("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
+                                    ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "\u{27}"),
+                                    ("&apos;", "\u{27}"), ("&mdash;", "\u{2014}"),
+                                    ("&ndash;", "\u{2013}"), ("&hellip;", "\u{2026}"),
+                                    ("&shy;", "\u{00AD}"), ("&zwnj;", "\u{200C}"),
+                                    ("&zwj;", "\u{200D}")] {
+            out = out.replacingOccurrences(of: entity, with: character, options: .caseInsensitive)
+        }
+        return out
     }
 }
