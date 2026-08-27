@@ -17,6 +17,10 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiab
     /// shipped working and empty. Recording them one by one means a new label
     /// backfills itself without re-fetching the mailbox.
     public var backfilledLabels: [String]
+    /// Where each label's listing stopped when it hit the cap, so older mail
+    /// can be asked for from there rather than from the newest message again.
+    /// A label with no entry has nothing older left.
+    public var olderCursors: [String: String]
     /// The account's own address, learned from `users.getProfile` during
     /// backfill. It is what a send must use as its `From`.
     public var emailAddress: String?
@@ -26,16 +30,21 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiab
     public static let databaseTableName = "syncState"
 
     public init(accountID: String, historyId: String?, backfillComplete: Bool,
-                emailAddress: String? = nil, backfilledLabels: [String] = []) {
+                emailAddress: String? = nil, backfilledLabels: [String] = [],
+                olderCursors: [String: String] = [:]) {
         self.accountID = accountID
         self.historyId = historyId
         self.backfillComplete = backfillComplete
         self.emailAddress = emailAddress
         self.backfilledLabels = backfilledLabels
+        self.olderCursors = olderCursors
     }
 
+    /// Where `label` stopped, if there is more behind it.
+    public func olderCursor(for label: String) -> String? { olderCursors[label] }
+
     private enum CodingKeys: String, CodingKey {
-        case accountID, historyId, backfillComplete, emailAddress, backfilledLabels
+        case accountID, historyId, backfillComplete, emailAddress, backfilledLabels, olderCursors
     }
 
     /// Reads a row written before labels were tracked.
@@ -55,6 +64,8 @@ public struct SyncState: Codable, FetchableRecord, PersistableRecord, Identifiab
         } else {
             backfilledLabels = backfillComplete ? ["INBOX"] : []
         }
+        olderCursors = (try? values.decodeIfPresent([String: String].self,
+                                                    forKey: .olderCursors)) as? [String: String] ?? [:]
     }
 
     /// Which of `wanted` still have to be fetched, in the order given: the

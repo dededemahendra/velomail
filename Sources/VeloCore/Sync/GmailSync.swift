@@ -73,6 +73,12 @@ public actor GmailSync {
 
     /// Runs one serialized sync pass: backfill (if incomplete) → incremental → drain.
     /// A concurrent call while a pass is in flight is coalesced (returns immediately).
+    /// Fetches another page of older mail, returning how many arrived.
+    @discardableResult
+    public func loadOlder(maxMessages: Int) async throws -> Int {
+        try await backfill.loadOlder(accountID: accountID, maxMessages: maxMessages)
+    }
+
     public func syncNow() async throws {
         guard !isSyncing else { return }
         isSyncing = true

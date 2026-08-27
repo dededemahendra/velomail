@@ -67,6 +67,24 @@ struct FailureBanner: View {
     }
 }
 
+/// A plain answer to something the writer just asked for.
+///
+/// No action and no countdown of its own: it says what happened and gets out
+/// of the way when the next thing does.
+struct NoticeBanner: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(text).font(.callout)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .padding(.horizontal, 16).padding(.bottom, 12)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
 /// Threads you are waiting on, shown by `g f`.
 struct FollowUpBar: View {
     let threads: [MailThread]

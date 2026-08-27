@@ -258,6 +258,15 @@ public final class AppDatabase: Sendable {
                 """)
         }
 
+        migrator.registerMigration("v18_add_syncstate_olderCursors") { db in
+            // Left NULL: an account synced before this has no record of where
+            // its listing stopped, so there is nothing honest to claim and
+            // "load older" simply starts from the next full pass.
+            try db.alter(table: "syncState") { t in
+                t.add(column: "olderCursors", .text)
+            }
+        }
+
         return migrator
     }
 }

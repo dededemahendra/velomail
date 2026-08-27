@@ -51,6 +51,9 @@ public struct RootView: View {
                                   onReopen: { app.failures.first.map { app.reopenFailure($0) } },
                                   onDismiss: { app.failures.first.map { app.dismissFailure($0) } })
                 }
+                if let notice = app.notice {
+                    NoticeBanner(text: notice)
+                }
                 if let prompt = app.undoPrompt {
                     UndoBanner(prompt: prompt, symbol: app.undoSymbol ?? "arrow.uturn.backward",
                                onUndo: { app.undo() })
@@ -59,6 +62,7 @@ public struct RootView: View {
         }
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
         .animation(.easeOut(duration: 0.18), value: app.failurePrompt)
+        .animation(.easeOut(duration: 0.18), value: app.notice)
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,

@@ -94,7 +94,8 @@ public enum Composition {
                                assistant: assistant, snippets: snippets,
                                attachmentModel: AttachmentViewModel(
                                    service: AttachmentService(source: api)),
-                               drafts: drafts)
+                               drafts: drafts,
+                               loadOlder: { try await sync.loadOlder(maxMessages: $0) })
         return Assembly(app: app, sync: sync, store: store, auth: auth)
     }
 }
