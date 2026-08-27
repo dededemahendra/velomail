@@ -52,6 +52,23 @@ struct SearchView: View {
         } else if model.results.isEmpty {
             emptyState
         } else {
+            if !model.filterLabels.isEmpty {
+                // Says what was narrowed. Without it there is no telling
+                // whether from:cloudflare filtered or searched for the literal
+                // string -- and with no results the two look identical.
+                HStack(spacing: 6) {
+                    ForEach(model.filterLabels, id: \.self) { label in
+                        Text(label)
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.tint.opacity(0.16),
+                                        in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.bottom, 8)
+            }
+
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(model.results.enumerated()), id: \.element.id) { index, thread in
@@ -72,8 +89,13 @@ struct SearchView: View {
                 Text(MailFormatting.relativeDate(thread.lastMessageDate))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text(thread.snippet)
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 5) {
+                if thread.hasAttachments {
+                    Image(systemName: "paperclip").font(.caption2).foregroundStyle(.tertiary)
+                }
+                Text(thread.snippet)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(isSelected ? Color.accentColor.opacity(0.18) : .clear)
