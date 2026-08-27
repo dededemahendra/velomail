@@ -55,6 +55,8 @@ public final class ComposeViewModel: ObservableObject {
     /// down and picked up again would go out unquoted, with nothing to say one
     /// was ever meant to be there.
     private let parentLookup: ((String) -> Message?)?
+    /// The quoted message's inline parts, for the expander to resolve `cid:`.
+    private let attachmentLookup: ((String) -> [MailAttachment])?
     private var addressBook: AddressBook?
     private var identity: String { resolveIdentity() }
     private var replyContext: Message?
@@ -74,8 +76,10 @@ public final class ComposeViewModel: ObservableObject {
                 addressBook: AddressBook? = nil,
                 contacts: (() -> AddressBook?)? = nil,
                 parentLookup: ((String) -> Message?)? = nil,
+                attachmentLookup: ((String) -> [MailAttachment])? = nil,
                 newDraftID: @escaping () -> String = { UUID().uuidString }) {
         self.parentLookup = parentLookup
+        self.attachmentLookup = attachmentLookup
         self.newDraftID = newDraftID
         self.draftID = newDraftID()
         self.outbound = outbound
@@ -91,10 +95,12 @@ public final class ComposeViewModel: ObservableObject {
                             addressBook: AddressBook? = nil,
                             contacts: (() -> AddressBook?)? = nil,
                             parentLookup: ((String) -> Message?)? = nil,
+                            attachmentLookup: ((String) -> [MailAttachment])? = nil,
                             newDraftID: @escaping () -> String = { UUID().uuidString }) {
         self.init(outbound: outbound, identity: { identity }, library: library,
                   drafts: drafts, addressBook: addressBook, contacts: contacts,
-                  parentLookup: parentLookup, newDraftID: newDraftID)
+                  parentLookup: parentLookup, attachmentLookup: attachmentLookup,
+                  newDraftID: newDraftID)
     }
 
     // MARK: - Drafts
@@ -362,8 +368,22 @@ public final class ComposeViewModel: ObservableObject {
             + "\(ComposeViewModel.quoteDate.string(from: message.date))"
     }
 
-    /// The quoted parent as something to read, for the expander. Tidier than
-    /// what goes on the wire, which keeps the sender's words exactly.
+    /// The message being answered, for the expander to render as itself.
+    ///
+    /// The message rather than text: the expander shows it through the same
+    /// view the thread pane uses, so the quote looks like the mail it came
+    /// from instead of a re-typed approximation of it.
+    public var quotedMessage: Message? { replyContext }
+
+    /// The quoted message's own parts, so pictures it brought with it still
+    /// appear. They carry their own bytes and fetch nothing.
+    public var quotedAttachments: [MailAttachment] {
+        guard let id = replyContext?.id else { return [] }
+        return attachmentLookup?(id) ?? []
+    }
+
+    /// The quoted parent as plain text. Still needed for the `text/plain` half
+    /// of what goes out, whatever the composer shows.
     public var quotedPreview: String? {
         replyContext.map { QuotedReply.preview(of: $0) }
     }

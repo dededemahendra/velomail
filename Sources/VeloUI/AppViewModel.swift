@@ -166,7 +166,8 @@ public final class AppViewModel: ObservableObject {
             // API and no extra permission on the account.
             contacts: { try? AddressBook.build(from: store, identity: identity()) },
             // Lets a reply picked up again still quote what it is answering.
-            parentLookup: { threadID in try? store.messages(inThread: threadID).last })
+            parentLookup: { threadID in try? store.messages(inThread: threadID).last },
+            attachmentLookup: { (try? store.attachments(forMessage: $0)) ?? [] })
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.store = store

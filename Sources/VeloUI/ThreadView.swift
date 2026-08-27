@@ -231,6 +231,19 @@ private final class PassThroughWebView: WKWebView {
                     hidingRemoteImages: !allowingRemote)
     }
 
+    /// The same body view, set up for quoting inside a composer.
+    ///
+    /// Remote images stay blocked whatever the reader's standing preference
+    /// says. That preference is about mail being read; a tracking pixel in a
+    /// quote would fire while the reply is still being written, telling the
+    /// sender the message was opened when it has not even been read.
+    static func previewOfQuote(_ message: Message,
+                               attachments: [MailAttachment] = [],
+                               onMeasure: @escaping (CGFloat) -> Void = { _ in }) -> MessageBodyView {
+        MessageBodyView(message: message, attachments: attachments,
+                        loadsRemoteImages: false, onMeasure: onMeasure)
+    }
+
     /// True when the message points at pictures that live on a server.
     ///
     /// Those are what the content blocker stops, and the reader deserves to be
