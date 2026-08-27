@@ -50,45 +50,45 @@ private struct DeadClient: HTTPClient {
         #expect(makeCoordinator(store).state == .signedOut)
     }
 
-    @Test func restoringFindsAStoredSession() {
+    @Test func restoringFindsAStoredSession() async {
         let store = CountingTokenStore(TokenSet(accessToken: "at", refreshToken: "rt",
                                                 expiresAt: Date(timeIntervalSince1970: 10_000_000_000)))
         let coordinator = makeCoordinator(store)
 
-        coordinator.restoreState()
+        await coordinator.restoreState()
 
         #expect(coordinator.state == .signedIn)
         #expect(store.loadCount == 1)
     }
 
-    @Test func restoringWithNoStoredSessionStaysSignedOut() {
+    @Test func restoringWithNoStoredSessionStaysSignedOut() async {
         let store = CountingTokenStore(nil)
         let coordinator = makeCoordinator(store)
 
-        coordinator.restoreState()
+        await coordinator.restoreState()
 
         #expect(coordinator.state == .signedOut)
     }
 
-    @Test func signingOutClearsTheStore() {
+    @Test func signingOutClearsTheStore() async {
         let store = CountingTokenStore(TokenSet(accessToken: "at", refreshToken: "rt",
                                                 expiresAt: Date(timeIntervalSince1970: 10_000_000_000)))
         let coordinator = makeCoordinator(store)
-        coordinator.restoreState()
+        await coordinator.restoreState()
 
         coordinator.signOut()
 
         #expect(coordinator.state == .signedOut)
     }
 
-    @Test func aStateChangeIsReported() {
+    @Test func aStateChangeIsReported() async {
         let store = CountingTokenStore(TokenSet(accessToken: "at", refreshToken: "rt",
                                                 expiresAt: Date(timeIntervalSince1970: 10_000_000_000)))
         let coordinator = makeCoordinator(store)
         var seen: [AuthCoordinator.AuthState] = []
         coordinator.onStateChange = { seen.append($0) }
 
-        coordinator.restoreState()
+        await coordinator.restoreState()
 
         #expect(seen == [.signedIn])
     }

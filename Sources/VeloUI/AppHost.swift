@@ -35,7 +35,7 @@ final class AppHost: ObservableObject {
     func start() async {
         try? app.start()
         observeInbox()
-        observeAuth()
+        await observeAuth()
         await notifications.requestAuthorizationIfNeeded()
         announceNewMail()
         guard let sync else { return }
@@ -54,11 +54,12 @@ final class AppHost: ObservableObject {
     }
 
     /// Mirrors sign-in state into the view model so routing reacts to it.
-    private func observeAuth() {
+    private func observeAuth() async {
         guard let auth else { return }
         auth.onStateChange = { [weak self] state in self?.app.setAuthState(state) }
-        // Reads the Keychain -- after the window exists, never during launch.
-        auth.restoreState()
+        // Reads the Keychain off the main actor, so the window can draw while
+        // an authorisation prompt is waiting to be answered.
+        await auth.restoreState()
         app.setAuthState(auth.state)
     }
 

@@ -1,7 +1,9 @@
 import Foundation
 import Security
 
-public final class KeychainTokenStore: TokenStore {
+/// Immutable and thread-safe: `service` and `account` are set once, and the
+/// Keychain itself is the shared state, which the Security framework guards.
+public final class KeychainTokenStore: TokenStore, @unchecked Sendable {
     private let service: String
     private let account: String
 
