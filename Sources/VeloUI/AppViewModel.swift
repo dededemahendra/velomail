@@ -887,6 +887,37 @@ public final class AppViewModel: ObservableObject {
         noticeToken += 1
     }
 
+    // MARK: - Acting on a banner
+
+    /// Puts the reader on the thread a notification was about.
+    ///
+    /// The thread may have been archived or trashed on another device between
+    /// the banner appearing and the click, so a miss says so rather than
+    /// leaving the reader wondering why nothing moved.
+    public func openFromNotification(_ threadID: String) {
+        // Any sheet or composer is in the way of the thing just asked for.
+        isShowingSenders = false
+        isShowingSettings = false
+        isShowingShortcuts = false
+        show(.inbox)
+        if !inbox.select(threadID: threadID) {
+            show(notice: "That conversation is no longer in the inbox")
+        }
+    }
+
+    /// Files the thread a notification was about, without opening anything:
+    /// the point of Archive on a banner is not having to look at the app.
+    public func archiveFromNotification(_ threadID: String) {
+        try? outbound.archive(threadID: threadID)
+        try? inbox.reload()
+        offerUndo(.init(kind: .disposal([threadID]), prompt: "Archived"))
+    }
+
+    public func markReadFromNotification(_ threadID: String) {
+        try? outbound.markRead(threadID: threadID)
+        try? inbox.reload()
+    }
+
     // MARK: - Senders
 
     /// The keys the Senders sheet answers. Everything else is swallowed rather

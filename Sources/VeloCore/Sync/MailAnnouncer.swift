@@ -28,9 +28,11 @@ public struct MailAnnouncer: Sendable {
 
     private let blocklist: RuleEngine?
 
-    /// - Parameter blocklist: rules whose `block` action means "never show me
-    ///   this". Announcing blocked mail would make the feature worse than not
-    ///   having it.
+    /// - Parameter blocklist: the reader's rules. Mail a rule is about to file
+    ///   away is not announced, whether the rule blocks it or merely archives
+    ///   it: a banner for something the app is in the middle of filing is noise
+    ///   by construction, and it takes one "always archive this sender" to
+    ///   create dozens of them.
     public init(blocklist: RuleEngine? = nil) {
         self.blocklist = blocklist
     }
@@ -54,7 +56,7 @@ public struct MailAnnouncer: Sendable {
             // Sending puts a message in the thread; it must not come back as
             // "new mail from you".
             .filter { Draft.normalizedAddress($0.sender) != mine }
-            .filter { blocklist?.isBlocked($0) != true }
+            .filter { !willBeFiled($0) }
             .sorted { $0.date > $1.date }
 
         let shown = candidates.prefix(Self.maximumBanners).map {
@@ -70,6 +72,14 @@ public struct MailAnnouncer: Sendable {
         return Result(items: Array(shown),
                       additionalCount: max(0, candidates.count - shown.count),
                       highWaterMark: mark)
+    }
+
+    /// True when a rule will take this message out of the inbox, or has said
+    /// never to show it.
+    private func willBeFiled(_ message: Message) -> Bool {
+        guard let blocklist else { return false }
+        if blocklist.isBlocked(message) { return true }
+        return blocklist.actions(for: message).contains(.archive)
     }
 
     private func displayName(of sender: String) -> String {
