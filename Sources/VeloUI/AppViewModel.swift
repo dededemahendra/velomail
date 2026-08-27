@@ -59,6 +59,11 @@ public final class AppViewModel: ObservableObject {
             case send(Int64)
             /// Threads to put back in the inbox.
             case disposal([String])
+            /// Threads whose unread state to restore. Bulk marking cleared
+            /// forty at once with no way back, where archiving one had one.
+            case markedRead([String])
+            /// Threads to take back out of spam.
+            case spam([String])
         }
         public let kind: Kind
         public let prompt: String
@@ -66,6 +71,15 @@ public final class AppViewModel: ObservableObject {
         public var symbol: String {
             if case .send = kind { return "paperplane.fill" }
             return "arrow.uturn.backward"
+        }
+
+        /// Every thread this offer would touch, for a caller that needs to
+        /// know whether an offer is worth making at all.
+        public var threadIDs: [String] {
+            switch kind {
+            case .send: return []
+            case let .disposal(ids), let .markedRead(ids), let .spam(ids): return ids
+            }
         }
     }
 
@@ -849,7 +863,10 @@ public final class AppViewModel: ObservableObject {
         }
         for thread in unread { try? outbound.markRead(threadID: thread.id) }
         try? inbox.reload()
-        show(notice: "\(unread.count) marked read")
+        // Only the ones actually changed, so undo cannot make unread something
+        // that was already read before the press.
+        offerUndo(.init(kind: .markedRead(unread.map(\.id)),
+                        prompt: "\(unread.count) marked read"))
     }
 
     private func reportSpamOnSelected() {
@@ -857,9 +874,10 @@ public final class AppViewModel: ObservableObject {
         guard !targets.isEmpty else { return }
         for thread in targets { try? outbound.reportSpam(threadID: thread.id) }
         try? inbox.reload()
-        show(notice: targets.count == 1
-            ? "Reported as spam"
-            : "\(targets.count) reported as spam")
+        offerUndo(.init(kind: .spam(targets.map(\.id)),
+                        prompt: targets.count == 1
+                            ? "Reported as spam"
+                            : "\(targets.count) reported as spam"))
     }
 
     /// Hands the selected thread to Gmail on the web.
@@ -968,6 +986,10 @@ public final class AppViewModel: ObservableObject {
             try? outbound.cancelSend(mutationID: id)
         case let .disposal(threadIDs):
             for threadID in threadIDs { try? outbound.unarchive(threadID: threadID) }
+        case let .markedRead(threadIDs):
+            for threadID in threadIDs { try? outbound.markUnread(threadID: threadID) }
+        case let .spam(threadIDs):
+            for threadID in threadIDs { try? outbound.notSpam(threadID: threadID) }
         }
         self.undoable = nil
         undoDeadline = nil

@@ -60,8 +60,15 @@ private struct SilentWriter: GmailWriting {
 
         app.perform(.snoozeUntilTomorrow)
 
+        // Tomorrow morning, not "more than twelve hours away". The old
+        // assertion used elapsed time as a proxy for a calendar day, and after
+        // nine in the evening tomorrow's nine o'clock is less than twelve hours
+        // off -- so it passed all day and failed every night.
         let woken = try #require(try store.thread(id: "t0")?.snoozedUntil)
-        #expect(woken > before.addingTimeInterval(12 * 3_600))
+        let calendar = Calendar.current
+        #expect(calendar.isDate(woken, inSameDayAs: Horizon.tomorrow(now: before)))
+        #expect(calendar.component(.hour, from: woken) == 9)
+        #expect(woken > before)
     }
 
     @Test func nextWeekIsFurtherOutThanTomorrow() throws {

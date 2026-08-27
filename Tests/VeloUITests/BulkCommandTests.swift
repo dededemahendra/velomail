@@ -14,10 +14,19 @@ private struct Quiet: GmailWriting {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
         for i in 0..<total {
+            let labels = i < unread ? ["INBOX", "UNREAD"] : ["INBOX"]
             try store.upsert(MailThread(id: "t\(i)", sender: "a\(i)@x.com", snippet: "s\(i)",
                                         lastMessageDate: Date(timeIntervalSince1970: Double(100 - i)),
                                         isUnread: i < unread, hasAttachments: false,
-                                        labelIDs: ["INBOX"]))
+                                        labelIDs: labels))
+            // A thread with no messages cannot carry a label change: the queue
+            // applies to messages and re-derives the thread from them, so a
+            // thread-only fixture silently makes every mutation a no-op.
+            try store.upsert(Message(id: "m\(i)", threadID: "t\(i)", sender: "a\(i)@x.com",
+                                     recipients: ["me@x.com"], subject: "s\(i)",
+                                     date: Date(timeIntervalSince1970: Double(100 - i)),
+                                     bodyHTML: nil, bodyText: "b", isUnread: i < unread,
+                                     labelIDs: labels))
         }
         let app = AppViewModel(
             config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
@@ -65,7 +74,24 @@ private struct Quiet: GmailWriting {
     @Test func itSaysHowManyItTouched() throws {
         let (app, _) = try makeApp(unread: 3, total: 5)
         app.perform(.markAllRead)
-        #expect(app.notice == "3 marked read")
+        #expect(app.undoPrompt == "3 marked read")
+    }
+
+    @Test func fortyThreadsClearedAtOnceCanBeTakenBack() throws {
+        // Archiving one thread had an undo and clearing forty did not, which
+        // is exactly backwards.
+        let (app, _) = try makeApp(unread: 3, total: 5)
+        app.perform(.markAllRead)
+        app.undo()
+        #expect(app.inbox.threads.filter(\.isUnread).count == 3)
+    }
+
+    @Test func undoDoesNotUnreadWhatWasAlreadyRead() throws {
+        // Only the ones actually changed are offered back.
+        let (app, _) = try makeApp(unread: 2, total: 5)
+        app.perform(.markAllRead)
+        app.undo()
+        #expect(app.inbox.threads.filter(\.isUnread).count == 2)
     }
 
     @Test func anAlreadyReadListSaysSoRatherThanNothing() throws {
@@ -88,7 +114,17 @@ private struct Quiet: GmailWriting {
         app.perform(.selectAll)
         app.perform(.reportSpam)
         #expect(app.inbox.threads.isEmpty)
-        #expect(app.notice == "5 reported as spam")
+        #expect(app.undoPrompt == "5 reported as spam")
+    }
+
+    @Test func aMisfiredSpamReportComesBack() throws {
+        // Reporting the wrong thread as spam and having no way back is the
+        // worst of the three, since it teaches Gmail as well.
+        let (app, _) = try makeApp()
+        let before = app.inbox.threads.count
+        app.perform(.reportSpam)
+        app.undo()
+        #expect(app.inbox.threads.count == before)
     }
 
     // MARK: - Open in Gmail
