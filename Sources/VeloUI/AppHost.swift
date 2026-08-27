@@ -84,7 +84,9 @@ final class AppHost: ObservableObject {
         await notifications.requestAuthorizationIfNeeded()
         announceNewMail()
         guard let sync else { return }
-        syncTask = Task { await sync.run(interval: 60) }
+        syncTask = Task { [interval = app.preferences.syncInterval] in
+            await sync.run(interval: interval)
+        }
         statusTask = Task { [weak self] in
             while !Task.isCancelled {
                 if let status = await self?.sync?.status { self?.app.setSyncStatus(status) }
@@ -113,6 +115,10 @@ final class AppHost: ObservableObject {
     /// Driven off the same observation that repaints the list, so a banner
     /// appears exactly when the mail does rather than on a timer of its own.
     private func announceNewMail() {
+        guard app.preferences.showsNotifications else {
+            notifications.setBadge(0)
+            return
+        }
         notifications.setBadge(app.visibleUnreadCount)
         guard app.shouldAnnounce else { return }
 

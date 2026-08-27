@@ -78,7 +78,8 @@ public struct RootView: View {
                          onAddAccount: {
                              app.isShowingSettings = false
                              app.onAddAccount?()
-                         })
+                         },
+                         onClose: { app.isShowingSettings = false })
         }
         .overlay(alignment: .top) {
             if app.route == .palette {

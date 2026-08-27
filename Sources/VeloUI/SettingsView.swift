@@ -12,11 +12,12 @@ struct SettingsView: View {
     let currentAccount: String
     let onSwitchAccount: (String) -> Void
     let onAddAccount: () -> Void
+    var onClose: () -> Void = {}
 
     /// The sections, in the order someone would go looking for them: who you
     /// are, then how you write, then what the app does on its own.
     enum Section: String, CaseIterable, Identifiable {
-        case accounts, writing, snippets, rules, ai
+        case accounts, writing, snippets, reading, timing, rules, ai
 
         var id: String { rawValue }
 
@@ -25,6 +26,8 @@ struct SettingsView: View {
             case .accounts: return "Accounts"
             case .writing: return "Writing"
             case .snippets: return "Snippets"
+            case .reading: return "Reading"
+            case .timing: return "Timing"
             case .rules: return "Rules"
             case .ai: return "AI"
             }
@@ -35,6 +38,8 @@ struct SettingsView: View {
             case .accounts: return "person.crop.circle"
             case .writing: return "signature"
             case .snippets: return "text.badge.plus"
+            case .reading: return "eye"
+            case .timing: return "timer"
             case .rules: return "line.3.horizontal.decrease.circle"
             case .ai: return "sparkles"
             }
@@ -47,6 +52,8 @@ struct SettingsView: View {
             case .accounts: return "The mailboxes this app knows about."
             case .writing: return "What goes at the bottom of everything you send."
             case .snippets: return "Short things you type often."
+            case .reading: return "What the app shows you, and when it interrupts."
+            case .timing: return "How long the app waits before doing what you asked."
             case .rules: return "What happens to mail before you see it."
             case .ai: return "Optional, and off unless you turn it on."
             }
@@ -59,14 +66,28 @@ struct SettingsView: View {
     @State private var section: Section?
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                detail
+            }
             Divider()
-            detail
+            // A window with no visible way out is a window people force-quit.
+            // Escape closes it too, but only once you have guessed that.
+            HStack {
+                Spacer()
+                Button("Done", action: onClose)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .frame(width: 680, height: 460)
+        .frame(width: 680, height: 500)
         .onAppear { if section == nil { section = startingSection } }
+        // Saved on the way out rather than on every keystroke: a half-typed
+        // shortcut should not be written and read back mid-edit.
         .onDisappear { model.save() }
+        .onExitCommand(perform: onClose)
     }
 
     /// The pane on show, before `onAppear` has run in a snapshot.
@@ -118,6 +139,8 @@ struct SettingsView: View {
                     case .accounts: accountsTab
                     case .writing: writingTab
                     case .snippets: snippetsTab
+                    case .reading: readingTab
+                    case .timing: timingTab
                     case .rules: rulesTab
                     case .ai: aiTab
                     }
@@ -237,6 +260,83 @@ struct SettingsView: View {
 
             Text("Type the shortcut with a leading semicolon while writing to expand it.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Reading
+
+    private var readingTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            group("Images",
+                  footnote: "A picture that lives on a server tells the sender you opened "
+                  + "the message, when, and roughly where from. Pictures a message brings "
+                  + "with it are always shown.") {
+                Toggle("Load images in messages", isOn: $model.loadsImages)
+                    .controlSize(.small)
+            }
+
+            group("Notifications",
+                  footnote: "Focus mode silences these for a while without changing the setting.") {
+                Toggle("Announce new mail and badge the Dock", isOn: $model.showsNotifications)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    // MARK: - Timing
+
+    private var timingTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            group("Undo",
+                  footnote: "How long a sent message waits before it actually goes.") {
+                Stepper(value: $model.undoWindow, in: 3...60, step: 1) {
+                    HStack {
+                        Text("Take back a send for")
+                        Spacer()
+                        Text("\(Int(model.undoWindow)) seconds")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+            }
+
+            group("Snooze",
+                  footnote: "Tomorrow and next week both wake at the hour set here.") {
+                Stepper(value: $model.snoozeHours, in: 1...72, step: 1) {
+                    HStack {
+                        Text("h puts a thread off for")
+                        Spacer()
+                        Text("\(Int(model.snoozeHours)) hours")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+                Divider().opacity(0.4)
+                Stepper(value: $model.morningHour, in: 0...23, step: 1) {
+                    HStack {
+                        Text("Morning starts at")
+                        Spacer()
+                        Text(String(format: "%02d:00", model.morningHour))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+            }
+
+            group("Checking for mail",
+                  footnote: "Takes effect next time the app starts.") {
+                Stepper(value: $model.syncMinutes, in: 0.25...60, step: 0.25) {
+                    HStack {
+                        Text("Check every")
+                        Spacer()
+                        Text(model.syncMinutes < 1
+                             ? "\(Int(model.syncMinutes * 60)) seconds"
+                             : "\(model.syncMinutes.formatted()) min")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+            }
         }
     }
 

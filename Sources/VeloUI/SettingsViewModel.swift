@@ -43,10 +43,38 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var aiAPIKey = ""
     @Published public private(set) var status: Status = .idle
 
-    private let store: SettingsStore
+    /// Written straight through rather than on save: these are single values a
+    /// person flips, and a toggle that waits for a Done button reads as broken.
+    @Published public var loadsImages = true { didSet { preferences.loadsRemoteImages = loadsImages } }
+    @Published public var showsNotifications = true {
+        didSet { preferences.showsNotifications = showsNotifications }
+    }
+    @Published public var undoWindow: Double = 10 {
+        didSet {
+            preferences.undoWindow = undoWindow
+            // Read back so a value outside what the app will accept snaps to
+            // what it actually stored rather than lying on screen.
+            if preferences.undoWindow != undoWindow { undoWindow = preferences.undoWindow }
+        }
+    }
+    @Published public var snoozeHours: Double = 4 {
+        didSet {
+            preferences.snoozeHours = snoozeHours
+            if preferences.snoozeHours != snoozeHours { snoozeHours = preferences.snoozeHours }
+        }
+    }
+    @Published public var morningHour: Int = 9 { didSet { preferences.morningHour = morningHour } }
+    @Published public var syncMinutes: Double = 1 {
+        didSet { preferences.syncInterval = syncMinutes * 60 }
+    }
 
-    public init(store: SettingsStore = SettingsStore()) {
+    private let store: SettingsStore
+    private let preferences: AppPreferences
+
+    public init(store: SettingsStore = SettingsStore(),
+                preferences: AppPreferences = AppPreferences()) {
         self.store = store
+        self.preferences = preferences
         load()
     }
 
@@ -62,6 +90,12 @@ public final class SettingsViewModel: ObservableObject {
                          senderContains: rule.conditions.compactMap(\.senderText).first ?? "",
                          archives: rule.actions.contains(.archive))
         }
+        loadsImages = preferences.loadsRemoteImages
+        showsNotifications = preferences.showsNotifications
+        undoWindow = preferences.undoWindow
+        snoozeHours = preferences.snoozeHours
+        morningHour = preferences.morningHour
+        syncMinutes = preferences.syncInterval / 60
         let ai = store.ai()
         aiProvider = ai.provider ?? ""
         aiModel = ai.model ?? ""
