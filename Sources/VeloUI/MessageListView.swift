@@ -245,6 +245,10 @@ private final class ThreadRowView: NSView {
         top.spacing = 6
         top.alignment = .firstBaseline
 
+        setAccessibilityElement(true)
+        setAccessibilityRole(.row)
+        setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText))
+
         let stack = NSStackView(views: [top, snippet])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -269,6 +273,23 @@ enum MailFormatting {
     /// Quotes are stripped because headers routinely arrive as
     /// `"Roberts, Natalie" <n@x.co>` -- the comma forces the quoting, and
     /// showing it would look like a bug.
+    /// A row as one sentence, for anything that cannot see it.
+    ///
+    /// A row is four text views and two glyphs; without this VoiceOver reads
+    /// six unlabelled fragments and the paperclip says nothing at all. Unread
+    /// comes first because it is what decides whether to keep listening, and
+    /// "read" is never said -- it would be noise on the great majority of rows.
+    static func rowDescription(_ thread: MailThread, name: String, date: String) -> String {
+        var parts: [String] = []
+        if thread.isUnread { parts.append("Unread") }
+        if thread.labelIDs.contains("STARRED") { parts.append("starred") }
+        parts.append("from \(name)")
+        if !thread.snippet.isEmpty { parts.append(thread.snippet) }
+        if thread.hasAttachments { parts.append("has attachment") }
+        parts.append(date)
+        return parts.joined(separator: ", ")
+    }
+
     static func displayName(_ value: String) -> String {
         guard let open = value.firstIndex(of: "<") else { return value }
         let name = value[value.startIndex..<open]

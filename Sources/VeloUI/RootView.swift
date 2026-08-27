@@ -112,7 +112,8 @@ public struct RootView: View {
                                 onOpen: { app.openFromSearch($0) })
                     Divider()
                 }
-                MailboxHeader(title: app.inbox.title, count: app.inbox.threads.count)
+                MailboxHeader(title: app.inbox.title, count: app.inbox.threads.count,
+                              unread: app.unreadCount(in: app.inbox.scope))
                 Divider()
                 if app.inbox.threads.isEmpty {
                     EmptyListView(scope: app.inbox.scope)
@@ -169,16 +170,30 @@ public struct RootView: View {
 struct MailboxHeader: View {
     let title: String
     let count: Int
+    /// How much of the list has not been read. Shown as a badge rather than
+    /// another grey number, because it is the one worth reacting to.
+    var unread: Int = 0
 
     var body: some View {
         HStack(spacing: 8) {
             Text(title).font(.system(size: 13, weight: .semibold))
+            if unread > 0 {
+                Text("\(unread)")
+                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(.tint, in: Capsule())
+            }
             Text("\(count)")
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(unread > 0
+                            ? "\(title), \(unread) unread of \(count)"
+                            : "\(title), \(count) messages")
     }
 }
 

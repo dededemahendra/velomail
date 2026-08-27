@@ -79,6 +79,15 @@ public final class MailStore: Sendable {
         }
     }
 
+    /// How many threads in `labelID` are unread.
+    public func unreadCount(withLabel labelID: String) throws -> Int {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "labelIDs LIKE ? AND isUnread = 1", arguments: ["%\"\(labelID)\"%"])
+                .fetchCount(db)
+        }
+    }
+
     /// Threads carrying Gmail's own `STARRED` label, newest first.
     ///
     /// Not restricted to the inbox: the point of starring something is that it
