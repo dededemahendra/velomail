@@ -44,8 +44,9 @@ public enum SendWarning: Equatable, Sendable {
 
     /// The first thing worth pausing over, or nil to send.
     ///
-    /// The missing file comes first: it is a mistake, where a large recipient
-    /// list is usually a decision.
+    /// Ordered by how sure it is: an address Gmail will refuse is certain to
+    /// fail, a missing file is a mistake, a large recipient list is usually a
+    /// decision, and a blank subject is a discourtesy.
     public static func check(_ draft: Draft, recipientLimit: Int) -> SendWarning? {
         // Before everything else: this one is certain to fail, where the rest
         // are judgement calls.
