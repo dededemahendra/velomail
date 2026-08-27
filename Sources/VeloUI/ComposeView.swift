@@ -14,6 +14,9 @@ struct ComposeView: View {
     /// Bcc is revealed rather than always shown. A standing blind-copy field is
     /// how one gets filled in by accident.
     @State private var isShowingBcc = false
+    /// The quote is collapsed by default. It is there to be sent, not read --
+    /// the writer just saw the message they are answering.
+    @State private var isShowingQuote = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +57,7 @@ struct ComposeView: View {
                 Divider()
                 attachmentBar
                 if assistant.isAvailable { assistantBar }
+                if let quoted = model.quotedSummary { quoteStrip(quoted) }
                 ZStack(alignment: .topLeading) {
                     if model.body.isEmpty {
                         Text("Write your message…")
@@ -71,6 +75,52 @@ struct ComposeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// What is being answered, in one line, with the option to read it or drop
+    /// it. Pasting it into the editor instead meant scrolling past a wall of
+    /// someone else's text to reach your own.
+    @ViewBuilder private func quoteStrip(_ summary: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    isShowingQuote.toggle()
+                } label: {
+                    Image(systemName: isShowingQuote ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+
+                Image(systemName: "quote.opening").font(.caption2).foregroundStyle(.tertiary)
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(model.includesQuote ? .secondary : .tertiary)
+                    .strikethrough(!model.includesQuote)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Toggle("Include", isOn: $model.includesQuote)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .help("Send the message you are answering underneath this one")
+            }
+            .padding(.horizontal, 20).padding(.vertical, 7)
+
+            if isShowingQuote, let preview = model.quotedPreview {
+                ScrollView {
+                    Text(preview)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20).padding(.bottom, 10)
+                }
+                .frame(maxHeight: 160)
+            }
+        }
+        .background(.quaternary.opacity(0.22))
+        Divider()
     }
 
     /// Reveals the Bcc row. Hidden again only when it is empty, so a filled

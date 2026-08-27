@@ -164,7 +164,9 @@ public final class AppViewModel: ObservableObject {
             outbound: outbound, identity: identity, library: snippets, drafts: drafts,
             // Derived from mail already stored, so completion needs no contacts
             // API and no extra permission on the account.
-            contacts: { try? AddressBook.build(from: store, identity: identity()) })
+            contacts: { try? AddressBook.build(from: store, identity: identity()) },
+            // Lets a reply picked up again still quote what it is answering.
+            parentLookup: { threadID in try? store.messages(inThread: threadID).last })
         self.outbound = outbound
         self.followUp = FollowUpService(store)
         self.store = store

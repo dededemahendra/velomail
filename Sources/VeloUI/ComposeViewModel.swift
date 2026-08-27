@@ -51,12 +51,21 @@ public final class ComposeViewModel: ObservableObject {
     /// Built once per composed message rather than per keystroke: it reads a
     /// year of mail, which is cheap once and not cheap sixty times a minute.
     private let contacts: (() -> AddressBook?)?
+    /// Finds the message a resumed draft is answering. Without it a reply put
+    /// down and picked up again would go out unquoted, with nothing to say one
+    /// was ever meant to be there.
+    private let parentLookup: ((String) -> Message?)?
     private var addressBook: AddressBook?
     private var identity: String { resolveIdentity() }
     private var replyContext: Message?
     /// Threading restored from a stored draft, when the parent message itself
     /// is not to hand.
     private var resumedContext: (threadID: String?, inReplyTo: String?, references: [String])?
+    /// Whether the parent goes out under what is being written. On by default,
+    /// because a reply that drops the thread reads as a non-sequitur to anyone
+    /// who has to remember what they asked.
+    @Published public var includesQuote = true
+
     /// Guards the re-entry an expansion's own write to `body` would cause.
     private var isExpanding = false
 
@@ -64,7 +73,9 @@ public final class ComposeViewModel: ObservableObject {
                 library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
                 addressBook: AddressBook? = nil,
                 contacts: (() -> AddressBook?)? = nil,
+                parentLookup: ((String) -> Message?)? = nil,
                 newDraftID: @escaping () -> String = { UUID().uuidString }) {
+        self.parentLookup = parentLookup
         self.newDraftID = newDraftID
         self.draftID = newDraftID()
         self.outbound = outbound
@@ -79,10 +90,11 @@ public final class ComposeViewModel: ObservableObject {
                             library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
                             addressBook: AddressBook? = nil,
                             contacts: (() -> AddressBook?)? = nil,
+                            parentLookup: ((String) -> Message?)? = nil,
                             newDraftID: @escaping () -> String = { UUID().uuidString }) {
         self.init(outbound: outbound, identity: { identity }, library: library,
                   drafts: drafts, addressBook: addressBook, contacts: contacts,
-                  newDraftID: newDraftID)
+                  parentLookup: parentLookup, newDraftID: newDraftID)
     }
 
     // MARK: - Drafts
@@ -158,7 +170,10 @@ public final class ComposeViewModel: ObservableObject {
             try? drafts.discard(id: draftID)
             return
         }
-        try? drafts.save(currentDraft(), id: draftID)
+        // Without the quote: a draft is what was typed, and storing the parent
+        // with it would grow every autosave by the size of the message being
+        // answered. The quote is re-attached from the parent at send.
+        try? drafts.save(currentDraft(quoting: false), id: draftID)
     }
 
     /// Loads a draft into the composer, threading and all.
@@ -167,6 +182,9 @@ public final class ComposeViewModel: ObservableObject {
     /// same act of putting written words back in front of the writer.
     public func resume(_ draft: Draft) {
         refreshContacts()
+        // Re-finding the parent is what lets a resumed reply still quote.
+        replyContext = draft.threadID.flatMap { parentLookup?($0) }
+        includesQuote = replyContext != nil
         // A draft handed over without a row of its own -- a reopened failed
         // send -- becomes a new one rather than claiming someone else's id.
         draftID = newDraftID()
@@ -177,7 +195,6 @@ public final class ComposeViewModel: ObservableObject {
         body = draft.bodyText
         attachments = draft.attachments
         isReply = draft.threadID != nil
-        replyContext = nil
         resumedContext = (threadID: draft.threadID, inReplyTo: draft.inReplyTo,
                           references: draft.references)
     }
@@ -298,11 +315,13 @@ public final class ComposeViewModel: ObservableObject {
         cc = ""
         bcc = ""
         subject = draft.subject
-        // The quote goes in the editor, not on at send time: what the user sees
-        // is what gets sent, and they can trim it like in any other client.
-        // Two blank lines first so the cursor has room above it, and the
-        // signature above the quote, which is where every reader looks for it.
-        body = signatureBlock + "\n\n" + QuotedReply.text(quoting: message)
+        // The quote is attached at send time rather than pasted here. It used
+        // to go in the editor on the reasoning that what you see is what gets
+        // sent -- but on real mail that means scrolling past twenty lines of
+        // someone else's tracking URLs to reach your own cursor. It is shown
+        // collapsed instead, and can be dropped.
+        body = signatureBlock
+        includesQuote = true
         isReply = true
         replyContext = message
     }
@@ -333,18 +352,46 @@ public final class ComposeViewModel: ObservableObject {
         return queued
     }
 
+    /// The message being answered, in a line: who and when.
+    ///
+    /// Nil when there is nothing quoted, which is what the composer keys the
+    /// whole strip off.
+    public var quotedSummary: String? {
+        guard let message = replyContext else { return nil }
+        return "\(MailFormatting.displayName(message.sender)), "
+            + "\(ComposeViewModel.quoteDate.string(from: message.date))"
+    }
+
+    /// The quoted parent as the reader would see it, for the expander.
+    public var quotedPreview: String? {
+        replyContext.map { QuotedReply.text(quoting: $0) }
+    }
+
+    private static let quoteDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
+
     /// True when what has been typed will be sent as HTML as well as text.
     public var isRichText: Bool { MarkdownBody.isFormatted(body) }
 
     /// The composer as a `Draft`. One builder, so what autosave stores is
     /// exactly what send would have sent.
-    private func currentDraft() -> Draft {
+    private func currentDraft(quoting: Bool? = nil) -> Draft {
+        let quotes = quoting ?? includesQuote
         var draft: Draft
         // Marks the writer typed travel as HTML; the plain part keeps what was
         // typed, which is what a reader on a text-only client expects to see.
         let html = MarkdownBody.html(from: body)
         if let message = replyContext {
-            var reply = Draft.reply(to: message, from: identity, bodyText: body, bodyHTML: html)
+            // `quoting:` builds both halves from the parent itself, so the HTML
+            // quote is the sender's own markup rather than a plain-text
+            // rendition of a message that had better to offer.
+            var reply = Draft.reply(to: message, from: identity, bodyText: body,
+                                    bodyHTML: html, quoting: quotes)
             reply.to = recipients
             reply.cc = addresses(in: cc)
             reply.bcc = addresses(in: bcc)
