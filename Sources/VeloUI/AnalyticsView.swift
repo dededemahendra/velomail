@@ -9,6 +9,9 @@ struct AnalyticsView: View {
     let report: MailAnalytics.Report?
     let onClose: () -> Void
 
+    /// False for the first frame only, so the bars have somewhere to grow from.
+    @State private var grown = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -20,6 +23,11 @@ struct AnalyticsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            // A single spring rather than one per bar: seven staggered
+            // animations is a performance, and this is a dashboard.
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) { grown = true }
+        }
         .onExitCommand(perform: onClose)
     }
 
@@ -34,12 +42,12 @@ struct AnalyticsView: View {
     }
 
     private func content(_ report: MailAnalytics.Report) -> some View {
-        // The column is told to fill the pane, so the chart grows into the
-        // space rather than floating above it. Inside a ScrollView an
-        // unconstrained height means "as tall as the content", which for a
-        // fixed dashboard is a small block and a lot of nothing.
-        GeometryReader { proxy in
-        ScrollView {
+        // No ScrollView: the dashboard is four numbers and seven bars, a fixed
+        // amount that should use the pane rather than sit in the top of it.
+        // The previous attempt kept the ScrollView and set a minHeight on the
+        // column, which grows the frame but leaves the children at their ideal
+        // size -- so the chart stayed short and the space stayed empty.
+        VStack(alignment: .leading, spacing: 0) {
             // A measured column rather than the full window width: four numbers
             // and a week of bars stretched across a wide display read as a page
             // that failed to load.
@@ -59,9 +67,7 @@ struct AnalyticsView: View {
             }
             .frame(maxWidth: 620, alignment: .leading)
             .padding(.horizontal, 28).padding(.top, 30).padding(.bottom, 34)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .frame(minHeight: proxy.size.height - 1, alignment: .top)
-        }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
@@ -114,8 +120,9 @@ struct AnalyticsView: View {
                     }
                 }
             }
-            .frame(minHeight: 200)
+            .frame(minHeight: 150, maxHeight: .infinity)
         }
+        .frame(maxHeight: .infinity)
     }
 
     /// A line at nothing and a line at the busiest day, with the number on it.
@@ -152,6 +159,10 @@ struct AnalyticsView: View {
                 .fill(color.opacity(value == 0 ? 0.18 : 0.85))
                 .frame(width: 16, height: max(3, CGFloat(value) / CGFloat(peak) * (plot - 14)))
         }
+        // Grown from the baseline on appearing. A chart that draws itself says
+        // which way is up before a single label has been read.
+        .scaleEffect(y: grown ? 1 : 0.01, anchor: .bottom)
+        .opacity(grown ? 1 : 0)
     }
 
     private func legend(_ label: String, _ color: Color) -> some View {
