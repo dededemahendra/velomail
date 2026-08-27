@@ -25,5 +25,7 @@ struct RemoteImageBar: View {
         }
         .padding(.horizontal, 24).padding(.vertical, 7)
         .background(.quaternary.opacity(0.3))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Images not loaded. Loading them tells the sender you opened this.")
     }
 }

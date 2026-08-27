@@ -130,6 +130,7 @@ struct ComposeView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .help(key.map { "\(name) (\u{2318}\(String($0).uppercased()))" } ?? name)
+        .accessibilityLabel(name)
 
         if let key {
             button.keyboardShortcut(KeyEquivalent(key), modifiers: .command)
@@ -152,6 +153,7 @@ struct ComposeView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isShowingQuote ? "Hide quoted message" : "Show quoted message")
 
                 Image(systemName: "quote.opening").font(.caption2).foregroundStyle(.tertiary)
                 Text(summary)
@@ -164,6 +166,7 @@ struct ComposeView: View {
                     .toggleStyle(.switch)
                     .controlSize(.mini)
                     .labelsHidden()
+                    .accessibilityLabel("Include the quoted message")
                     .help("Send the message you are answering underneath this one")
             }
             .padding(.horizontal, 20).padding(.vertical, 7)
@@ -284,6 +287,7 @@ struct ComposeView: View {
                                 Image(systemName: "xmark.circle.fill").font(.caption2)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Remove \(file.filename)")
                             .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 5)
