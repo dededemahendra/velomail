@@ -44,8 +44,8 @@ enum TranscriptRows {
             rows.append(Row(message: message,
                             showsSender: namesSender,
                             dayHeading: startsADay
-                                ? MailFormatting.relativeDate(message.date, now: now,
-                                                              calendar: calendar)
+                                ? MailFormatting.dayHeading(message.date, now: now,
+                                                            calendar: calendar)
                                 : nil,
                             time: clock.string(from: message.date),
                             showsPreview: !repeatsItself))

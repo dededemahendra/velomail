@@ -3,7 +3,9 @@ import Foundation
 @testable import VeloCore
 
 @Suite struct SendWarningTests {
-    private func draft(_ body: String, subject: String = "",
+    // A subject by default: these cases are about attachments and recipient
+    // counts, and an empty one is now a warning in its own right.
+    private func draft(_ body: String, subject: String = "Hello",
                        to: [String] = ["a@x.com"],
                        attachments: [DraftAttachment] = []) -> Draft {
         Draft(to: to, subject: subject, bodyText: body, attachments: attachments)
@@ -90,5 +92,74 @@ import Foundation
         let many = (1...20).map { "person\($0)@x.com" }
         #expect(SendWarning.check(draft("see attached", to: many), recipientLimit: 10)
                 == .missingAttachment)
+    }
+
+    // MARK: - An address that cannot be delivered to
+
+    @Test func anAddressWithNoAtSignIsCaughtBeforeItIsSent() {
+        // Gmail refuses it, but the refusal arrives long after the window has
+        // closed and the undo window has run out, as a line in the failure
+        // queue.
+        #expect(SendWarning.check(draft("hi", to: ["petaexample.com"]), recipientLimit: 0)
+                == .malformedAddress("petaexample.com"))
+    }
+
+    @Test func aDomainWithNoDotIsCaughtToo() {
+        #expect(SendWarning.check(draft("hi", to: ["peta@localhost"]), recipientLimit: 0)
+                == .malformedAddress("peta@localhost"))
+    }
+
+    @Test func theBadOneIsNamedSoItCanBeFound() {
+        // Three recipients and one typo: saying which is the whole value.
+        let warning = SendWarning.check(draft("hi", to: ["a@x.com", "b@@x.com", "c@x.com"]),
+                                        recipientLimit: 0)
+        #expect(warning == .malformedAddress("b@@x.com"))
+    }
+
+    @Test func aPastedAddressWithItsNameStillAttachedIsFine() {
+        #expect(SendWarning.isDeliverable("Peta Bilston <peta@example.com>"))
+    }
+
+    @Test func ordinaryAddressesPass() {
+        for good in ["a@x.com", "peta.bilston@sistercreatives.co",
+                     "warren+velomail@living-legacy.com.au", " a@x.com "] {
+            #expect(SendWarning.isDeliverable(good), "\(good) should be deliverable")
+        }
+    }
+
+    @Test func theObviouslyBrokenDoNot() {
+        for bad in ["", "@x.com", "a@", "a@.com", "a@x.", "plain", "a@@x.com"] {
+            #expect(!SendWarning.isDeliverable(bad), "\(bad) should not be deliverable")
+        }
+    }
+
+    @Test func itIsAskedBeforeTheJudgementCalls() {
+        // A typo is certain to fail; a missing attachment is a guess.
+        let d = draft("See the attached plan.", to: ["broken"])
+        #expect(SendWarning.check(d, recipientLimit: 0) == .malformedAddress("broken"))
+    }
+
+    // MARK: - No subject
+
+    @Test func anEmptySubjectIsWorthOneQuestion() {
+        #expect(SendWarning.check(draft("hi", subject: ""), recipientLimit: 0) == .noSubject)
+    }
+
+    @Test func whitespaceIsNotASubject() {
+        #expect(SendWarning.check(draft("hi", subject: "   "), recipientLimit: 0) == .noSubject)
+    }
+
+    @Test func itComesLastOfAll() {
+        // A discourtesy, not a mistake: the missing file matters more.
+        #expect(SendWarning.check(draft("See the attached plan.", subject: ""), recipientLimit: 0)
+                == .missingAttachment)
+    }
+
+    @Test func everyWarningOffersAWayPast() {
+        for warning: SendWarning in [.malformedAddress("x"), .missingAttachment,
+                                     .noSubject, .manyRecipients(9)] {
+            #expect(!warning.question.isEmpty)
+            #expect(!warning.proceed.isEmpty)
+        }
     }
 }

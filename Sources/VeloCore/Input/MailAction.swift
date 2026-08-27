@@ -23,6 +23,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case goToStarred
     case goToArchive
     case loadOlderMail
+    /// Ask for a sync pass now instead of waiting out the backoff.
+    case syncNow
     /// Which label is on the `Command`, not the action: there is one per
     /// account and they are renamed and deleted, so a case each is not on the
     /// cards and a raw-valued enum cannot carry one anyway.

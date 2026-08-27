@@ -22,6 +22,9 @@ struct MessageListView: NSViewRepresentable {
     /// reader's own settings.
     var rowHeight: CGFloat = 64
     var previewLines: Int = 1
+    /// A short name for each label a row carries, or nothing when it carries
+    /// none worth showing.
+    var labelNames: (MailThread) -> [String] = { _ in [] }
     let onSelect: (Int) -> Void
     let onOpen: () -> Void
 
@@ -129,7 +132,8 @@ struct MessageListView: NSViewRepresentable {
                                      isMarked: parent.markedIndices.contains(index),
                                      name: parent.name(thread),
                                      dateText: parent.date(thread),
-                                     previewLines: parent.previewLines)
+                                     previewLines: parent.previewLines,
+                                     labels: parent.labelNames(thread))
             }
         }
 
@@ -192,7 +196,7 @@ private final class SectionHeaderView: NSView {
 /// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 private final class ThreadRowView: NSView {
     init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
-         previewLines: Int) {
+         previewLines: Int, labels: [String] = []) {
         super.init(frame: .zero)
 
         // Fixed width whether or not it is showing, so marking a row does not
@@ -218,6 +222,17 @@ private final class ThreadRowView: NSView {
         let clip = NSTextField(labelWithString: thread.hasAttachments ? "\u{1F4CE}" : "")
         clip.font = .systemFont(ofSize: 10)
 
+        // One label, not all of them: a row is a glance, and three chips push
+        // the sender out of the space it needs. The thread header lists the rest.
+        let tag = NSTextField(labelWithString: MailFormatting.shortLabel(labels.first ?? ""))
+        tag.font = .systemFont(ofSize: 9, weight: .medium)
+        tag.textColor = .tertiaryLabelColor
+        tag.lineBreakMode = .byTruncatingTail
+        // Below the sender's own low resistance, so a long label gives up its
+        // space first. It used to win, and "Invoices to pay this quarter"
+        // printed in full while the sender read "Peta Bil...".
+        tag.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+
         let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
         star.font = .systemFont(ofSize: 11)
         star.textColor = .systemYellow
@@ -242,14 +257,15 @@ private final class ThreadRowView: NSView {
         // removed rather than left as an empty gap.
         snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [mark, dot, sender, NSView(), clip, star, date])
+        let top = NSStackView(views: [mark, dot, sender, NSView(), tag, clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
 
         setAccessibilityElement(true)
         setAccessibilityRole(.row)
-        setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText))
+        setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText,
+                                                            labels: labels))
 
         let stack = NSStackView(views: [top, snippet])
         stack.orientation = .vertical
@@ -281,13 +297,30 @@ enum MailFormatting {
     /// six unlabelled fragments and the paperclip says nothing at all. Unread
     /// comes first because it is what decides whether to keep listening, and
     /// "read" is never said -- it would be noise on the great majority of rows.
-    static func rowDescription(_ thread: MailThread, name: String, date: String) -> String {
+    /// Cuts a label name down to something a row can carry beside a sender.
+    ///
+    /// At a word boundary where that leaves most of the allowance, and mid-word
+    /// otherwise, so one long word does not collapse to a single letter.
+    static func shortLabel(_ name: String, limit: Int = 16) -> String {
+        guard name.count > limit else { return name }
+        let cut = name.prefix(limit)
+        if let space = cut.lastIndex(of: " "), cut.distance(from: cut.startIndex, to: space) >= limit / 2 {
+            return cut[..<space] + "\u{2026}"
+        }
+        return cut.trimmingCharacters(in: .whitespaces) + "\u{2026}"
+    }
+
+    static func rowDescription(_ thread: MailThread, name: String, date: String,
+                               labels: [String] = []) -> String {
         var parts: [String] = []
         if thread.isUnread { parts.append("Unread") }
         if thread.labelIDs.contains("STARRED") { parts.append("starred") }
         parts.append("from \(name)")
         if !thread.snippet.isEmpty { parts.append(HTMLText.decoded(thread.snippet)) }
         if thread.hasAttachments { parts.append("has attachment") }
+        // Every label, not just the one the row has room to draw: a listener
+        // has no header beside them to read the rest from.
+        parts.append(contentsOf: labels.map { "filed in \($0)" })
         parts.append(date)
         return parts.joined(separator: ", ")
     }
@@ -350,6 +383,20 @@ enum MailFormatting {
                 == calendar.component(.year, from: now)
             return "\(formatted(date, calendar, template: sameYear ? "d MMM" : "d MMM yyyy")) \(time)"
         }
+    }
+
+    /// The same scale as `relativeDate`, except that today is named.
+    ///
+    /// A list row's date column can say "17.28" and mean today, because the
+    /// column is understood to be a date. A heading above a day's messages
+    /// cannot: it printed the clock, and the row beneath it printed the same
+    /// clock again.
+    static func dayHeading(_ date: Date, now: Date = Date(),
+                           calendar: Calendar = .current) -> String {
+        let days = calendar.dateComponents([.day],
+                                           from: calendar.startOfDay(for: date),
+                                           to: calendar.startOfDay(for: now)).day ?? 0
+        return days < 1 ? "Today" : relativeDate(date, now: now, calendar: calendar)
     }
 
     static func relativeDate(_ date: Date, now: Date = Date(),

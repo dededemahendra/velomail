@@ -345,6 +345,9 @@ struct ThreadView: View {
     /// The standing answer to "load this message's pictures?", set once in the
     /// command palette rather than asked on every message.
     var alwaysLoadsImages = false
+    /// Named labels, so a thread can say what it was filed as. Filing was
+    /// possible and invisible before this.
+    var knownLabels: [MailLabel] = []
     let onUnsubscribe: () -> Void
 
     /// Whether this thread can be left. Parsed rather than merely present: a
@@ -382,6 +385,44 @@ struct ThreadView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
+                if !detail.isEmpty {
+                    // Under the subject rather than beside it: a subject is
+                    // long and this must not push it into a second line.
+                    let chips = ThreadDetail.chips(on: thread.labelIDs, known: knownLabels)
+                    HStack(spacing: 6) {
+                        ForEach(chips.shown) { label in
+                            Text(label.displayName)
+                                .font(.system(size: 10, weight: .medium))
+                                // Never squashed: without this the words wrap
+                                // inside their own capsules.
+                                .lineLimit(1).fixedSize()
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(.tint.opacity(0.16), in: Capsule())
+                        }
+                        if chips.extra > 0 {
+                            Text("+\(chips.extra)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                        if let count = ThreadDetail.messageCount(messages.count) {
+                            Text(count).font(.system(size: 10)).foregroundStyle(.tertiary)
+                                .fixedSize()
+                        }
+                        if attachmentCount > 0 {
+                            Label("\(attachmentCount)", systemImage: "paperclip")
+                                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                                .fixedSize()
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24).padding(.bottom, 10)
+                    .accessibilityElement(children: .ignore)
+                    // Spelled out rather than combined: a listener hearing
+                    // "plus four" learns nothing, and has no chips to look at.
+                    .accessibilityLabel(detail.joined(separator: ", "))
+                }
+
                 Divider()
 
                 // GeometryReader so the transcript can be told to fill the pane.
@@ -422,6 +463,25 @@ struct ThreadView: View {
                 }
             }
         }
+    }
+
+    /// Everything the header has to add beyond the subject, in words.
+    ///
+    /// Also what a listener hears: every label, not the three the row had room
+    /// to draw, since "plus four" tells them nothing and they have no chips to
+    /// look at.
+    private var detail: [String] {
+        var parts = ThreadDetail.labels(on: thread.labelIDs, known: knownLabels)
+            .map { "Filed in \($0.displayName)" }
+        if let count = ThreadDetail.messageCount(messages.count) { parts.append(count) }
+        if attachmentCount > 0 {
+            parts.append("\(attachmentCount) attachment\(attachmentCount == 1 ? "" : "s")")
+        }
+        return parts
+    }
+
+    private var attachmentCount: Int {
+        messages.reduce(0) { $0 + attachments($1.id).count }
     }
 
     private var subject: String {

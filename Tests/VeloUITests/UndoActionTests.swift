@@ -88,6 +88,7 @@ private struct SilentWriter: GmailWriting {
         let (app, _) = try makeApp()
         app.perform(.compose)
         app.compose.to = "a@b.com"
+        app.compose.subject = "Hello"
         app.compose.body = "hi"
 
         app.perform(.send)
