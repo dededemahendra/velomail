@@ -1,11 +1,14 @@
 import Foundation
 
-/// When "later" means, for a snooze.
+/// What "later" means, for a snooze or a send.
 ///
 /// Wake times land on a round hour of the working day rather than the exact
 /// moment plus an offset. A thread snoozed at 16:47 coming back at 09:00 is
 /// useful; coming back at 16:47 the next day is the same interruption moved.
-public enum SnoozeHorizon {
+public enum Horizon {
+    // Shared by snooze and send-later on purpose: "tomorrow morning" should
+    // mean the same hour whichever of the two the writer picked.
+
     /// The next morning, at `hour`.
     public static func tomorrow(now: Date = Date(), hour: Int = 9,
                                 calendar: Calendar = .current) -> Date {

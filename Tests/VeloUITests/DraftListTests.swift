@@ -115,4 +115,17 @@ private struct Quiet: GmailWriting {
         let titles = CommandRegistry.v1.commands.map(\.title)
         #expect(titles.contains("Go to Drafts"))
     }
+
+    @Test func theHeaderCountsEverythingOnScreen() throws {
+        // Drafts and scheduled sends are both rows in this list, so a count
+        // that ignored half of them would read as a bug.
+        let drafts = [StoredDraft(id: "a", draft: Draft(to: [], subject: "d", bodyText: ""),
+                                  updatedAt: Date())]
+        let scheduled = [ScheduledSend(id: 1, draft: Draft(to: [], subject: "s", bodyText: ""),
+                                       dueAt: Date().addingTimeInterval(90_000))]
+        let view = DraftListView(drafts: drafts, scheduled: scheduled,
+                                 onOpen: { _ in }, onDiscard: { _ in }, onClose: {})
+
+        #expect(view.headerCount == 2)
+    }
 }

@@ -310,8 +310,22 @@ public final class ComposeViewModel: ObservableObject {
     /// - Returns: the queued mutation id, so the caller can offer an undo.
     @discardableResult
     public func send() throws -> Int64? {
+        try send(after: AppViewModel.undoWindow)
+    }
+
+    /// Queues the message to go at `moment` rather than in a few seconds.
+    ///
+    /// The same path as an ordinary send: the queue has always understood "not
+    /// yet", and an undo window is only a very short version of this.
+    @discardableResult
+    public func send(at moment: Date, now: Date = Date()) throws -> Int64? {
+        try send(after: max(moment.timeIntervalSince(now), AppViewModel.undoWindow))
+    }
+
+    @discardableResult
+    private func send(after delay: TimeInterval) throws -> Int64? {
         guard canSend else { return nil }
-        let queued = try outbound.send(currentDraft(), after: AppViewModel.undoWindow)
+        let queued = try outbound.send(currentDraft(), after: delay)
         // This message is on its way, so its draft has nothing left to hold.
         // Only this one: the others are still being written.
         try? drafts?.discard(id: draftID)

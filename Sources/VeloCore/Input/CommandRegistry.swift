@@ -47,6 +47,8 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Go to Sent", action: .goToSent),
         Command(title: "Go to Snoozed", action: .goToSnoozed),
         Command(title: "Go to Drafts", action: .goToDrafts),
+        Command(title: "Send tomorrow morning", action: .sendTomorrow),
+        Command(title: "Send next week", action: .sendNextWeek),
         Command(title: "Snooze until tomorrow", action: .snoozeUntilTomorrow),
         Command(title: "Snooze until next week", action: .snoozeUntilNextWeek),
         Command(title: "Unsnooze", action: .unsnoozeSelected),

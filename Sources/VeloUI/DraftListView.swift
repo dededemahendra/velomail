@@ -8,15 +8,26 @@ import VeloCore
 /// saved faithfully and reachable by nothing.
 struct DraftListView: View {
     let drafts: [StoredDraft]
+    /// Messages finished and waiting for their hour. They live here rather than
+    /// on a screen of their own: both are mail not yet gone, and this is where
+    /// a writer looks for unfinished business.
+    var scheduled: [ScheduledSend] = []
     let onOpen: (StoredDraft) -> Void
     let onDiscard: (StoredDraft) -> Void
+    var onSendNow: (ScheduledSend) -> Void = { _ in }
+    var onUnschedule: (ScheduledSend) -> Void = { _ in }
     let onClose: () -> Void
+
+    /// Everything listed, not just the drafts section: the count labels the
+    /// screen, and "1" over three visible rows reads as a bug rather than a
+    /// distinction.
+    var headerCount: Int { drafts.count + scheduled.count }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("Drafts").font(.system(size: 13, weight: .semibold))
-                Text("\(drafts.count)")
+                Text("\(headerCount)")
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -25,20 +36,68 @@ struct DraftListView: View {
             .padding(.horizontal, 16).padding(.vertical, 9)
             Divider()
 
-            if drafts.isEmpty {
+            if drafts.isEmpty && scheduled.isEmpty {
                 empty
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(drafts) { stored in
-                            row(stored)
-                            Divider()
+                        if !scheduled.isEmpty {
+                            sectionHeader("Waiting to send")
+                            ForEach(scheduled) { send in
+                                scheduledRow(send)
+                                Divider()
+                            }
+                        }
+                        if !drafts.isEmpty {
+                            if !scheduled.isEmpty { sectionHeader("Drafts") }
+                            ForEach(drafts) { stored in
+                                row(stored)
+                                Divider()
+                            }
                         }
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 5)
+    }
+
+    /// A message that is going, unless the writer stops it.
+    private func scheduledRow(_ send: ScheduledSend) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "clock").font(.caption2).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Self.recipients(of: send.draft))
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                Text(Self.summary(of: send.draft))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(MailFormatting.wakeTime(send.dueAt))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.tertiary)
+
+            Button("Send now") { onSendNow(send) }
+                .buttonStyle(.borderless).font(.caption)
+            Button("Edit") { onUnschedule(send) }
+                .buttonStyle(.borderless).font(.caption)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
     private func row(_ stored: StoredDraft) -> some View {

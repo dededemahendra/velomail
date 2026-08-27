@@ -81,6 +81,15 @@ public final class MutationStore: Sendable {
         }
     }
 
+    /// Makes a mutation due immediately. No-op if the id is unknown.
+    public func clearDueAt(id: Int64) throws {
+        try database.dbQueue.write { db in
+            guard var mutation = try PendingMutation.fetchOne(db, key: id) else { return }
+            mutation.dueAt = nil
+            try mutation.update(db)
+        }
+    }
+
     /// Removes a mutation (models "done"). No-op if the id is unknown.
     public func delete(id: Int64) throws {
         _ = try database.dbQueue.write { db in
