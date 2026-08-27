@@ -594,20 +594,24 @@ public final class AppViewModel: ObservableObject {
         route = .thread
     }
 
-    /// Runs an assistant operation over the open thread. Silently ignored when
-    /// there is no provider or no thread -- both are states, not errors.
+    /// Runs an assistant operation over the open thread.
+    ///
+    /// No open thread is a state and stays silent -- you can see that nothing
+    /// is selected. No provider is not: the palette hides these commands when
+    /// none is configured, but the chords stay bound, and a key that does
+    /// nothing at all reads as a broken key rather than as a missing setting.
     private func runAssistant(_ operation: @escaping (AssistantViewModel, [Message]) async -> Void) {
-        guard assistant.isAvailable else { return }
+        guard assistant.isAvailable else { return sayAIIsNotSetUp() }
         let messages = inbox.selectedMessages
         guard !messages.isEmpty else { return }
         if route == .palette { route = .list }
         Task { await operation(assistant, messages) }
     }
 
-    /// Asks the assistant what the reply should say. Silently ignored without a
-    /// provider or an open thread -- both are states, not errors.
+    /// Asks the assistant what the reply should say.
     public func beginAssistantDraft() {
-        guard assistant.isAvailable, !inbox.selectedMessages.isEmpty else { return }
+        guard assistant.isAvailable else { return sayAIIsNotSetUp() }
+        guard !inbox.selectedMessages.isEmpty else { return }
         if route == .palette { route = .list }
         assistant.beginDraft()
     }
@@ -849,6 +853,11 @@ public final class AppViewModel: ObservableObject {
     private func clearNotice() {
         notice = nil
         noticeToken += 1
+    }
+
+    /// Points at the setting rather than leaving the keystroke unanswered.
+    private func sayAIIsNotSetUp() {
+        show(notice: "AI is not set up. Add a key under Settings \u{203A} AI.")
     }
 
     /// Clears the unread state of everything in the list at once.

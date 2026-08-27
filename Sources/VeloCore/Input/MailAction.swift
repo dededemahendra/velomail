@@ -83,7 +83,9 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// True for actions that need an LLM provider.
     public var isAI: Bool {
         switch self {
-        case .summarizeThread, .suggestReplies, .triageThread: return true
+        // draftReplyWithAI belongs here too. Left out, it stayed in the
+        // palette with no provider configured and did nothing when run.
+        case .summarizeThread, .suggestReplies, .triageThread, .draftReplyWithAI: return true
         default: return false
         }
     }
