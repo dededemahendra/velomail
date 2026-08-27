@@ -69,10 +69,19 @@ import Testing
         #expect(titles("unsub").contains("Unsubscribe"))
     }
 
-    @Test func everyV1ActionIsReachableFromThePalette() {
+    @Test func everyFixedActionIsReachableFromThePalette() {
         // The palette is the discoverability net for the keymap, so nothing
         // should be keyboard-only.
         let reachable = Set(registry.commands.map(\.action))
-        #expect(reachable == Set(MailAction.allCases))
+        #expect(reachable == Set(MailAction.allCases).subtracting(MailAction.needingAnArgument))
+    }
+
+    @Test func theActionsNeedingAnArgumentAreNotInTheFixedList() {
+        // They cannot be: there is one command per label, built from whatever
+        // the account has. `AppViewModel.palette` adds them, and its own tests
+        // check they arrive.
+        for action in MailAction.needingAnArgument {
+            #expect(!registry.commands.contains { $0.action == action })
+        }
     }
 }

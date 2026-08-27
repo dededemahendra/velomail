@@ -5,7 +5,7 @@ import VeloCore
 /// only renders them.
 struct CommandPaletteView: View {
     let registry: CommandRegistry
-    let onRun: (MailAction) -> Void
+    let onRun: (Command) -> Void
     let onCancel: () -> Void
 
     @State private var query = ""
@@ -51,7 +51,7 @@ struct CommandPaletteView: View {
                 ForEach(Array(results.enumerated()), id: \.offset) { index, command in
                     row(command, isHighlighted: index == highlighted)
                         .contentShape(Rectangle())
-                        .onTapGesture { onRun(command.action) }
+                        .onTapGesture { onRun(command) }
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 8)
@@ -105,7 +105,7 @@ struct CommandPaletteView: View {
 
     private func runHighlighted() {
         guard results.indices.contains(highlighted) else { return }
-        onRun(results[highlighted].action)
+        onRun(results[highlighted])
     }
 }
 

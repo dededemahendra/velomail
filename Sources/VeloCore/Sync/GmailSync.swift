@@ -18,6 +18,9 @@ public actor GmailSync {
     private let backoff: BackoffPolicy
     private let maxMutationAttempts: Int
     private let rules: RuleApplier?
+    /// Refreshed each pass: one cheap call, and a label renamed in Gmail
+    /// should not keep its old name here until the next cold start.
+    private let labels: LabelService?
     private var isSyncing = false
     private var consecutiveFailures = 0
 
@@ -30,7 +33,9 @@ public actor GmailSync {
                 now: @escaping () -> Date = { Date() }, clock: SyncClock = SystemSyncClock(),
                 backoff: BackoffPolicy = .standard,
                 maxMutationAttempts: Int = OutboundService.maxAttempts,
-                rules: RuleApplier? = nil) {
+                rules: RuleApplier? = nil,
+                labels: LabelService? = nil) {
+        self.labels = labels
         self.accountID = accountID
         self.backfill = backfill
         self.incremental = incremental
@@ -119,6 +124,9 @@ public actor GmailSync {
         // Wake before pulling, so a thread whose snooze expired is back in the
         // inbox in the same pass rather than a tick later.
         try outbound.wakeSnoozed(now: now())
+        // Before the mail, so a thread that arrives carrying a new label has
+        // somewhere for that label to be named.
+        try? await labels?.refresh()
 
         let state = try syncState.load(accountID: accountID)
         // Not "has this account synced" but "is any label still unfetched": a

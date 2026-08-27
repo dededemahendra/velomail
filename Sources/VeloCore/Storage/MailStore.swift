@@ -46,6 +46,39 @@ public final class MailStore: Sendable {
         }
     }
 
+    /// Replaces the whole label list.
+    ///
+    /// Wholesale rather than merged: Gmail's answer is the truth about which
+    /// labels exist, and a label deleted there should stop being offered here.
+    public func replaceLabels(_ labels: [MailLabel]) throws {
+        try database.dbQueue.write { db in
+            try MailLabel.deleteAll(db)
+            for label in labels { try label.insert(db) }
+        }
+    }
+
+    public func labels() throws -> [MailLabel] {
+        try database.dbQueue.read { try MailLabel.order(Column("name")).fetchAll($0) }
+    }
+
+    /// The labels worth offering as somewhere to look, in reading order.
+    public func browsableLabels() throws -> [MailLabel] {
+        MailLabel.browsableOrder(try labels())
+    }
+
+    /// Threads carrying `labelID`, newest first.
+    ///
+    /// Matched against the quoted id so `Label_7` does not also find
+    /// `Label_70`, which a bare `LIKE '%Label_7%'` would.
+    public func threads(withLabel labelID: String) throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"\(labelID)\"%"])
+                .order(sql: "lastMessageDate DESC")
+                .fetchAll(db)
+        }
+    }
+
     /// Threads carrying Gmail's own `STARRED` label, newest first.
     ///
     /// Not restricted to the inbox: the point of starring something is that it

@@ -12,6 +12,10 @@ public protocol GmailReading: Sendable {
 
     /// Base64url content of one attachment.
     func getAttachment(messageID: String, attachmentID: String) async throws -> String
+
+    /// Every label on the account, so an id like `Label_7` can be shown as
+    /// whatever its owner called it.
+    func listLabels() async throws -> [GmailLabelDTO]
 }
 
 public extension GmailReading {
@@ -19,6 +23,9 @@ public extension GmailReading {
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         try await listMessageIDs(labelID: "INBOX", pageToken: pageToken)
     }
+
+    /// Default for sources with nothing to say about labels.
+    func listLabels() async throws -> [GmailLabelDTO] { [] }
 
     /// Default for sources that do not serve attachments. It throws rather than
     /// returning empty, so a source that should have implemented this fails
@@ -78,6 +85,14 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         let (data, response) = try await authorizedGET(components.url!)
         let decoded: ListResponse = try checkedDecode(data, response)
         return (decoded.messages?.map(\.id) ?? [], decoded.nextPageToken)
+    }
+
+    /// Every label on the account.
+    public func listLabels() async throws -> [GmailLabelDTO] {
+        let url = baseURL.appendingPathComponent("users/me/labels")
+        let (data, response) = try await authorizedGET(url)
+        let decoded: LabelListResponse = try checkedDecode(data, response)
+        return decoded.labels ?? []
     }
 
     /// Fetches a single message in `format=full`.
@@ -169,6 +184,10 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         let ids: [String]
         let addLabelIds: [String]
         let removeLabelIds: [String]
+    }
+
+    private struct LabelListResponse: Decodable {
+        let labels: [GmailLabelDTO]?
     }
 
     private struct ListResponse: Decodable {

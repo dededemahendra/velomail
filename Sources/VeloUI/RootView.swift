@@ -66,7 +66,7 @@ public struct RootView: View {
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
-                                   onRun: { app.perform($0) },
+                                   onRun: { app.run($0) },
                                    onCancel: { app.perform(.back) })
                     .padding(.top, 90)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -164,6 +164,7 @@ struct EmptyListView: View {
         case .snoozed: return "clock"
         case .starred: return "star"
         case .archive: return "archivebox"
+        case .label: return "tag"
         }
     }
 
@@ -174,6 +175,7 @@ struct EmptyListView: View {
         case .snoozed: return "Nothing snoozed"
         case .starred: return "Nothing starred"
         case .archive: return "Nothing filed away"
+        case let .label(_, name): return "Nothing in \(name)"
         }
     }
 
@@ -184,6 +186,7 @@ struct EmptyListView: View {
         case .snoozed: return "Threads you put off come back here."
         case .starred: return "Press s on a thread to keep it to hand."
         case .archive: return "Threads you archive with e wait here."
+        case .label: return "File a thread here from the command palette."
         }
     }
 

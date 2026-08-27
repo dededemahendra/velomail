@@ -267,6 +267,17 @@ public final class AppDatabase: Sendable {
             }
         }
 
+
+        migrator.registerMigration("v19_create_label") { db in
+            // Names only. Which threads carry a label is already on the thread,
+            // and a join table would be a second copy of that to keep in step.
+            try db.create(table: "label") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("kind", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

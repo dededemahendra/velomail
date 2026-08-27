@@ -109,9 +109,57 @@ public final class AppViewModel: ObservableObject {
     /// AI commands are filtered out when no provider is configured, so the
     /// palette never offers an action that can only fail.
     public var palette: CommandRegistry {
-        assistant.isAvailable
-            ? CommandRegistry.v1
-            : CommandRegistry(commands: CommandRegistry.v1.commands.filter { !$0.action.isAI })
+        let base = assistant.isAvailable
+            ? CommandRegistry.v1.commands
+            : CommandRegistry.v1.commands.filter { !$0.action.isAI }
+        // One pair per label, built from what the account actually has. The
+        // palette is where a keyboard-first client puts what cannot have a key
+        // of its own, and labels are the clearest case of that.
+        let perLabel = labels.flatMap { label in
+            [Command(title: "Go to \(label.displayName)", action: .goToLabel, argument: label.id),
+             Command(title: "File in \(label.displayName)", action: .fileInLabel, argument: label.id)]
+        }
+        return CommandRegistry(commands: base + perLabel)
+    }
+
+    /// The labels worth offering, refreshed when the mail is.
+    @Published public private(set) var labels: [MailLabel] = []
+
+    /// Runs a palette command, which may carry what it is about.
+    public func run(_ command: Command) {
+        switch command.action {
+        case .goToLabel:
+            command.argument.flatMap(label(withID:)).map { show(label: $0) }
+        case .fileInLabel:
+            command.argument.flatMap(label(withID:)).map { applyLabel($0) }
+        default:
+            perform(command.action)
+        }
+    }
+
+    private func label(withID id: String) -> MailLabel? {
+        labels.first { $0.id == id }
+    }
+
+    /// Opens a label as its own list.
+    public func show(label: MailLabel) {
+        try? inbox.show(.label(label.id, label.displayName))
+        route = .list
+    }
+
+    /// Files the selected threads under a label. Undoable like an archive:
+    /// they leave the list either way.
+    public func applyLabel(_ label: MailLabel) {
+        dispose("Filed") {
+            for id in inbox.targetThreadIDs {
+                try outbound.addLabel(label.id, toThread: id)
+            }
+            try inbox.reload()
+        }
+    }
+
+    private func refreshLabels() {
+        labels = (try? store.browsableLabels()) ?? []
     }
 
     private let config: AppConfig
@@ -198,6 +246,7 @@ public final class AppViewModel: ObservableObject {
         }
         try inbox.reload()
         refreshFailures()
+        refreshLabels()
         alwaysLoadsImages = imagePreference.alwaysLoads
         route = .list
         openDemoRouteIfRequested()
@@ -336,6 +385,9 @@ public final class AppViewModel: ObservableObject {
         case .goToStarred: show(.starred)
         case .loadOlderMail: Task { await loadOlderMail() }
         case .goToArchive: show(.archive)
+        // Reached through `run(_:)`, which knows which label. Landing here
+        // means a caller had the action without the label to go with it.
+        case .goToLabel, .fileInLabel: break
         case .goToDrafts: showDrafts()
         case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })

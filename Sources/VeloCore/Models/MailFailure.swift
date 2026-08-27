@@ -43,6 +43,7 @@ public struct MailFailure: Equatable, Sendable, Identifiable {
         case .star: return "star"
         case .unstar: return "unstar"
         case .send: return "send"
+        case .label: return "file"
         }
     }
 }

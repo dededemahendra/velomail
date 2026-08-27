@@ -85,7 +85,8 @@ public enum Composition {
             syncState: syncState,
             // Rules see arrivals only; GmailSync never hands it a backfill.
             rules: RuleApplier(engine: RuleEngine(rules: ruleLibrary.rules),
-                               store: store, outbound: outbound))
+                               store: store, outbound: outbound),
+            labels: LabelService(source: api, store: store))
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,

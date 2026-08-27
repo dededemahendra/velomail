@@ -35,6 +35,8 @@ enum CommandSymbol {
         case .unsnoozeSelected: return "clock.badge.xmark"
         case .unsubscribe: return "hand.raised"
         case .loadOlderMail: return "arrow.down.circle"
+        case .goToLabel: return "tag"
+        case .fileInLabel: return "tag.fill"
 
         // Writing
         case .compose: return "square.and.pencil"
