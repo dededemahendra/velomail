@@ -90,6 +90,9 @@ public final class AppViewModel: ObservableObject {
     /// every failure, so without this a bad afternoon leaves the only way to
     /// try again being to quit the app.
     private let syncNow: (@Sendable () async throws -> Void)?
+    /// Where a rule filed from the Senders screen is written. Injectable so a
+    /// test cannot write to the reader's real `~/.config/velomail/rules.json`.
+    private let settingsStore: SettingsStore
 
     /// How many older messages one press asks for. The same page the first
     /// sync takes, so the wait is one the writer has already seen.
@@ -193,6 +196,11 @@ public final class AppViewModel: ObservableObject {
     /// The keymap on a card. A sheet like Settings rather than a route: it is
     /// something you glance at beside your mail, not somewhere you go.
     @Published public var isShowingShortcuts = false
+    /// Who is filling the inbox, newest count first. Empty until asked for.
+    @Published public private(set) var senders: [SenderSummary] = []
+    @Published public var isShowingSenders = false
+    /// Which sender row is open, so its actions are on screen.
+    @Published public var selectedSender: Int?
 
     /// Something worth asking about before this message goes. Nothing has been
     /// queued while it is set: the writer can still fix it.
@@ -331,12 +339,13 @@ public final class AppViewModel: ObservableObject {
                             drafts: DraftStore? = nil,
                             loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
                             syncNow: (@Sendable () async throws -> Void)? = nil,
+                            settingsStore: SettingsStore = SettingsStore(),
                             preferences: AppPreferences = AppPreferences()) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
                   search: search, snippets: snippets, attachmentModel: attachmentModel,
                   drafts: drafts, loadOlder: loadOlder, syncNow: syncNow,
-                  preferences: preferences)
+                  settingsStore: settingsStore, preferences: preferences)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
@@ -348,6 +357,7 @@ public final class AppViewModel: ObservableObject {
                 drafts: DraftStore? = nil,
                 loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
                 syncNow: (@Sendable () async throws -> Void)? = nil,
+                settingsStore: SettingsStore = SettingsStore(),
                 preferences: AppPreferences = AppPreferences()) {
         self.preferences = preferences
         self.alwaysLoadsImages = preferences.loadsRemoteImages
@@ -356,6 +366,7 @@ public final class AppViewModel: ObservableObject {
         self.recentCommands = preferences.recentCommands.compactMap(MailAction.init(rawValue:))
         self.loadOlder = loadOlder
         self.syncNow = syncNow
+        self.settingsStore = settingsStore
         self.config = config
         self.isSignedIn = isSignedIn
         self.inbox = InboxViewModel(store: store, outbound: outbound, preferences: preferences)
@@ -469,6 +480,16 @@ public final class AppViewModel: ObservableObject {
         // Compose and the palette both own a text field, and while one is open
         // it owns the keyboard. Only Escape gets through, so typing "reply" in
         // the palette cannot fire r=reply and e=archive on the way past.
+        // A sheet is on top of the list, not beside it. Without this, j and k
+        // moved the hidden cursor and e archived a thread nobody could see.
+        if isShowingSenders { return handleSenders(input) }
+        if isShowingSettings || isShowingShortcuts {
+            guard input.key == .escape else { return false }
+            isShowingSettings = false
+            isShowingShortcuts = false
+            return true
+        }
+
         if route == .compose || route == .palette || route == .search {
             guard input.key == .escape else { return false }
             // Via goBack, not a direct assignment: leaving a surface may have
@@ -546,6 +567,7 @@ public final class AppViewModel: ObservableObject {
         case .openInGmail: openSelectedInGmail()
         case .exportThread: exportSelectedThread()
         case .showShortcuts: isShowingShortcuts = true
+        case .showSenders: showSenders()
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
@@ -740,14 +762,24 @@ public final class AppViewModel: ObservableObject {
         guard let link = inbox.selectedMessages.reversed().lazy
             .compactMap({ Unsubscribe.preferred(in: $0.listUnsubscribe ?? "") })
             .first else { return }
+        perform(unsubscribe: link, from: nil)
+    }
+
+    /// Acts on a parsed unsubscribe link, whichever screen asked for it.
+    ///
+    /// The mailto goes through the outbound queue so `Cmd+Z` takes it back; a
+    /// web link opens, because there is nothing to take back.
+    private func perform(unsubscribe link: UnsubscribeLink, from who: String?) {
         switch link {
         case .mailto:
             guard let draft = Unsubscribe.draft(for: link),
                   let queued = try? outbound.send(draft, after: preferences.undoWindow)
             else { return }
-            holdUndo(queued)
+            offerUndo(.init(kind: .send(queued),
+                            prompt: who.map { "Unsubscribing from \($0)" } ?? "Message sent"))
         case let .web(url):
             openURL(url)
+            if let who { show(notice: "Opened \(who)\u{2019}s unsubscribe page") }
         }
     }
 
@@ -853,6 +885,117 @@ public final class AppViewModel: ObservableObject {
     private func clearNotice() {
         notice = nil
         noticeToken += 1
+    }
+
+    // MARK: - Senders
+
+    /// The keys the Senders sheet answers. Everything else is swallowed rather
+    /// than passed down to the list underneath it.
+    private func handleSenders(_ input: KeyInput) -> Bool {
+        switch input.key {
+        case .escape:
+            isShowingSenders = false
+        case .enter:
+            selectedSenderSummary.map { openSenderInInbox($0) }
+        case let .character(character):
+            switch character {
+            case "j": moveSender(by: 1)
+            case "k": moveSender(by: -1)
+            // The same letters they mean in the list, on the sender instead of
+            // the thread.
+            case "e": selectedSenderSummary.map { archiveAll(from: $0) }
+            case "u": selectedSenderSummary.map { unsubscribe(from: $0) }
+            default: break
+            }
+        default:
+            break
+        }
+        return true
+    }
+
+    private var selectedSenderSummary: SenderSummary? {
+        selectedSender.flatMap { senders.indices.contains($0) ? senders[$0] : nil }
+    }
+
+    private func moveSender(by delta: Int) {
+        guard !senders.isEmpty else { return }
+        let current = selectedSender ?? 0
+        selectedSender = min(max(current + delta, 0), senders.count - 1)
+    }
+
+    /// Opens the list of who is filling the inbox.
+    public func showSenders() {
+        senders = (try? store.inboxSenders()) ?? []
+        selectedSender = senders.isEmpty ? nil : 0
+        isShowingSenders = true
+    }
+
+    /// Archives every inbox thread from one address, in one undoable step.
+    public func archiveAll(from sender: SenderSummary) {
+        let threads = (try? store.inboxThreads(from: sender.address)) ?? []
+        guard !threads.isEmpty else { return }
+        for thread in threads { try? outbound.archive(threadID: thread.id) }
+        try? inbox.reload()
+        refreshSenders()
+        // One offer for the whole sweep, not one per thread: four hundred
+        // banners would bury the only one that matters.
+        offerUndo(.init(kind: .disposal(threads.map(\.id)),
+                        prompt: "\(threads.count) archived from \(sender.displayName)"))
+    }
+
+    /// Files a rule so this sender's mail archives itself from now on, and
+    /// clears what is already here.
+    ///
+    /// Both halves, because a rule that only applies to future mail leaves the
+    /// four hundred already sitting there, which is the reason you opened this
+    /// screen.
+    public func alwaysArchive(from sender: SenderSummary) {
+        let library = settingsStore.rules()
+        let rule = MailRule.forSender(sender, doing: [.archive],
+                                      named: "Archive \(sender.displayName)",
+                                      order: library.rules.count)
+        guard !library.rules.contains(where: { $0.id == rule.id }) else {
+            show(notice: "Already archiving \(sender.displayName)")
+            return
+        }
+        do {
+            try settingsStore.saveRules(RuleLibrary(rules: library.rules + [rule]))
+        } catch {
+            show(notice: "Could not save the rule")
+            return
+        }
+        archiveAll(from: sender)
+    }
+
+    /// Leaves one sender's list, using the newest message that says how.
+    public func unsubscribe(from sender: SenderSummary) {
+        let threads = (try? store.inboxThreads(from: sender.address)) ?? []
+        let link = threads.lazy
+            .flatMap { (try? self.store.messages(inThread: $0.id)) ?? [] }
+            .sorted { $0.date > $1.date }
+            .compactMap { Unsubscribe.preferred(in: $0.listUnsubscribe ?? "") }
+            .first
+        guard let link else {
+            show(notice: "No unsubscribe link on this sender")
+            return
+        }
+        perform(unsubscribe: link, from: sender.displayName)
+    }
+
+    /// Closes the screen on the sender's newest thread, so "who is this" and
+    /// "what do they actually send" are one step apart.
+    public func openSenderInInbox(_ sender: SenderSummary) {
+        isShowingSenders = false
+        guard let newest = (try? store.inboxThreads(from: sender.address))?.first else { return }
+        inbox.select(threadID: newest.id)
+    }
+
+    private func refreshSenders() {
+        guard isShowingSenders else { return }
+        senders = (try? store.inboxSenders()) ?? []
+        if let selected = selectedSender, selected >= senders.count {
+            selectedSender = senders.isEmpty ? nil : senders.count - 1
+        }
     }
 
     /// Points at the setting rather than leaving the keystroke unanswered.

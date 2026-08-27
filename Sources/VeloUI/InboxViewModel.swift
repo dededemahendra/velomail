@@ -169,6 +169,17 @@ public final class InboxViewModel: ObservableObject {
         try? refreshSelectedMessages()
     }
 
+    /// Puts the cursor on a named thread, if it is in the list at all.
+    ///
+    /// Returns false when it is not, so a caller can say so rather than
+    /// silently leaving the cursor where it was.
+    @discardableResult
+    public func select(threadID: String) -> Bool {
+        guard let index = threads.firstIndex(where: { $0.id == threadID }) else { return false }
+        select(index: index)
+        return true
+    }
+
     public func select(index: Int) {
         cursor.select(index)
         try? refreshSelectedMessages()
