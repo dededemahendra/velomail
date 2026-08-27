@@ -51,6 +51,9 @@ public final class ComposeViewModel: ObservableObject {
     /// Built once per composed message rather than per keystroke: it reads a
     /// year of mail, which is cheap once and not cheap sixty times a minute.
     private let contacts: (() -> AddressBook?)?
+    /// Read at send time, so a change in settings applies to the next message
+    /// rather than the next launch.
+    private let preferences = AppPreferences()
     /// Finds the message a resumed draft is answering. Without it a reply put
     /// down and picked up again would go out unquoted, with nothing to say one
     /// was ever meant to be there.
@@ -335,7 +338,7 @@ public final class ComposeViewModel: ObservableObject {
     /// - Returns: the queued mutation id, so the caller can offer an undo.
     @discardableResult
     public func send() throws -> Int64? {
-        try send(after: AppViewModel.undoWindow)
+        try send(after: preferences.undoWindow)
     }
 
     /// Queues the message to go at `moment` rather than in a few seconds.
@@ -344,7 +347,7 @@ public final class ComposeViewModel: ObservableObject {
     /// yet", and an undo window is only a very short version of this.
     @discardableResult
     public func send(at moment: Date, now: Date = Date()) throws -> Int64? {
-        try send(after: max(moment.timeIntervalSince(now), AppViewModel.undoWindow))
+        try send(after: max(moment.timeIntervalSince(now), preferences.undoWindow))
     }
 
     @discardableResult

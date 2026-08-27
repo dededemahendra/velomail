@@ -8,7 +8,11 @@ import VeloCore
     private func makeModel() -> (SettingsViewModel, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("velo-settings-vm-\(UUID().uuidString)", isDirectory: true)
-        return (SettingsViewModel(store: SettingsStore(directory: directory)), directory)
+        let suite = "velo.vm.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return (SettingsViewModel(store: SettingsStore(directory: directory),
+                                  preferences: AppPreferences(defaults: defaults)), directory)
     }
 
     // MARK: - Signature
@@ -145,5 +149,42 @@ import VeloCore
         model.save()
 
         #expect(model.status != .saved)
+    }
+
+    // MARK: - The choices that apply at once
+
+    @Test func aToggleTakesEffectWithoutWaitingForDone() {
+        // A switch that does nothing until a button is pressed elsewhere reads
+        // as a broken switch.
+        let suite = "velo.vm.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let preferences = AppPreferences(defaults: defaults)
+        let model = SettingsViewModel(store: SettingsStore(directory: FileManager.default
+            .temporaryDirectory.appendingPathComponent(UUID().uuidString)),
+                                      preferences: preferences)
+
+        model.loadsImages = false
+
+        #expect(!preferences.loadsRemoteImages)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    @Test func aNumberOutsideWhatTheAppAcceptsSnapsBack() {
+        // Otherwise the screen shows 9999 while the app uses 60.
+        let (model, _) = makeModel()
+        model.undoWindow = 9_999
+
+        #expect(model.undoWindow == 60)
+    }
+
+    @Test func theTimingSettingsLoadWhatWasSet() {
+        let (model, _) = makeModel()
+        model.snoozeHours = 12
+        model.morningHour = 6
+
+        model.load()
+
+        #expect(model.snoozeHours == 12)
+        #expect(model.morningHour == 6)
     }
 }

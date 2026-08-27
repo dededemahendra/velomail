@@ -79,8 +79,11 @@ public final class AppViewModel: ObservableObject {
     @Published public private(set) var notice: String?
 
     /// True when every message's pictures load without being asked for.
-    @Published public private(set) var alwaysLoadsImages = ImagePreference().alwaysLoads
-    private let imagePreference = ImagePreference()
+    @Published public private(set) var alwaysLoadsImages = AppPreferences().loadsRemoteImages
+    /// The choices the app makes on the reader's behalf. Read at the moment
+    /// each is used, so changing one in settings takes effect immediately
+    /// rather than at the next launch.
+    public let preferences = AppPreferences()
 
     /// Every message being written, most recently touched first.
     @Published public private(set) var drafts: [StoredDraft] = []
@@ -293,7 +296,7 @@ public final class AppViewModel: ObservableObject {
         try inbox.reload()
         refreshFailures()
         refreshLabels()
-        alwaysLoadsImages = imagePreference.alwaysLoads
+        alwaysLoadsImages = preferences.loadsRemoteImages
         route = .list
         openDemoRouteIfRequested()
     }
@@ -436,11 +439,15 @@ public final class AppViewModel: ObservableObject {
         case .openSettings: isShowingSettings = true
         case .goToLabel, .fileInLabel, .unfileFromLabel, .switchAccount, .addAccount: break
         case .goToDrafts: showDrafts()
-        case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
-        case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })
-        case .snoozeUntilNextWeek: snoozeSelected(until: { Horizon.nextWeek() })
-        case .sendTomorrow: sendLater(Horizon.tomorrow())
-        case .sendNextWeek: sendLater(Horizon.nextWeek())
+        case .toggleRemoteImages:
+            preferences.loadsRemoteImages.toggle()
+            alwaysLoadsImages = preferences.loadsRemoteImages
+        case .snoozeUntilTomorrow:
+            snoozeSelected(until: { [preferences] in Horizon.tomorrow(hour: preferences.morningHour) })
+        case .snoozeUntilNextWeek:
+            snoozeSelected(until: { [preferences] in Horizon.nextWeek(hour: preferences.morningHour) })
+        case .sendTomorrow: sendLater(Horizon.tomorrow(hour: preferences.morningHour))
+        case .sendNextWeek: sendLater(Horizon.nextWeek(hour: preferences.morningHour))
         case .unsnoozeSelected: dispose("Woken") { try inbox.unsnoozeSelected() }
         case .back: goBack()
         case .openCommandPalette: route = .palette
@@ -448,7 +455,7 @@ public final class AppViewModel: ObservableObject {
         case .toggleStar: try? inbox.toggleStarSelected()
         case .toggleMark: inbox.toggleMark()
         case .unsubscribe: unsubscribeSelected()
-        case .snoozeSelected: snoozeSelected(hours: 4)
+        case .snoozeSelected: snoozeSelected(hours: preferences.snoozeHours)
         case .undo: undo()
         case .showFollowUps: loadFollowUps()
         case .toggleFocus: toggleFocus()
@@ -591,7 +598,7 @@ public final class AppViewModel: ObservableObject {
         switch link {
         case .mailto:
             guard let draft = Unsubscribe.draft(for: link),
-                  let queued = try? outbound.send(draft, after: AppViewModel.undoWindow)
+                  let queued = try? outbound.send(draft, after: preferences.undoWindow)
             else { return }
             holdUndo(queued)
         case let .web(url):
@@ -670,7 +677,9 @@ public final class AppViewModel: ObservableObject {
         refreshFailures()
     }
 
-    /// How long a send can be taken back.
+    /// How long a send can be taken back, unless the reader has said otherwise.
+    /// Kept as the default rather than the value: callers that have an app to
+    /// ask should ask it.
     public static let undoWindow: TimeInterval = 10
 
     /// Takes back whatever was last done, if anything still can be.
@@ -699,8 +708,9 @@ public final class AppViewModel: ObservableObject {
     /// Shows the banner and starts its countdown.
     private func offerUndo(_ action: Undoable) {
         undoable = action
+        let window = preferences.undoWindow
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(AppViewModel.undoWindow * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
             await MainActor.run { self?.expireUndo(action) }
         }
     }
