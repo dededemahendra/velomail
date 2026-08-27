@@ -17,6 +17,10 @@ struct ComposeView: View {
     /// The quote is collapsed by default. It is there to be sent, not read --
     /// the writer just saw the message they are answering.
     @State private var isShowingQuote = false
+    /// Capped at open so a long parent does not push the editor off screen.
+    @State private var quoteHeight: CGFloat = 160
+    /// Set by a toolbar press, consumed by the editor that owns the selection.
+    @State private var pendingStyle: MarkdownFormatting.Style?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,23 +62,70 @@ struct ComposeView: View {
                 attachmentBar
                 if assistant.isAvailable { assistantBar }
                 if let quoted = model.quotedSummary { quoteStrip(quoted) }
+                formattingBar
+                Divider()
                 ZStack(alignment: .topLeading) {
                     if model.body.isEmpty {
                         Text("Write your message…")
                             .font(.system(size: 13))
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 21).padding(.vertical, 18)
+                            .padding(.horizontal, 17).padding(.vertical, 14)
                             .allowsHitTesting(false)
                     }
-                    TextEditor(text: $model.body)
+                    MarkdownEditor(text: $model.body, pending: $pendingStyle)
                         .onChange(of: model.body) { _, _ in model.autosave() }
-                        .font(.system(size: 13))
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, 16).padding(.vertical, 10)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The marks `MarkdownBody` understands, as buttons.
+    ///
+    /// They type the same characters a writer would; nothing here is a
+    /// different kind of formatting from what you can write by hand, which is
+    /// what keeps one representation for the body rather than two.
+    private var formattingBar: some View {
+        HStack(spacing: 2) {
+            styleButton(.bold, "bold", "Bold", "b")
+            styleButton(.italic, "italic", "Italic", "i")
+            styleButton(.code, "chevron.left.forwardslash.chevron.right", "Code", nil)
+            styleButton(.link, "link", "Link", "k")
+            Divider().frame(height: 14).padding(.horizontal, 5)
+            styleButton(.bullet, "list.bullet", "Bulleted list", nil)
+            styleButton(.numbered, "list.number", "Numbered list", nil)
+            styleButton(.quote, "text.quote", "Quote", nil)
+            Spacer()
+            if model.isRichText {
+                Label("Formatted", systemImage: "textformat")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .help("This message will be sent as formatted text as well as plain")
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 5)
+    }
+
+    @ViewBuilder
+    private func styleButton(_ style: MarkdownFormatting.Style, _ symbol: String,
+                             _ name: String, _ key: Character?) -> some View {
+        let button = Button {
+            pendingStyle = style
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12))
+                .frame(width: 26, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(key.map { "\(name) (\u{2318}\(String($0).uppercased()))" } ?? name)
+
+        if let key {
+            button.keyboardShortcut(KeyEquivalent(key), modifiers: .command)
+        } else {
+            button
+        }
     }
 
     /// What is being answered, in one line, with the option to read it or drop
@@ -107,16 +158,24 @@ struct ComposeView: View {
             }
             .padding(.horizontal, 20).padding(.vertical, 7)
 
-            if isShowingQuote, let preview = model.quotedPreview {
-                ScrollView {
-                    Text(preview)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20).padding(.bottom, 10)
-                }
-                .frame(maxHeight: 160)
+            if isShowingQuote, let quoted = model.quotedMessage {
+                // The same view the thread pane uses, so the quote looks like
+                // the mail it came from. Capped: this is a glance to confirm
+                // what is being answered, not somewhere to read a newsletter.
+                // Inset and rounded: the quote is a card of somebody else's
+                // mail sitting inside this one, and a full-bleed white slab
+                // running to the window edge reads as the composer breaking
+                // rather than as a quotation.
+                MessageBodyView.previewOfQuote(quoted,
+                                               attachments: model.quotedAttachments,
+                                               onMeasure: { quoteHeight = min($0, 220) })
+                    .frame(height: quoteHeight)
+                    .background(quoted.bodyHTML != nil
+                                ? Color.white : Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(.quaternary, lineWidth: 1))
+                    .padding(.horizontal, 20).padding(.bottom, 12)
             }
         }
         .background(.quaternary.opacity(0.22))
@@ -194,13 +253,6 @@ struct ComposeView: View {
                 if !model.attachments.isEmpty {
                     Text(AttachmentViewModel.formattedSize(model.attachmentBytes))
                         .font(.caption2).foregroundStyle(.secondary)
-                }
-                if model.isRichText {
-                    Label("Formatted", systemImage: "textformat")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .help("**bold**, *italics*, `code`, - lists and [links](https://example.com) "
-                              + "are sent as formatted text.")
                 }
                 Spacer()
                 if let attachmentError {
