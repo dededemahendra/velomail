@@ -27,7 +27,7 @@ private struct SilentWriter: GmailWriting {
 
         // Otherwise pressing compose, then Escape, leaves a phantom draft to
         // resume forever.
-        #expect(try drafts.load() == nil)
+        #expect(try drafts.latest() == nil)
     }
 
     @Test func typingARecipientIsEnoughToSave() throws {
@@ -37,7 +37,7 @@ private struct SilentWriter: GmailWriting {
 
         model.autosave()
 
-        #expect(try drafts.load()?.draft.to == ["a@b.com"])
+        #expect(try drafts.latest()?.draft.to == ["a@b.com"])
     }
 
     @Test func typingABodyIsEnoughToSave() throws {
@@ -47,7 +47,7 @@ private struct SilentWriter: GmailWriting {
 
         model.autosave()
 
-        #expect(try drafts.load()?.draft.bodyText.contains("I was saying") == true)
+        #expect(try drafts.latest()?.draft.bodyText.contains("I was saying") == true)
     }
 
     @Test func aSignatureAloneIsNotADraft() throws {
@@ -65,7 +65,7 @@ private struct SilentWriter: GmailWriting {
         model.autosave()
 
         // The signature was put there by the app, not typed by the user.
-        #expect(try drafts.load() == nil)
+        #expect(try drafts.latest() == nil)
     }
 
     @Test func resumingRestoresEveryField() throws {
@@ -123,7 +123,7 @@ private struct SilentWriter: GmailWriting {
 
         try model.send()
 
-        #expect(try drafts.load() == nil)
+        #expect(try drafts.latest() == nil)
     }
 
     @Test func discardingClearsTheDraftAndTheComposer() throws {
@@ -134,7 +134,7 @@ private struct SilentWriter: GmailWriting {
 
         model.discardDraft()
 
-        #expect(try drafts.load() == nil)
+        #expect(try drafts.latest() == nil)
         #expect(model.to.isEmpty)
     }
 
@@ -186,7 +186,7 @@ private struct SilentWriter: GmailWriting {
     @Test func composingResumesAStoredDraftRatherThanStartingBlank() throws {
         let (app, drafts) = try makeApp()
         try drafts.save(Draft(to: ["a@b.com"], subject: "Half written",
-                              bodyText: "I was saying"))
+                              bodyText: "I was saying"), id: "seed")
 
         app.handle(KeyInput(.character("c")))
 
@@ -204,12 +204,17 @@ private struct SilentWriter: GmailWriting {
         #expect(app.compose.subject.isEmpty)
     }
 
-    @Test func discardFromThePaletteClearsIt() throws {
+    @Test func discardFromThePaletteClearsWhatIsOnScreen() throws {
+        // Discard acts on the message in the composer, not on whatever happens
+        // to be the newest row: with several drafts in flight, a palette
+        // command that binned an unrelated one would be the old bug wearing a
+        // different hat.
         let (app, drafts) = try makeApp()
-        try drafts.save(Draft(to: ["a@b.com"], subject: "Half written", bodyText: "x"))
+        try drafts.save(Draft(to: ["a@b.com"], subject: "Half written", bodyText: "x"), id: "seed")
 
+        app.handle(KeyInput(.character("c")))   // resumes it
         app.perform(.discardDraft)
 
-        #expect(try drafts.load() == nil)
+        #expect(try drafts.latest() == nil)
     }
 }

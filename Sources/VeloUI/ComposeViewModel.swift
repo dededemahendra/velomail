@@ -43,6 +43,11 @@ public final class ComposeViewModel: ObservableObject {
     private let resolveIdentity: () -> String
     private let library: SnippetLibrary
     private let drafts: DraftStore?
+    /// Mints the id for a fresh draft. Injectable so tests can name them.
+    private let newDraftID: () -> String
+    /// Which stored draft this composer is editing. A fresh one per compose, so
+    /// starting a second message cannot overwrite the first.
+    private var draftID: String
     /// Built once per composed message rather than per keystroke: it reads a
     /// year of mail, which is cheap once and not cheap sixty times a minute.
     private let contacts: (() -> AddressBook?)?
@@ -58,7 +63,10 @@ public final class ComposeViewModel: ObservableObject {
     public init(outbound: OutboundService, identity: @escaping () -> String,
                 library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
                 addressBook: AddressBook? = nil,
-                contacts: (() -> AddressBook?)? = nil) {
+                contacts: (() -> AddressBook?)? = nil,
+                newDraftID: @escaping () -> String = { UUID().uuidString }) {
+        self.newDraftID = newDraftID
+        self.draftID = newDraftID()
         self.outbound = outbound
         self.resolveIdentity = identity
         self.library = library
@@ -70,9 +78,11 @@ public final class ComposeViewModel: ObservableObject {
     public convenience init(outbound: OutboundService, identity: String,
                             library: SnippetLibrary = .empty, drafts: DraftStore? = nil,
                             addressBook: AddressBook? = nil,
-                            contacts: (() -> AddressBook?)? = nil) {
+                            contacts: (() -> AddressBook?)? = nil,
+                            newDraftID: @escaping () -> String = { UUID().uuidString }) {
         self.init(outbound: outbound, identity: { identity }, library: library,
-                  drafts: drafts, addressBook: addressBook, contacts: contacts)
+                  drafts: drafts, addressBook: addressBook, contacts: contacts,
+                  newDraftID: newDraftID)
     }
 
     // MARK: - Drafts
@@ -145,10 +155,10 @@ public final class ComposeViewModel: ObservableObject {
     public func autosave() {
         guard let drafts else { return }
         guard hasContent else {
-            try? drafts.discard()
+            try? drafts.discard(id: draftID)
             return
         }
-        try? drafts.save(currentDraft())
+        try? drafts.save(currentDraft(), id: draftID)
     }
 
     /// Loads a draft into the composer, threading and all.
@@ -157,6 +167,9 @@ public final class ComposeViewModel: ObservableObject {
     /// same act of putting written words back in front of the writer.
     public func resume(_ draft: Draft) {
         refreshContacts()
+        // A draft handed over without a row of its own -- a reopened failed
+        // send -- becomes a new one rather than claiming someone else's id.
+        draftID = newDraftID()
         to = draft.to.joined(separator: ", ")
         cc = draft.cc.joined(separator: ", ")
         bcc = draft.bcc.joined(separator: ", ")
@@ -169,21 +182,38 @@ public final class ComposeViewModel: ObservableObject {
                           references: draft.references)
     }
 
-    /// Puts the stored draft back in the composer. A no-op when there is none.
+    /// Puts a stored draft back in the composer, keeping its identity so
+    /// further edits update that row rather than forking a copy.
+    public func resume(_ stored: StoredDraft) {
+        resume(stored.draft)
+        draftID = stored.id
+    }
+
+    /// Resumes what was being written most recently. A no-op when there is none.
     public func resumeDraft() {
         guard let stored = storedDraft else { return }
-        resume(stored.draft)
+        resume(stored)
     }
+
+    /// Every draft in flight, most recently touched first.
+    public var storedDrafts: [StoredDraft] { (try? drafts?.all()) as? [StoredDraft] ?? [] }
 
     /// Flattens the double optional a `try?` on an optional store produces.
     private var storedDraft: StoredDraft? {
-        guard let drafts, let stored = try? drafts.load() else { return nil }
+        guard let drafts, let stored = try? drafts.latest() else { return nil }
         return stored
     }
 
+    /// Bins the draft on screen. The others are untouched.
     public func discardDraft() {
-        try? drafts?.discard()
+        try? drafts?.discard(id: draftID)
         startNew()
+    }
+
+    /// Bins a named draft without disturbing what is being written.
+    public func discard(_ stored: StoredDraft) {
+        try? drafts?.discard(id: stored.id)
+        if stored.id == draftID { startNew() }
     }
 
     /// An untouched composer is not a draft. The signature is excluded because
@@ -227,6 +257,9 @@ public final class ComposeViewModel: ObservableObject {
 
     public func startNew() {
         refreshContacts()
+        // A new message is a new row. Reusing the id is exactly how the last
+        // half-written one used to be overwritten.
+        draftID = newDraftID()
         to = ""; cc = ""; bcc = ""; subject = ""; body = signatureBlock
         attachments = []
         isReply = false
@@ -279,8 +312,9 @@ public final class ComposeViewModel: ObservableObject {
     public func send() throws -> Int64? {
         guard canSend else { return nil }
         let queued = try outbound.send(currentDraft(), after: AppViewModel.undoWindow)
-        // The message is on its way, so there is nothing left to resume.
-        try? drafts?.discard()
+        // This message is on its way, so its draft has nothing left to hold.
+        // Only this one: the others are still being written.
+        try? drafts?.discard(id: draftID)
         startNew()
         return queued
     }

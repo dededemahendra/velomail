@@ -83,7 +83,7 @@ import VeloCore
         let app = try makeApp(unread: 2)
 
         app.handle(KeyInput(.character("g")))
-        app.handle(KeyInput(.character("d")))
+        app.handle(KeyInput(.character("z")))
 
         #expect(app.isFocused)
         #expect(app.visibleUnreadCount == 0)
@@ -92,10 +92,10 @@ import VeloCore
     @Test func theFocusChordTogglesBackOff() throws {
         let app = try makeApp(unread: 2)
         app.handle(KeyInput(.character("g")))
-        app.handle(KeyInput(.character("d")))
+        app.handle(KeyInput(.character("z")))
 
         app.handle(KeyInput(.character("g")))
-        app.handle(KeyInput(.character("d")))
+        app.handle(KeyInput(.character("z")))
 
         #expect(!app.isFocused)
         #expect(app.visibleUnreadCount == 2)
