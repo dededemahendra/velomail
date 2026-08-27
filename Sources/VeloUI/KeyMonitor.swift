@@ -49,9 +49,16 @@ struct KeyMonitor: NSViewRepresentable {
         case 53: return KeyInput(.escape, modifiers)
         case 51, 117: return KeyInput(.delete, modifiers)   // Backspace, forward delete
         default:
-            // "/" opens search, so punctuation cannot be filtered out wholesale.
+            // Letters and digits, plus whatever punctuation the keymap actually
+            // listens for. Asking the engine rather than keeping a list here is
+            // what stops a new binding on punctuation being filtered out and
+            // silently doing nothing -- which is what happened to `Cmd+,`.
+            //
+            // Not everything: a monitor that swallowed every key would take
+            // them from the text field the writer is typing into.
             guard let character = event.charactersIgnoringModifiers?.first,
-                  character.isLetter || character.isNumber || character == "/" else { return nil }
+                  character.isLetter || character.isNumber
+                      || KeyboardEngine.boundCharacters.contains(character) else { return nil }
             return KeyInput(.character(character), modifiers)
         }
     }

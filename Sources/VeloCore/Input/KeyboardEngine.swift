@@ -91,9 +91,28 @@ public struct KeyboardEngine {
 
     // MARK: - The v1 keymap
 
-    private struct Chord: Hashable {
+    struct Chord: Hashable {
         let prefix: KeyInput
         let second: KeyInput
+    }
+
+    /// Every character the keymap listens for, chord prefixes and second keys
+    /// included.
+    ///
+    /// Exposed so the event monitor can allow exactly these through rather than
+    /// keeping a hand-written list beside them. A binding on punctuation that
+    /// the monitor filtered out was silently unreachable: `Cmd+,` for settings
+    /// was added, shipped, and did nothing at all.
+    public static var boundCharacters: Set<Character> {
+        var found: Set<Character> = []
+        for input in bindings.keys {
+            if case let .character(character) = input.key { found.insert(character) }
+        }
+        for chord in chords.keys {
+            if case let .character(character) = chord.prefix.key { found.insert(character) }
+            if case let .character(character) = chord.second.key { found.insert(character) }
+        }
+        return found
     }
 
     private static let bindings: [KeyInput: MailAction] = [
