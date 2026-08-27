@@ -125,6 +125,49 @@ public struct OutboundService: Sendable {
         try mutations.delete(id: mutationID)
     }
 
+    // MARK: - Scheduled sends
+
+    /// Anything not due for a good while yet.
+    ///
+    /// Every send waits out an undo window, so "has a dueAt" is not the same as
+    /// "was scheduled". The threshold keeps the last ten seconds of ordinary
+    /// sending off a screen that is meant to list deliberate choices.
+    public static let scheduleThreshold: TimeInterval = 60
+
+    /// Messages waiting for their hour, soonest first.
+    public func scheduled(now moment: Date = Date()) throws -> [ScheduledSend] {
+        try mutations.all()
+            .filter { $0.kind == .send }
+            .compactMap { mutation -> ScheduledSend? in
+                guard let id = mutation.id, let dueAt = mutation.dueAt,
+                      dueAt.timeIntervalSince(moment) > Self.scheduleThreshold,
+                      let payload = try? JSONDecoder().decode(OutboundSendPayload.self,
+                                                              from: mutation.payload)
+                else { return nil }
+                return ScheduledSend(id: id, draft: payload.draft, dueAt: dueAt)
+            }
+            .sorted { $0.dueAt < $1.dueAt }
+    }
+
+    /// Lets a scheduled message go on the next drain.
+    public func sendNow(mutationID: Int64) throws {
+        try mutations.clearDueAt(id: mutationID)
+    }
+
+    /// Takes a scheduled message back out of the queue and returns its draft.
+    ///
+    /// The optimistic copy goes with it: a message the writer decided not to
+    /// send must not stay visible in the thread as though it had.
+    public func unschedule(mutationID: Int64) throws -> Draft? {
+        guard let mutation = try mutations.all().first(where: { $0.id == mutationID }),
+              mutation.kind == .send,
+              let payload = try? JSONDecoder().decode(OutboundSendPayload.self,
+                                                      from: mutation.payload) else { return nil }
+        try rollBackSend(payload)
+        try mutations.delete(id: mutationID)
+        return payload.draft
+    }
+
     // MARK: - Failures
 
     /// How many pushes a mutation gets before the queue gives up on it.

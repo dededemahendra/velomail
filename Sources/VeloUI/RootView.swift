@@ -27,11 +27,15 @@ public struct RootView: View {
                 ComposeView(model: app.compose,
                             assistant: app.assistant,
                             onSend: { app.perform(.send) },
+                            onSendLater: { app.sendLater($0) },
                             onCancel: { app.perform(.back) })
             case .drafts:
                 DraftListView(drafts: app.drafts,
+                              scheduled: app.scheduled,
                               onOpen: { app.resumeDraft($0) },
                               onDiscard: { app.discardDraft($0) },
+                              onSendNow: { app.sendNow($0) },
+                              onUnschedule: { app.unschedule($0) },
                               onClose: { app.perform(.back) })
             default:
                 mailSurface

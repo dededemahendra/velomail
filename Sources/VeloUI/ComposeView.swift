@@ -6,6 +6,7 @@ struct ComposeView: View {
     @ObservedObject var model: ComposeViewModel
     @ObservedObject var assistant: AssistantViewModel
     let onSend: () -> Void
+    var onSendLater: (Date) -> Void = { _ in }
     let onCancel: () -> Void
 
     @State private var isWorking = false
@@ -21,6 +22,14 @@ struct ComposeView: View {
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Button("Cancel", action: onCancel).keyboardShortcut(.cancelAction)
+                Menu("Later") {
+                    Button("Tomorrow morning") { onSendLater(Horizon.tomorrow()) }
+                    Button("Next week") { onSendLater(Horizon.nextWeek()) }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!model.canSend)
+                .help("Write it now, let it arrive at a better hour")
                 Button("Send", action: onSend)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!model.canSend)

@@ -311,8 +311,10 @@ public final class AppViewModel: ObservableObject {
         case .goToSent: show(.sent)
         case .goToSnoozed: show(.snoozed)
         case .goToDrafts: showDrafts()
-        case .snoozeUntilTomorrow: snoozeSelected(until: { SnoozeHorizon.tomorrow() })
-        case .snoozeUntilNextWeek: snoozeSelected(until: { SnoozeHorizon.nextWeek() })
+        case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })
+        case .snoozeUntilNextWeek: snoozeSelected(until: { Horizon.nextWeek() })
+        case .sendTomorrow: sendLater(Horizon.tomorrow())
+        case .sendNextWeek: sendLater(Horizon.nextWeek())
         case .unsnoozeSelected: dispose("Woken") { try inbox.unsnoozeSelected() }
         case .back: goBack()
         case .openCommandPalette: route = .palette
@@ -398,6 +400,43 @@ public final class AppViewModel: ObservableObject {
         try? inbox.reload()
     }
 
+    /// Queues what is in the composer to go at `moment`.
+    ///
+    /// No undo banner: an offer to take something back for ten seconds makes no
+    /// sense for a message that is not going for a day. It is cancellable for
+    /// as long as it waits, from the drafts screen.
+    public func sendLater(_ moment: Date) {
+        guard (try? compose.send(at: moment)) ?? nil != nil else { return }
+        route = .list
+        refreshOutgoing()
+        try? inbox.reload()
+    }
+
+    /// Messages written and waiting for their hour.
+    @Published public private(set) var scheduled: [ScheduledSend] = []
+
+    /// Lets one go on the next drain.
+    public func sendNow(_ send: ScheduledSend) {
+        try? outbound.sendNow(mutationID: send.id)
+        refreshOutgoing()
+    }
+
+    /// Takes one back out of the queue and puts its words in the composer.
+    public func unschedule(_ send: ScheduledSend) {
+        guard let draft = (try? outbound.unschedule(mutationID: send.id)) ?? nil else {
+            refreshOutgoing()
+            return
+        }
+        compose.resume(draft)
+        route = .compose
+        refreshOutgoing()
+        try? inbox.reload()
+    }
+
+    private func refreshOutgoing() {
+        scheduled = (try? outbound.scheduled()) ?? []
+    }
+
     /// Opens the undo window on a queued send. Held back briefly so it can be
     /// taken back: there is no unsending mail, and a visible window is the
     /// honest version of "undo send".
@@ -446,6 +485,7 @@ public final class AppViewModel: ObservableObject {
     /// has to be in it.
     public func showDrafts() {
         drafts = compose.storedDrafts
+        refreshOutgoing()
         route = .drafts
     }
 
