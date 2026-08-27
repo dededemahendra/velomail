@@ -32,6 +32,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case switchAccount
     case addAccount
     case openSettings
+    case snoozeAtTime
+    case sendAtTime
     case sendTomorrow
     case sendNextWeek
     case snoozeUntilTomorrow

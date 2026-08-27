@@ -20,8 +20,10 @@ struct AttachmentStrip: View {
     }
 
     private func chip(_ attachment: MailAttachment) -> some View {
+        // A click looks at it; saving is the deliberate act behind a menu.
+        // Wanting to read something is far more common than wanting a copy.
         Button {
-            Task { await model.save(attachment) }
+            Task { await model.preview(attachment) }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: AttachmentViewModel.symbol(for: attachment.mimeType))
@@ -31,14 +33,23 @@ struct AttachmentStrip: View {
                 if !size.isEmpty {
                     Text(size).font(.caption2).foregroundStyle(.secondary)
                 }
-                Image(systemName: "arrow.down.circle").font(.caption2).foregroundStyle(.secondary)
+                Image(systemName: "eye").font(.caption2).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 9).padding(.vertical, 6)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Save \(attachment.filename) to Downloads")
+        .help("Open \(attachment.filename)")
+        .accessibilityLabel("Open \(attachment.filename)")
+        .contextMenu {
+            Button("Open") { Task { await model.preview(attachment) } }
+            Button("Save to Downloads") { Task { await model.save(attachment) } }
+        }
+        // Dragging a file out to the desktop is the other half of the reflex.
+        // The bytes may not be here yet, so the provider fetches on demand
+        // rather than blocking the drag from starting.
+        .onDrag { model.provider(for: attachment) }
     }
 
     @ViewBuilder

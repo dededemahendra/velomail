@@ -267,6 +267,24 @@ public final class ComposeViewModel: ObservableObject {
     /// The size check happens here rather than at send: refusing a 40MB video
     /// now is a fine experience, while appearing to send it and surfacing a
     /// server error after the undo window closed is not.
+    /// Attaches several files, keeping what worked.
+    ///
+    /// - Returns: the names that could not be attached, so the caller can say
+    ///   which. Dropping five files and getting none because one was
+    ///   unreadable is worse than getting four and being told.
+    @discardableResult
+    public func attach(_ urls: [URL]) -> [String] {
+        var failed: [String] = []
+        for url in urls {
+            do {
+                try attach(url)
+            } catch {
+                failed.append(url.lastPathComponent)
+            }
+        }
+        return failed
+    }
+
     public func attach(_ url: URL) throws {
         let data = try Data(contentsOf: url)
         guard attachmentBytes + data.count <= Draft.maximumAttachmentBytes else {

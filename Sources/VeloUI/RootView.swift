@@ -75,6 +75,13 @@ public struct RootView: View {
         } message: {
             Text(app.sendWarning?.question ?? "")
         }
+        .sheet(item: Binding(get: { app.timeRequest }, set: { if $0 == nil { app.cancelTime() } })) {
+            request in
+            TimePickerSheet(request: request,
+                            morningHour: app.preferences.morningHour,
+                            onConfirm: { app.confirmTime($0) },
+                            onCancel: { app.cancelTime() })
+        }
         .sheet(isPresented: $app.isShowingSettings) {
             SettingsView(model: settings,
                          accounts: app.accounts,
