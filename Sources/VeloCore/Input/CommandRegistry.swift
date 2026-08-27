@@ -92,6 +92,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Focus Mode", action: .toggleFocus, group: .app),
         Command(title: "Discard Draft", action: .discardDraft, group: .write),
         Command(title: "Analytics", action: .showAnalytics, group: .mailbox),
+        Command(title: "Senders", action: .showSenders, group: .mailbox),
         Command(title: "Unsubscribe", action: .unsubscribe, group: .triage),
         Command(title: "Summarise Thread", action: .summarizeThread, group: .assistant),
         Command(title: "Suggest Replies", action: .suggestReplies, group: .assistant),

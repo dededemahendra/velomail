@@ -31,6 +31,48 @@ public final class MailStore: Sendable {
         try database.dbQueue.read { try Self.inboxRequest(now: now).fetchAll($0) }
     }
 
+    /// Who is sending you the mail that is sitting in your inbox.
+    ///
+    /// One row per thread, rolled up by address afterwards rather than in SQL,
+    /// because the identity is the bare address inside a "Name <addr>" header
+    /// and pulling that apart is not SQLite's job.
+    ///
+    /// The unsubscribe flag comes from the thread's messages: the header is per
+    /// message and bulk senders do not always set it, so one is enough.
+    public func inboxSenders(now: Date = Date()) throws -> [SenderSummary] {
+        let rows = try database.dbQueue.read { db -> [SenderRollup.Row] in
+            try Row.fetchAll(db, sql: """
+                SELECT t.sender AS sender, t.isUnread AS isUnread,
+                       t.lastMessageDate AS lastMessageDate,
+                       EXISTS (
+                         SELECT 1 FROM message m
+                         WHERE m.threadID = t.id
+                           AND m.listUnsubscribe IS NOT NULL
+                           AND m.listUnsubscribe <> ''
+                       ) AS canUnsubscribe
+                FROM thread t
+                WHERE t.labelIDs LIKE '%"INBOX"%'
+                  AND (t.snoozedUntil IS NULL OR t.snoozedUntil <= ?)
+                """, arguments: [now])
+            .map {
+                SenderRollup.Row(sender: $0["sender"] ?? "",
+                                 isUnread: $0["isUnread"] ?? false,
+                                 canUnsubscribe: $0["canUnsubscribe"] ?? false,
+                                 date: $0["lastMessageDate"] ?? Date.distantPast)
+            }
+        }
+        return SenderRollup.summarise(rows)
+    }
+
+    /// Every inbox thread from one address, newest first. What "archive all of
+    /// this" acts on.
+    public func inboxThreads(from address: String, now: Date = Date()) throws -> [MailThread] {
+        let wanted = Draft.normalizedAddress(address)
+        return try inboxThreads(now: now).filter {
+            Draft.normalizedAddress($0.sender) == wanted
+        }
+    }
+
     /// Threads carrying Gmail's own `SENT` label, newest first.
     ///
     /// Not filtered by snooze: a snooze says when something should come back to

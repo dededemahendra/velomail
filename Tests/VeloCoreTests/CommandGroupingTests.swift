@@ -14,7 +14,7 @@ import Foundation
         let stray = registry.commands.filter { $0.group == .mailbox }.map(\.title)
         #expect(stray.allSatisfy {
             ["Load older mail", "Sync now", "Open in Gmail", "Export thread",
-             "Analytics", "Toggle remote images"].contains($0)
+             "Analytics", "Senders", "Toggle remote images"].contains($0)
         }, "ungrouped: \(stray)")
     }
 

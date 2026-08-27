@@ -171,6 +171,7 @@ public struct KeyboardEngine {
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("d"))): .goToDrafts,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("z"))): .toggleFocus,
         Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("a"))): .showAnalytics,
+        Chord(prefix: KeyInput(.character("g")), second: KeyInput(.character("u"))): .showSenders,
         // AI lives behind `a`, freeing `s` for star. AI is optional and off by
         // default, so on most launches `s` and `d` were two of the best keys on
         // the keyboard doing nothing at all; star works for every user, always.

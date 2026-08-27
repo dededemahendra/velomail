@@ -83,6 +83,17 @@ public struct RootView: View {
                             onConfirm: { app.confirmTime($0) },
                             onCancel: { app.cancelTime() })
         }
+        .sheet(isPresented: $app.isShowingSenders) {
+            SendersView(senders: app.senders,
+                        totalThreads: app.senders.reduce(0) { $0 + $1.threads },
+                        selected: app.selectedSender,
+                        onSelect: { app.selectedSender = $0 },
+                        onArchiveAll: { app.archiveAll(from: $0) },
+                        onAlwaysArchive: { app.alwaysArchive(from: $0) },
+                        onUnsubscribe: { app.unsubscribe(from: $0) },
+                        onOpen: { app.openSenderInInbox($0) },
+                        onClose: { app.isShowingSenders = false })
+        }
         .sheet(isPresented: $app.isShowingShortcuts) {
             ShortcutsView(onClose: { app.isShowingShortcuts = false })
         }
