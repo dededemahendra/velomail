@@ -36,6 +36,10 @@ public final class InboxViewModel: ObservableObject {
     /// The list currently on screen. Changing it reloads from the top.
     @Published public private(set) var scope: MailScope = .inbox
     @Published public private(set) var threads: [MailThread] = []
+    /// Whether mail has ever reached this session. An empty list means two
+    /// different things on either side of this, and only one of them is
+    /// "you are finished".
+    @Published public private(set) var hasSeenMail = false
     /// `threads`, grouped. A contiguous partition of the same array, so
     /// `sections.flatMap(\.threads) == threads` always holds and a flat row
     /// index means the same thread in both.
@@ -276,6 +280,9 @@ public final class InboxViewModel: ObservableObject {
     /// Takes a freshly fetched inbox, puts it in section order, and records
     /// which section each row landed in.
     private func regroup(_ fetched: [MailThread]) {
+        // Set once and never cleared: switching to an empty label does not
+        // mean the mailbox has gone away.
+        if !fetched.isEmpty { hasSeenMail = true }
         threads = InboxSections.ordered(fetched)
         sectionIDs = threads.map(InboxSections.sectionID(for:))
         sections = InboxSections.group(threads, by: sectionIDs)

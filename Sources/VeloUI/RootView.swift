@@ -123,7 +123,8 @@ public struct RootView: View {
                               unread: app.unreadCount(in: app.inbox.scope))
                 Divider()
                 if app.inbox.threads.isEmpty {
-                    EmptyListView(scope: app.inbox.scope)
+                    EmptyListView(scope: app.inbox.scope, status: app.syncStatus,
+                                  hasSeenMail: app.inbox.hasSeenMail)
                 } else {
                     MessageListView(sections: app.sections,
                                     selectedIndex: app.inbox.selectedIndex,
@@ -211,51 +212,33 @@ struct MailboxHeader: View {
 
 struct EmptyListView: View {
     let scope: MailScope
-
-    var symbol: String {
-        switch scope {
-        case .inbox: return "checkmark.circle"
-        case .sent: return "paperplane"
-        case .snoozed: return "clock"
-        case .starred: return "star"
-        case .archive: return "archivebox"
-        case .label: return "tag"
-        }
-    }
-
-    var headline: String {
-        switch scope {
-        case .inbox: return "Inbox zero"
-        case .sent: return "Nothing sent yet"
-        case .snoozed: return "Nothing snoozed"
-        case .starred: return "Nothing starred"
-        case .archive: return "Nothing filed away"
-        case let .label(_, name): return "Nothing in \(name)"
-        }
-    }
-
-    var detail: String {
-        switch scope {
-        case .inbox: return "Nothing left to triage."
-        case .sent: return "Messages you send appear here."
-        case .snoozed: return "Threads you put off come back here."
-        case .starred: return "Press s on a thread to keep it to hand."
-        case .archive: return "Threads you archive with e wait here."
-        case .label: return "File a thread here from the command palette."
-        }
-    }
+    let status: SyncStatus
+    /// Whether any mail has ever reached this session. Without it a fresh
+    /// install and a finished morning of triage look identical.
+    let hasSeenMail: Bool
 
     var body: some View {
+        let state = EmptyState.of(scope: scope, status: status, hasSeenMail: hasSeenMail)
         VStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text(headline).font(.title3.weight(.medium))
-            Text(detail)
+            // Motion rather than a verdict, and in the symbol's place rather
+            // than above it.
+            if state.isWaiting {
+                ProgressView().controlSize(.small).frame(height: 34)
+            } else {
+                Image(systemName: state.symbol)
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(.tertiary)
+            }
+            Text(state.headline).font(.title3.weight(.medium))
+            Text(state.detail)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(state.headline). \(state.detail)")
     }
 }
 

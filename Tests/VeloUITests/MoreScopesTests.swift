@@ -94,7 +94,9 @@ private struct Quiet: GmailWriting {
     @Test func everyScopeHasAnEmptyStateOfItsOwn() throws {
         // A Starred list saying "Inbox zero" is worse than saying nothing.
         for scope in [MailScope.inbox, .sent, .snoozed, .starred, .archive] {
-            #expect(!EmptyListView(scope: scope).headline.isEmpty)
+            let state = EmptyState.of(scope: scope, status: .upToDate(lastSyncedAt: Date()),
+                                      hasSeenMail: true)
+            #expect(!state.headline.isEmpty)
         }
     }
 }
