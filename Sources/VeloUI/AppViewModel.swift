@@ -81,6 +81,13 @@ public final class AppViewModel: ObservableObject {
     /// A one-line answer to something the writer just did. Not an error
     /// channel: silence after pressing a button reads as a broken button.
     @Published public private(set) var notice: String?
+    /// How long a passing message stays up. Long enough to read one short
+    /// sentence, short enough that it is gone before it becomes furniture.
+    /// Settable so a four-second wait is not four seconds of test.
+    var noticeWindow: TimeInterval = 4
+    /// Identifies the notice a countdown belongs to, so two identical messages
+    /// in a row do not have the second cut short by the first one's timer.
+    private var noticeToken = 0
 
     /// True when every message's pictures load without being asked for.
     @Published public private(set) var alwaysLoadsImages = false
@@ -767,16 +774,43 @@ public final class AppViewModel: ObservableObject {
     /// Asks for another page of older mail and says what came back.
     public func loadOlderMail() async {
         guard let loadOlder else { return }
-        notice = nil
+        clearNotice()
         do {
             let found = try await loadOlder(AppViewModel.olderPageSize)
             try? inbox.reload()
-            notice = found == 0
+            show(notice: found == 0
                 ? "Nothing older to fetch"
-                : "\(found) older message\(found == 1 ? "" : "s")"
+                : "\(found) older message\(found == 1 ? "" : "s")")
         } catch {
-            notice = "Could not fetch older mail"
+            show(notice: "Could not fetch older mail")
         }
+    }
+
+    /// Shows a passing message and starts its countdown.
+    ///
+    /// Notices used to have no lifetime at all: one was cleared only when the
+    /// next notice-producing action began, so "Up to date" sat on screen until
+    /// the reader happened to sync again.
+    private func show(notice text: String) {
+        notice = text
+        noticeToken += 1
+        let token = noticeToken
+        let window = noticeWindow
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
+            await MainActor.run { self?.expireNotice(token) }
+        }
+    }
+
+    /// Clears the banner only if it is still the one that started this
+    /// countdown; a newer message must keep its full window.
+    private func expireNotice(_ token: Int) {
+        if noticeToken == token { notice = nil }
+    }
+
+    private func clearNotice() {
+        notice = nil
+        noticeToken += 1
     }
 
     /// Asks for a sync pass now rather than waiting out the backoff.
@@ -785,15 +819,15 @@ public final class AppViewModel: ObservableObject {
     /// pressing this repeatedly is harmless.
     public func syncMailNow() async {
         guard let syncNow else { return }
-        notice = nil
+        clearNotice()
         do {
             try await syncNow()
             try? inbox.reload()
-            notice = "Up to date"
+            show(notice: "Up to date")
         } catch {
             // The status bar carries the detail; this only confirms the press
             // was heard, since a failed pass can leave the list unchanged.
-            notice = "Could not reach Gmail"
+            show(notice: "Could not reach Gmail")
         }
     }
 

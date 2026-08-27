@@ -65,3 +65,43 @@ private actor Counter {
     private(set) var count = 0
     func bump() { count += 1 }
 }
+
+@MainActor
+@Suite struct NoticeLifetimeTests {
+    private func makeApp() throws -> AppViewModel {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: Quiet(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true, syncNow: { })
+        try app.start()
+        app.noticeWindow = 0.05
+        return app
+    }
+
+    @Test func aPassingMessagePasses() async throws {
+        // It had no lifetime at all: "Up to date" stayed until the reader
+        // happened to sync again.
+        let app = try makeApp()
+        await app.syncMailNow()
+        #expect(app.notice == "Up to date")
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(app.notice == nil)
+    }
+
+    @Test func theSameMessageTwiceKeepsItsFullWindow() async throws {
+        // Comparing by text alone would let the first countdown clear the
+        // second message early.
+        let app = try makeApp()
+        app.noticeWindow = 0.35
+        await app.syncMailNow()
+        try await Task.sleep(for: .milliseconds(250))
+        await app.syncMailNow()
+        try await Task.sleep(for: .milliseconds(200))
+        // The first timer has fired by now; the second must have survived it.
+        #expect(app.notice == "Up to date")
+    }
+}
