@@ -112,7 +112,8 @@ struct FollowUpBar: View {
                 ForEach(threads) { thread in
                     Button { onOpen(thread) } label: {
                         HStack {
-                            Text(thread.snippet).font(.callout).lineLimit(1)
+                            Text(HTMLText.decoded(thread.snippet))
+                                .font(.callout).lineLimit(1)
                             Spacer()
                             Text(MailFormatting.relativeDate(thread.lastMessageDate))
                                 .font(.caption).foregroundStyle(.secondary)
