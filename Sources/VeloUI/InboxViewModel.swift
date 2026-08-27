@@ -46,6 +46,7 @@ public final class InboxViewModel: ObservableObject {
 
     private let store: MailStore
     private let outbound: OutboundService
+    private let preferences = AppPreferences()
     private var cursor = SelectionCursor(count: 0)
     /// The section each row was assigned, parallel to `threads`.
     ///
@@ -232,8 +233,27 @@ public final class InboxViewModel: ObservableObject {
 
     public func markSelectedRead() throws {
         guard let thread = selectedThread else { return }
-        try outbound.markRead(threadID: thread.id)
-        try reloadPreservingSelection()
+        // Honours the reader's delay: someone triaging a busy inbox opens
+        // things to look, not to clear them.
+        let delay = preferences.marksReadAfter
+        // Negative means never: the thread stays unread however long it is open.
+        guard delay >= 0 else { return }
+
+        guard delay > 0 else {
+            try outbound.markRead(threadID: thread.id)
+            try reloadPreservingSelection()
+            return
+        }
+
+        // Waited out on the thread that is actually open. Moving on before the
+        // delay is up leaves it unread, which is the point of asking for one.
+        let id = thread.id
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, self.selectedThread?.id == id else { return }
+            try? self.outbound.markRead(threadID: id)
+            try? self.reloadPreservingSelection()
+        }
     }
 
     // MARK: - Internals

@@ -67,6 +67,14 @@ public struct RootView: View {
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
         .animation(.easeOut(duration: 0.18), value: app.failurePrompt)
         .animation(.easeOut(duration: 0.18), value: app.notice)
+        .alert("Send this message?", isPresented: Binding(
+            get: { app.sendWarning != nil },
+            set: { if !$0 { app.cancelSend() } })) {
+            Button(app.sendWarning?.proceed ?? "Send") { app.confirmSend() }
+            Button("Cancel", role: .cancel) { app.cancelSend() }
+        } message: {
+            Text(app.sendWarning?.question ?? "")
+        }
         .sheet(isPresented: $app.isShowingSettings) {
             SettingsView(model: settings,
                          accounts: app.accounts,

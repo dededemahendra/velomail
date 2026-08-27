@@ -83,7 +83,7 @@ public final class AppViewModel: ObservableObject {
     /// The choices the app makes on the reader's behalf. Read at the moment
     /// each is used, so changing one in settings takes effect immediately
     /// rather than at the next launch.
-    public let preferences = AppPreferences()
+    public let preferences: AppPreferences
 
     /// Every message being written, most recently touched first.
     @Published public private(set) var drafts: [StoredDraft] = []
@@ -151,6 +151,10 @@ public final class AppViewModel: ObservableObject {
     /// is about the app rather than about the mail, and closing it should put
     /// the reader back exactly where they were.
     @Published public var isShowingSettings = false
+
+    /// Something worth asking about before this message goes. Nothing has been
+    /// queued while it is set: the writer can still fix it.
+    @Published public private(set) var sendWarning: SendWarning?
 
     /// The labels worth offering, refreshed when the mail is.
     @Published public private(set) var labels: [MailLabel] = []
@@ -238,11 +242,12 @@ public final class AppViewModel: ObservableObject {
                             snippets: SnippetLibrary = .empty,
                             attachmentModel: AttachmentViewModel? = nil,
                             drafts: DraftStore? = nil,
-                            loadOlder: (@Sendable (Int) async throws -> Int)? = nil) {
+                            loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
+                            preferences: AppPreferences = AppPreferences()) {
         self.init(config: config, store: store, outbound: outbound,
                   identity: { identity }, isSignedIn: isSignedIn, assistant: assistant,
                   search: search, snippets: snippets, attachmentModel: attachmentModel,
-                  drafts: drafts, loadOlder: loadOlder)
+                  drafts: drafts, loadOlder: loadOlder, preferences: preferences)
     }
 
     public init(config: AppConfig, store: MailStore, outbound: OutboundService,
@@ -252,7 +257,9 @@ public final class AppViewModel: ObservableObject {
                 snippets: SnippetLibrary = .empty,
                 attachmentModel: AttachmentViewModel? = nil,
                 drafts: DraftStore? = nil,
-                loadOlder: (@Sendable (Int) async throws -> Int)? = nil) {
+                loadOlder: (@Sendable (Int) async throws -> Int)? = nil,
+                preferences: AppPreferences = AppPreferences()) {
+        self.preferences = preferences
         self.loadOlder = loadOlder
         self.config = config
         self.isSignedIn = isSignedIn
@@ -293,6 +300,8 @@ public final class AppViewModel: ObservableObject {
             route = landingRoute
             return
         }
+        // Whichever list the reader chose to start on.
+        try? inbox.show(AppViewModel.scope(named: preferences.opensAt))
         try inbox.reload()
         refreshFailures()
         refreshLabels()
@@ -418,7 +427,7 @@ public final class AppViewModel: ObservableObject {
         case .archiveSelected: dispose("Archived") { try inbox.archiveSelected() }
         case .trashSelected: dispose("Deleted") { try inbox.trashSelected() }
         case .markUnreadSelected: try? inbox.markSelectedUnread()
-        case .reply: startReply()
+        case .reply: startReply(toEveryone: preferences.repliesToEveryone)
         case .replyAll: startReply(toEveryone: true)
         case .forward: startForward()
         case .compose:
@@ -527,6 +536,30 @@ public final class AppViewModel: ObservableObject {
     }
 
     private func send() {
+        // Asked before anything is queued, so cancelling leaves the message
+        // exactly as it was for the writer to fix.
+        if let warning = SendWarning.check(compose.pendingDraft,
+                                           recipientLimit: preferences.recipientLimit),
+           warning != .missingAttachment || preferences.warnsAboutAttachments {
+            sendWarning = warning
+            return
+        }
+        deliver()
+    }
+
+    /// Sends anyway, having been asked.
+    public func confirmSend() {
+        sendWarning = nil
+        deliver()
+    }
+
+    /// Goes back to the message rather than sending it.
+    public func cancelSend() {
+        sendWarning = nil
+        route = .compose
+    }
+
+    private func deliver() {
         guard let queued = try? compose.send() else { return }
         holdUndo(queued)
         route = .list
@@ -603,6 +636,18 @@ public final class AppViewModel: ObservableObject {
             holdUndo(queued)
         case let .web(url):
             openURL(url)
+        }
+    }
+
+    /// The scope a stored name refers to. Unknown names fall back to the
+    /// inbox: a setting written by a newer build should not open nothing.
+    static func scope(named name: String) -> MailScope {
+        switch name {
+        case "sent": return .sent
+        case "starred": return .starred
+        case "snoozed": return .snoozed
+        case "archive": return .archive
+        default: return .inbox
         }
     }
 

@@ -17,7 +17,7 @@ struct SettingsView: View {
     /// The sections, in the order someone would go looking for them: who you
     /// are, then how you write, then what the app does on its own.
     enum Section: String, CaseIterable, Identifiable {
-        case accounts, writing, snippets, reading, timing, rules, ai
+        case accounts, writing, composing, snippets, reading, timing, rules, ai
 
         var id: String { rawValue }
 
@@ -25,6 +25,7 @@ struct SettingsView: View {
             switch self {
             case .accounts: return "Accounts"
             case .writing: return "Writing"
+            case .composing: return "Composing"
             case .snippets: return "Snippets"
             case .reading: return "Reading"
             case .timing: return "Timing"
@@ -37,6 +38,7 @@ struct SettingsView: View {
             switch self {
             case .accounts: return "person.crop.circle"
             case .writing: return "signature"
+            case .composing: return "arrowshape.turn.up.left"
             case .snippets: return "text.badge.plus"
             case .reading: return "eye"
             case .timing: return "timer"
@@ -51,6 +53,7 @@ struct SettingsView: View {
             switch self {
             case .accounts: return "The mailboxes this app knows about."
             case .writing: return "What goes at the bottom of everything you send."
+            case .composing: return "What happens when you answer, and before a message goes."
             case .snippets: return "Short things you type often."
             case .reading: return "What the app shows you, and when it interrupts."
             case .timing: return "How long the app waits before doing what you asked."
@@ -138,6 +141,7 @@ struct SettingsView: View {
                     switch current {
                     case .accounts: accountsTab
                     case .writing: writingTab
+                    case .composing: composingTab
                     case .snippets: snippetsTab
                     case .reading: readingTab
                     case .timing: timingTab
@@ -223,6 +227,41 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Composing
+
+    private var composingTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            group("Replying",
+                  footnote: "Shift+R always answers everyone, whichever way this is set.") {
+                Toggle("r answers everyone on the message", isOn: $model.repliesToEveryone)
+                    .controlSize(.small)
+                Divider().opacity(0.4)
+                Toggle("Include the message being answered", isOn: $model.quotesByDefault)
+                    .controlSize(.small)
+            }
+
+            group("Before sending",
+                  footnote: "Asked only for these two. A client that questions every send "
+                  + "teaches people to dismiss it without reading.") {
+                Toggle("Ask if a message mentions an attachment and has none",
+                       isOn: $model.warnsAboutAttachments)
+                    .controlSize(.small)
+                Divider().opacity(0.4)
+                Stepper(value: $model.recipientLimit, in: 0...100, step: 1) {
+                    HStack {
+                        Text("Ask above")
+                        Spacer()
+                        Text(model.recipientLimit == 0
+                             ? "Never"
+                             : "\(Int(model.recipientLimit)) recipients")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
     // MARK: - Snippets
 
     private var snippetsTab: some View {
@@ -273,6 +312,29 @@ struct SettingsView: View {
                   + "with it are always shown.") {
                 Toggle("Load images in messages", isOn: $model.loadsImages)
                     .controlSize(.small)
+            }
+
+            group("Opening",
+                  footnote: "Which list is on screen when the app starts.") {
+                Picker("", selection: $model.opensAt) {
+                    Text("Inbox").tag("inbox")
+                    Text("Starred").tag("starred")
+                    Text("Snoozed").tag("snoozed")
+                    Text("Sent").tag("sent")
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
+            }
+
+            group("Marking as read",
+                  footnote: "Never is for triaging: open a thread to look at it without "
+                  + "losing track of what you have not dealt with.") {
+                Picker("", selection: $model.marksReadAfter) {
+                    Text("As soon as it opens").tag(0.0)
+                    Text("After 2 seconds").tag(2.0)
+                    Text("After 5 seconds").tag(5.0)
+                    Text("Never").tag(-1.0)
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
             }
 
             group("Notifications",

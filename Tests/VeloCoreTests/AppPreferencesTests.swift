@@ -98,4 +98,58 @@ import Foundation
 
         #expect(preferences.snoozeHours >= 1)
     }
+
+    // MARK: - Composing
+
+    @Test func replyingToEveryoneIsOffByDefault() {
+        // Answering more people than intended is the harder mistake to take
+        // back, and Shift+R is right there.
+        let (preferences, _) = makePreferences()
+        #expect(!preferences.repliesToEveryone)
+    }
+
+    @Test func quotingAndTheAttachmentCheckAreOnByDefault() {
+        let (preferences, _) = makePreferences()
+        #expect(preferences.quotesByDefault)
+        #expect(preferences.warnsAboutAttachments)
+    }
+
+    @Test func askingAboutACrowdIsOffUntilANumberIsGiven() {
+        // A client that questions every send teaches people to dismiss it
+        // without reading.
+        let (preferences, _) = makePreferences()
+        #expect(preferences.recipientLimit == 0)
+    }
+
+    @Test func theRecipientLimitCannotBeNegative() {
+        let (preferences, _) = makePreferences()
+        preferences.recipientLimit = -5
+        #expect(preferences.recipientLimit == 0)
+    }
+
+    // MARK: - Reading
+
+    @Test func markingReadIsImmediateByDefault() {
+        let (preferences, _) = makePreferences()
+        #expect(preferences.marksReadAfter == 0)
+    }
+
+    @Test func neverMarkingReadIsAllowed() {
+        // Someone triaging a busy inbox wants to open things without losing
+        // track of what they have not dealt with.
+        let (preferences, _) = makePreferences()
+        preferences.marksReadAfter = -1
+        #expect(preferences.marksReadAfter == -1)
+    }
+
+    @Test func aDelayIsCappedAtSomethingSensible() {
+        let (preferences, _) = makePreferences()
+        preferences.marksReadAfter = 600
+        #expect(preferences.marksReadAfter == 30)
+    }
+
+    @Test func theAppOpensOnTheInboxUnlessToldOtherwise() {
+        let (preferences, _) = makePreferences()
+        #expect(preferences.opensAt == "inbox")
+    }
 }

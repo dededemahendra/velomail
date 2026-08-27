@@ -67,6 +67,27 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var syncMinutes: Double = 1 {
         didSet { preferences.syncInterval = syncMinutes * 60 }
     }
+    @Published public var repliesToEveryone = false {
+        didSet { preferences.repliesToEveryone = repliesToEveryone }
+    }
+    @Published public var quotesByDefault = true {
+        didSet { preferences.quotesByDefault = quotesByDefault }
+    }
+    @Published public var warnsAboutAttachments = true {
+        didSet { preferences.warnsAboutAttachments = warnsAboutAttachments }
+    }
+    @Published public var recipientLimit: Double = 0 {
+        didSet { preferences.recipientLimit = Int(recipientLimit) }
+    }
+    @Published public var opensAt = "inbox" { didSet { preferences.opensAt = opensAt } }
+    @Published public var marksReadAfter: Double = 0 {
+        didSet {
+            preferences.marksReadAfter = marksReadAfter
+            if preferences.marksReadAfter != marksReadAfter {
+                marksReadAfter = preferences.marksReadAfter
+            }
+        }
+    }
 
     private let store: SettingsStore
     private let preferences: AppPreferences
@@ -96,6 +117,12 @@ public final class SettingsViewModel: ObservableObject {
         snoozeHours = preferences.snoozeHours
         morningHour = preferences.morningHour
         syncMinutes = preferences.syncInterval / 60
+        repliesToEveryone = preferences.repliesToEveryone
+        quotesByDefault = preferences.quotesByDefault
+        warnsAboutAttachments = preferences.warnsAboutAttachments
+        recipientLimit = Double(preferences.recipientLimit)
+        opensAt = preferences.opensAt
+        marksReadAfter = preferences.marksReadAfter
         let ai = store.ai()
         aiProvider = ai.provider ?? ""
         aiModel = ai.model ?? ""
