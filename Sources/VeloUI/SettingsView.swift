@@ -157,6 +157,15 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// A key as it looks on the keyboard, so a sentence about one does not
+    /// read as a stray character. "r answers everyone" looks like a typo.
+    private func key(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.quaternary.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
+    }
+
     /// A titled group of controls, so a pane reads as sections rather than a
     /// column of unrelated rows.
     @ViewBuilder
@@ -232,18 +241,25 @@ struct SettingsView: View {
     private var composingTab: some View {
         VStack(alignment: .leading, spacing: 16) {
             group("Replying",
-                  footnote: "Shift+R always answers everyone, whichever way this is set.") {
-                Toggle("r answers everyone on the message", isOn: $model.repliesToEveryone)
-                    .controlSize(.small)
+                  footnote: "Shift-R always answers everyone, whichever way this is set. "
+                  + "Turning this on makes both keys do the same thing.") {
+                Toggle(isOn: $model.repliesToEveryone) {
+                    HStack(spacing: 6) {
+                        Text("Pressing")
+                        key("R")
+                        Text("replies to everyone on the message")
+                    }
+                }
+                .controlSize(.small)
                 Divider().opacity(0.4)
-                Toggle("Include the message being answered", isOn: $model.quotesByDefault)
+                Toggle("Quote the message being answered", isOn: $model.quotesByDefault)
                     .controlSize(.small)
             }
 
             group("Before sending",
                   footnote: "Asked only for these two. A client that questions every send "
                   + "teaches people to dismiss it without reading.") {
-                Toggle("Ask if a message mentions an attachment and has none",
+                Toggle("Ask when a message mentions an attachment but has none",
                        isOn: $model.warnsAboutAttachments)
                     .controlSize(.small)
                 Divider().opacity(0.4)
@@ -350,10 +366,11 @@ struct SettingsView: View {
     private var timingTab: some View {
         VStack(alignment: .leading, spacing: 16) {
             group("Undo",
-                  footnote: "How long a sent message waits before it actually goes.") {
+                  footnote: "Long enough to catch a mistake, short enough that the reply "
+                  + "does not look late.") {
                 Stepper(value: $model.undoWindow, in: 3...60, step: 1) {
                     HStack {
-                        Text("Take back a send for")
+                        Text("A sent message waits")
                         Spacer()
                         Text("\(Int(model.undoWindow)) seconds")
                             .foregroundStyle(.secondary).monospacedDigit()
@@ -365,8 +382,10 @@ struct SettingsView: View {
             group("Snooze",
                   footnote: "Tomorrow and next week both wake at the hour set here.") {
                 Stepper(value: $model.snoozeHours, in: 1...72, step: 1) {
-                    HStack {
-                        Text("h puts a thread off for")
+                    HStack(spacing: 6) {
+                        Text("Pressing")
+                        key("H")
+                        Text("puts a thread off for")
                         Spacer()
                         Text("\(Int(model.snoozeHours)) hours")
                             .foregroundStyle(.secondary).monospacedDigit()
