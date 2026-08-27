@@ -85,6 +85,12 @@ struct AnalyticsView: View {
 
     /// Received and sent per day. Bars rather than a line: these are counts of
     /// discrete things, and a line between them would imply values in between.
+    ///
+    /// The plot and the day labels are separate rows, so the baseline and the
+    /// foot of every bar are the same edge by construction. Sharing one area
+    /// and reserving space for the labels with padding put the line partway up
+    /// the bars, because the padding and the bar heights were two guesses at
+    /// the same number.
     private func chart(_ days: [MailAnalytics.Day]) -> some View {
         let peak = max(days.map { max($0.received, $0.sent) }.max() ?? 1, 1)
         return VStack(alignment: .leading, spacing: 12) {
@@ -94,29 +100,33 @@ struct AnalyticsView: View {
                 Spacer()
             }
 
-            GeometryReader { proxy in
-                let plot = max(proxy.size.height - 34, 40)
-                ZStack(alignment: .bottomLeading) {
-                    // A scale, because a bar with nothing to measure against
-                    // says only "more than that one".
-                    gridlines(peak: peak, height: plot)
-
-                    HStack(alignment: .bottom, spacing: 0) {
-                        ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                            VStack(spacing: 7) {
+            VStack(spacing: 7) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .bottom) {
+                        scale(peak: peak)
+                        HStack(alignment: .bottom, spacing: 0) {
+                            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                                 HStack(alignment: .bottom, spacing: 5) {
-                                    bar(day.received, peak: peak, plot: plot, color: .accentColor)
-                                    bar(day.sent, peak: peak, plot: plot, color: .secondary)
+                                    bar(day.received, peak: peak, plot: proxy.size.height,
+                                        color: .accentColor)
+                                    bar(day.sent, peak: peak, plot: proxy.size.height,
+                                        color: .secondary)
                                 }
-                                Text(Self.weekday(day.day))
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity)
                             }
+                        }
+                    }
+                }
+
+                HStack(spacing: 0) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                        Text(Self.weekday(day.day))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(
                                 "\(Self.weekday(day.day)), \(day.received) received, \(day.sent) sent")
-                        }
                     }
                 }
             }
@@ -129,27 +139,24 @@ struct AnalyticsView: View {
     ///
     /// Two only: a chart of seven days does not need five, and every line drawn
     /// is one more thing between the reader and the shape.
-    private func gridlines(peak: Int, height: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Text("\(peak)")
-                        .font(.system(size: 9).monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                    Rectangle().fill(.quaternary).frame(height: 1)
-                }
-                Spacer(minLength: 0)
+    private func scale(peak: Int) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("\(peak)")
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(.tertiary)
                 Rectangle().fill(.quaternary).frame(height: 1)
             }
-            .frame(height: height)
+            Spacer(minLength: 0)
+            Rectangle().fill(.quaternary).frame(height: 1)
         }
-        .padding(.bottom, 24)
     }
 
     private func bar(_ value: Int, peak: Int, plot: CGFloat, color: Color) -> some View {
-        VStack(spacing: 3) {
-            // The number above the bar. Reading a height off a chart is
-            // guessing; this is the answer the reader came for.
+        // The number sits above the bar inside the plot, so the tallest bar is
+        // shortened by exactly the room its own label needs.
+        let room = max(plot - 16, 10)
+        return VStack(spacing: 3) {
             Text(value > 0 ? "\(value)" : "")
                 .font(.system(size: 9, weight: .medium).monospacedDigit())
                 .foregroundStyle(.tertiary)
@@ -157,7 +164,7 @@ struct AnalyticsView: View {
             // than as a missing bar.
             RoundedRectangle(cornerRadius: 3)
                 .fill(color.opacity(value == 0 ? 0.18 : 0.85))
-                .frame(width: 16, height: max(3, CGFloat(value) / CGFloat(peak) * (plot - 14)))
+                .frame(width: 16, height: max(3, CGFloat(value) / CGFloat(peak) * room))
         }
         // Grown from the baseline on appearing. A chart that draws itself says
         // which way is up before a single label has been read.
