@@ -11,6 +11,12 @@ public struct MailAnalytics: Sendable {
         public let day: Date
         public let received: Int
         public let sent: Int
+
+        public init(day: Date, received: Int, sent: Int) {
+            self.day = day
+            self.received = received
+            self.sent = sent
+        }
     }
 
     public struct Report: Equatable, Sendable {
@@ -23,6 +29,15 @@ public struct MailAnalytics: Sendable {
         public let daily: [Day]
         /// Hour of day (0–23) that receives the most mail.
         public let busiestHour: Int?
+
+        public init(received: Int, sent: Int, medianResponse: TimeInterval?,
+                    daily: [Day], busiestHour: Int?) {
+            self.received = received
+            self.sent = sent
+            self.medianResponse = medianResponse
+            self.daily = daily
+            self.busiestHour = busiestHour
+        }
     }
 
     private let store: MailStore
