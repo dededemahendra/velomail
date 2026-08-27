@@ -38,6 +38,26 @@ public struct SearchQuery: Equatable, Sendable, Codable {
         from != nil || isUnread != nil || after != nil || before != nil
     }
 
+    /// What was narrowed, in words, for showing back to the person who typed it.
+    ///
+    /// Without this there is no way to tell whether `from:cloudflare` filtered
+    /// or searched for the literal string -- and the two look identical when
+    /// the answer is empty either way.
+    public func filterLabels(calendar: Calendar = .current) -> [String] {
+        var labels: [String] = []
+        if let from { labels.append("From \(from)") }
+        if let isUnread { labels.append(isUnread ? "Unread" : "Read") }
+        if let after { labels.append("After \(SearchQuery.day.string(from: after))") }
+        if let before { labels.append("Before \(SearchQuery.day.string(from: before))") }
+        return labels
+    }
+
+    private static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
+
     // MARK: - Typed queries
 
     /// Reads the operators people already know from other mail clients.

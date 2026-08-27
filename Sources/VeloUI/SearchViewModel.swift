@@ -12,6 +12,8 @@ public final class SearchViewModel: ObservableObject {
 
     private let search: SearchService
     private let translator: QueryTranslator
+    /// What the last query actually narrowed on, in words.
+    @Published public private(set) var filterLabels: [String] = []
     private var cursor = SelectionCursor(count: 0)
 
     public init(search: SearchService, translator: QueryTranslator) {
@@ -43,6 +45,7 @@ public final class SearchViewModel: ObservableObject {
         failure = nil
 
         let query = await translator.translate(raw)
+        filterLabels = query.filterLabels()
         do {
             results = try search.search(query)
         } catch {
@@ -63,6 +66,7 @@ public final class SearchViewModel: ObservableObject {
 
     private func clearResults() {
         results = []
+        filterLabels = []
         cursor = SelectionCursor(count: 0)
         failure = nil
     }

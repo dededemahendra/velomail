@@ -213,6 +213,11 @@ private final class ThreadRowView: NSView {
         sender.lineBreakMode = .byTruncatingTail
         sender.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        // Stored on every thread since attachments were added and never once
+        // shown. Knowing a message has a file is most of why you open it.
+        let clip = NSTextField(labelWithString: thread.hasAttachments ? "\u{1F4CE}" : "")
+        clip.font = .systemFont(ofSize: 10)
+
         let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
         star.font = .systemFont(ofSize: 11)
         star.textColor = .systemYellow
@@ -235,7 +240,7 @@ private final class ThreadRowView: NSView {
         // removed rather than left as an empty gap.
         snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [mark, dot, sender, NSView(), star, date])
+        let top = NSStackView(views: [mark, dot, sender, NSView(), clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
