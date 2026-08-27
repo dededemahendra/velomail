@@ -267,6 +267,27 @@ public final class AppDatabase: Sendable {
             }
         }
 
+
+        migrator.registerMigration("v19_create_label") { db in
+            // Names only. Which threads carry a label is already on the thread,
+            // and a join table would be a second copy of that to keep in step.
+            try db.create(table: "label") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                t.column("kind", .text).notNull()
+            }
+        }
+
+
+        migrator.registerMigration("v20_add_draft_remoteID") { db in
+            // Which Gmail draft a local one was pushed to. Nullable: a draft
+            // written here has none until it goes up, and one pulled down is
+            // identified by its row id instead.
+            try db.alter(table: "draft") { t in
+                t.add(column: "remoteID", .text)
+            }
+        }
+
         return migrator
     }
 }

@@ -4,10 +4,13 @@ import Foundation
 public struct Command: Equatable, Sendable {
     public let title: String
     public let action: MailAction
+    /// What the action is about, when it needs telling. A label id, today.
+    public let argument: String?
 
-    public init(title: String, action: MailAction) {
+    public init(title: String, action: MailAction, argument: String? = nil) {
         self.title = title
         self.action = action
+        self.argument = argument
     }
 }
 
@@ -50,6 +53,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Go to Starred", action: .goToStarred),
         Command(title: "Go to Archive", action: .goToArchive),
         Command(title: "Load older mail", action: .loadOlderMail),
+        Command(title: "Add another account", action: .addAccount),
         Command(title: "Send tomorrow morning", action: .sendTomorrow),
         Command(title: "Send next week", action: .sendNextWeek),
         Command(title: "Snooze until tomorrow", action: .snoozeUntilTomorrow),

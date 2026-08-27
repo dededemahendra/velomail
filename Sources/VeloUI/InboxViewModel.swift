@@ -14,6 +14,9 @@ public enum MailScope: Equatable, Sendable {
     case snoozed
     case starred
     case archive
+    /// A Gmail label, carrying the name to put on the header: the id is
+    /// `Label_7` and nobody wants to read that.
+    case label(String, String)
 
     /// What the list calls itself.
     public var title: String {
@@ -23,6 +26,7 @@ public enum MailScope: Equatable, Sendable {
         case .snoozed: return "Snoozed"
         case .starred: return "Starred"
         case .archive: return "Archive"
+        case let .label(_, name): return name
         }
     }
 }
@@ -136,6 +140,7 @@ public final class InboxViewModel: ObservableObject {
         case .snoozed: return try store.snoozedThreads()
         case .starred: return try store.starredThreads()
         case .archive: return try store.archivedThreads()
+        case let .label(id, _): return try store.threads(withLabel: id)
         }
     }
 

@@ -23,6 +23,13 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case goToStarred
     case goToArchive
     case loadOlderMail
+    /// Which label is on the `Command`, not the action: there is one per
+    /// account and they are renamed and deleted, so a case each is not on the
+    /// cards and a raw-valued enum cannot carry one anyway.
+    case goToLabel
+    case fileInLabel
+    case switchAccount
+    case addAccount
     case sendTomorrow
     case sendNextWeek
     case snoozeUntilTomorrow
@@ -61,4 +68,11 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
         default: return false
         }
     }
+
+    /// Actions that mean nothing without a `Command.argument` to go with them.
+    ///
+    /// They are absent from the fixed registry on purpose: there is one per
+    /// label, and which labels exist is a question about the account rather
+    /// than about the app.
+    public static let needingAnArgument: Set<MailAction> = [.goToLabel, .fileInLabel, .switchAccount]
 }

@@ -22,6 +22,9 @@ public enum MutationKind: String, Codable, Equatable, Sendable {
     case star
     /// Removes `STARRED`.
     case unstar
+    /// Adds or removes an arbitrary Gmail label. One kind for both directions,
+    /// because the payload already says which labels go on and which come off.
+    case label
 }
 
 /// Lifecycle of a queued mutation. Success removes the row (there is no `done`).

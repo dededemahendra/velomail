@@ -294,6 +294,20 @@ public struct OutboundService: Sendable {
         try enqueueLabelChange(threadID: threadID, kind: .star, add: ["STARRED"], remove: [])
     }
 
+    /// Puts a label on a thread. Nothing happens if it is already there.
+    public func addLabel(_ labelID: String, toThread threadID: String) throws {
+        guard let thread = try store.thread(id: threadID),
+              !thread.labelIDs.contains(labelID) else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .label, add: [labelID], remove: [])
+    }
+
+    /// Takes a label off a thread, leaving every other label alone.
+    public func removeLabel(_ labelID: String, fromThread threadID: String) throws {
+        guard let thread = try store.thread(id: threadID),
+              thread.labelIDs.contains(labelID) else { return }
+        try enqueueLabelChange(threadID: threadID, kind: .label, add: [], remove: [labelID])
+    }
+
     public func unstar(threadID: String) throws {
         try enqueueLabelChange(threadID: threadID, kind: .unstar, add: [], remove: ["STARRED"])
     }

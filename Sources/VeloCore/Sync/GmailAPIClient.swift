@@ -12,6 +12,10 @@ public protocol GmailReading: Sendable {
 
     /// Base64url content of one attachment.
     func getAttachment(messageID: String, attachmentID: String) async throws -> String
+
+    /// Every label on the account, so an id like `Label_7` can be shown as
+    /// whatever its owner called it.
+    func listLabels() async throws -> [GmailLabelDTO]
 }
 
 public extension GmailReading {
@@ -19,6 +23,9 @@ public extension GmailReading {
     func listInboxMessageIDs(pageToken: String?) async throws -> (ids: [String], nextPageToken: String?) {
         try await listMessageIDs(labelID: "INBOX", pageToken: pageToken)
     }
+
+    /// Default for sources with nothing to say about labels.
+    func listLabels() async throws -> [GmailLabelDTO] { [] }
 
     /// Default for sources that do not serve attachments. It throws rather than
     /// returning empty, so a source that should have implemented this fails
@@ -45,7 +52,7 @@ public protocol GmailWriting: Sendable {
 /// Thin read client over the Gmail REST API: lists INBOX message ids and hydrates
 /// individual messages. Every request carries a bearer token obtained from
 /// `AccessTokenProvider` (refreshed on demand).
-public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
+public struct GmailAPIClient: GmailReading, GmailWriting, GmailDrafting, @unchecked Sendable {
     private let httpClient: HTTPClient
     private let tokenProvider: AccessTokenProvider
     private let baseURL: URL
@@ -78,6 +85,37 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         let (data, response) = try await authorizedGET(components.url!)
         let decoded: ListResponse = try checkedDecode(data, response)
         return (decoded.messages?.map(\.id) ?? [], decoded.nextPageToken)
+    }
+
+    /// Every draft on the account, whole.
+    public func listDrafts() async throws -> [GmailDraftDTO] {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("users/me/drafts"),
+            resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "maxResults", value: "50")]
+        let (data, response) = try await authorizedGET(components.url!)
+        let listed: DraftListResponse = try checkedDecode(data, response)
+
+        // The list gives ids only; the message has to be asked for separately.
+        var drafts: [GmailDraftDTO] = []
+        for entry in listed.drafts ?? [] {
+            var one = URLComponents(
+                url: baseURL.appendingPathComponent("users/me/drafts/\(entry.id)"),
+                resolvingAgainstBaseURL: false)!
+            one.queryItems = [URLQueryItem(name: "format", value: "raw")]
+            let (body, bodyResponse) = try await authorizedGET(one.url!)
+            let full: DraftResponse = try checkedDecode(body, bodyResponse)
+            drafts.append(GmailDraftDTO(id: entry.id, raw: full.message?.raw))
+        }
+        return drafts
+    }
+
+    /// Every label on the account.
+    public func listLabels() async throws -> [GmailLabelDTO] {
+        let url = baseURL.appendingPathComponent("users/me/labels")
+        let (data, response) = try await authorizedGET(url)
+        let decoded: LabelListResponse = try checkedDecode(data, response)
+        return decoded.labels ?? []
     }
 
     /// Fetches a single message in `format=full`.
@@ -151,7 +189,28 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         return try checkedDecode(data, response)
     }
 
+    public func createDraft(raw: String) async throws -> String {
+        let url = baseURL.appendingPathComponent("users/me/drafts")
+        let body = try JSONEncoder().encode(DraftRequest(message: .init(raw: raw)))
+        let (data, response) = try await authorizedPOST(url, body: body)
+        let created: DraftIDResponse = try checkedDecode(data, response)
+        return created.id
+    }
+
+    public func updateDraft(id: String, raw: String) async throws {
+        let url = baseURL.appendingPathComponent("users/me/drafts/\(id)")
+        let body = try JSONEncoder().encode(DraftRequest(message: .init(raw: raw)))
+        _ = try await authorizedPUT(url, body: body)
+    }
+
     // MARK: - Internals
+
+    private struct DraftRequest: Encodable {
+        struct RawMessage: Encodable { let raw: String }
+        let message: RawMessage
+    }
+
+    private struct DraftIDResponse: Decodable { let id: String }
 
     /// `threadId` is omitted entirely when nil rather than encoded as null,
     /// which Gmail rejects. `JSONEncoder` skips nil optionals by default.
@@ -169,6 +228,20 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         let ids: [String]
         let addLabelIds: [String]
         let removeLabelIds: [String]
+    }
+
+    private struct DraftListResponse: Decodable {
+        struct Entry: Decodable { let id: String }
+        let drafts: [Entry]?
+    }
+
+    private struct DraftResponse: Decodable {
+        struct RawMessage: Decodable { let raw: String? }
+        let message: RawMessage?
+    }
+
+    private struct LabelListResponse: Decodable {
+        let labels: [GmailLabelDTO]?
     }
 
     private struct ListResponse: Decodable {
@@ -190,6 +263,18 @@ public struct GmailAPIClient: GmailReading, GmailWriting, @unchecked Sendable {
         let token = try await tokenProvider.validAccessToken()
         do {
             return try await httpClient.get(url: url, headers: ["Authorization": "Bearer \(token)"])
+        } catch {
+            throw AuthError.network(error)
+        }
+    }
+
+    private func authorizedPUT(_ url: URL, body: Data) async throws -> (Data, HTTPURLResponse) {
+        let token = try await tokenProvider.validAccessToken()
+        do {
+            return try await httpClient.put(
+                url: url,
+                headers: ["Authorization": "Bearer \(token)", "Content-Type": "application/json"],
+                body: body)
         } catch {
             throw AuthError.network(error)
         }

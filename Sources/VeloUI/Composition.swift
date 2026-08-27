@@ -7,13 +7,15 @@ import VeloCore
 public enum Composition {
     static let identityKey = "VELOMAIL_IDENTITY"
 
-    /// Where the mailbox lives between launches.
-    public static var databaseURL: URL {
+    /// Where a mailbox lives between launches. One file per account: accounts
+    /// share nothing, so the cheapest way to keep them apart is to keep them
+    /// apart, and the first keeps the filename it already has.
+    public static func databaseURL(for accountID: String = Account.primaryID) -> URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("VeloMail", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("velomail.sqlite")
+        return base.appendingPathComponent(Account.databaseName(for: accountID))
     }
 
     public struct Assembly {
@@ -26,11 +28,12 @@ public enum Composition {
     @MainActor
     public static func make(config: AppConfig = .resolve(),
                             llm: LLMConfig = .resolve(),
-                            snippets: SnippetLibrary = .resolve()) throws -> Assembly {
+                            snippets: SnippetLibrary = .resolve(),
+                            accountID: String = Account.primaryID) throws -> Assembly {
         // Demo runs in memory: it exists to be looked at, not to persist.
         let database = config.isDemo
             ? try AppDatabase.makeInMemory()
-            : try AppDatabase.make(atPath: databaseURL.path)
+            : try AppDatabase.make(atPath: databaseURL(for: accountID).path)
 
         let store = MailStore(database)
         let mutations = MutationStore(database)
@@ -40,7 +43,6 @@ public enum Composition {
         // The account id is stable and local; the *address* is discovered from
         // Gmail's profile on first backfill. Keeping them separate is what lets
         // the app be built before it knows who it is.
-        let accountID = "primary"
         let configuredIdentity = ProcessInfo.processInfo.environment[identityKey]
         let resolver = IdentityResolver(syncState: syncState, accountID: accountID,
                                         configured: configuredIdentity)
@@ -71,7 +73,9 @@ public enum Composition {
         // The redirect is derived from the client id; see AuthConfig.
         let authConfig = AuthConfig.gmail(clientID: clientID, clientSecret: config.clientSecret)
         let tokenService = TokenService(config: authConfig, httpClient: httpClient)
-        let tokenStore = KeychainTokenStore()
+        // One Keychain entry per account, so signing into a second does not
+        // overwrite the first one's tokens.
+        let tokenStore = KeychainTokenStore(account: Account.keychainAccount(for: accountID))
         let tokenProvider = AccessTokenProvider(store: tokenStore, service: tokenService)
         let api = GmailAPIClient(httpClient: httpClient, tokenProvider: tokenProvider)
 
@@ -85,7 +89,10 @@ public enum Composition {
             syncState: syncState,
             // Rules see arrivals only; GmailSync never hands it a backfill.
             rules: RuleApplier(engine: RuleEngine(rules: ruleLibrary.rules),
-                               store: store, outbound: outbound))
+                               store: store, outbound: outbound),
+            labels: LabelService(source: api, store: store),
+            gmailDrafts: GmailDraftService(source: api, drafts: drafts,
+                                           identity: { resolver.identity() }))
 
         let auth = AuthCoordinator(config: authConfig, tokenService: tokenService, tokenStore: tokenStore)
         let app = AppViewModel(config: config, store: store, outbound: outbound,

@@ -8,10 +8,16 @@ import VeloCore
 /// testable object with no `Task` or filesystem in it.
 @MainActor
 final class AppHost: ObservableObject {
-    let app: AppViewModel
-    private let sync: GmailSync?
-    private let store: MailStore
-    private let auth: AuthCoordinator?
+    /// Republished when the account changes, which is what rebuilds the whole
+    /// view tree onto the other mailbox.
+    @Published private(set) var app: AppViewModel
+    /// Which mailboxes exist and which one is open.
+    let accounts = AccountList()
+    /// Published separately so the view tree can key on it.
+    @Published private(set) var currentAccountID = AccountList().current
+    private var sync: GmailSync?
+    private var store: MailStore
+    private var auth: AuthCoordinator?
     private let notifications = NotificationPresenter()
     private var syncTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
@@ -23,19 +29,58 @@ final class AppHost: ObservableObject {
         // A failure here means the store could not be opened at all, which is
         // unrecoverable; fall back to an in-memory one so the window still
         // appears and can explain itself rather than the app dying on launch.
-        let assembly = (try? Composition.make()) ?? AppHost.fallback()
+        let assembly = (try? Composition.make(accountID: AccountList().current))
+            ?? AppHost.fallback()
         self.app = assembly.app
         self.sync = assembly.sync
         self.store = assembly.store
         self.auth = assembly.auth
+        wire()
+    }
+
+    /// Hands the new view model its callbacks. Called on every account change,
+    /// because each account has an assembly of its own.
+    private func wire() {
         // The view model routes; the coordinator owns the browser hop.
         app.onSignInRequested = { [weak self] in self?.auth?.signIn() }
+        app.accounts = accounts.accounts
+        app.currentAccount = accounts.current
+        app.onSwitchAccount = { [weak self] id in Task { await self?.switchTo(id) } }
+        app.onAddAccount = { [weak self] in
+            guard let self else { return }
+            Task { await self.switchTo(self.accounts.add()) }
+        }
+    }
+
+    /// Closes the current mailbox and opens another.
+    ///
+    /// Everything is rebuilt rather than reconfigured: two accounts share no
+    /// database, no tokens and no sync cursor, so the only thing they could
+    /// share is a bug.
+    func switchTo(_ accountID: String) async {
+        guard accountID != accounts.current || sync == nil else { return }
+        accounts.switchTo(accountID)
+        currentAccountID = accounts.current
+        stop()
+        inboxObservation = nil
+
+        let assembly = (try? Composition.make(accountID: accounts.current))
+            ?? AppHost.fallback()
+        app = assembly.app
+        sync = assembly.sync
+        store = assembly.store
+        auth = assembly.auth
+        wire()
+        await start()
     }
 
     func start() async {
         try? app.start()
         observeInbox()
         await observeAuth()
+        // Learned from Gmail's profile, so it is only known once mail arrives.
+        if !app.identity.isEmpty { accounts.setAddress(app.identity, on: accounts.current) }
+        app.accounts = accounts.accounts
         await notifications.requestAuthorizationIfNeeded()
         announceNewMail()
         guard let sync else { return }

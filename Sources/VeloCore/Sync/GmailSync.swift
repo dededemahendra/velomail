@@ -18,6 +18,12 @@ public actor GmailSync {
     private let backoff: BackoffPolicy
     private let maxMutationAttempts: Int
     private let rules: RuleApplier?
+    /// Refreshed each pass: one cheap call, and a label renamed in Gmail
+    /// should not keep its old name here until the next cold start.
+    private let labels: LabelService?
+    /// Both directions of draft sync, run after the mail: what was written
+    /// elsewhere comes down, what was written here goes up.
+    private let gmailDrafts: GmailDraftService?
     private var isSyncing = false
     private var consecutiveFailures = 0
 
@@ -30,7 +36,11 @@ public actor GmailSync {
                 now: @escaping () -> Date = { Date() }, clock: SyncClock = SystemSyncClock(),
                 backoff: BackoffPolicy = .standard,
                 maxMutationAttempts: Int = OutboundService.maxAttempts,
-                rules: RuleApplier? = nil) {
+                rules: RuleApplier? = nil,
+                labels: LabelService? = nil,
+                gmailDrafts: GmailDraftService? = nil) {
+        self.labels = labels
+        self.gmailDrafts = gmailDrafts
         self.accountID = accountID
         self.backfill = backfill
         self.incremental = incremental
@@ -119,6 +129,9 @@ public actor GmailSync {
         // Wake before pulling, so a thread whose snooze expired is back in the
         // inbox in the same pass rather than a tick later.
         try outbound.wakeSnoozed(now: now())
+        // Before the mail, so a thread that arrives carrying a new label has
+        // somewhere for that label to be named.
+        try? await labels?.refresh()
 
         let state = try syncState.load(accountID: accountID)
         // Not "has this account synced" but "is any label still unfetched": a
@@ -128,6 +141,13 @@ public actor GmailSync {
             .labelsNeedingBackfill(of: BackfillService.backfilledLabels)
         if !outstanding.isEmpty {
             try await backfill.backfillInbox(accountID: accountID, maxMessages: backfillLimit)
+        }
+
+        // After the mail and never blocking it: a draft that fails to sync
+        // should cost the writer nothing they can see.
+        if let gmailDrafts {
+            try? await gmailDrafts.pull()
+            try? await gmailDrafts.push()
         }
 
         do {

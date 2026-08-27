@@ -7,8 +7,11 @@ public struct VeloMailApp: App {
 
     public var body: some Scene {
         WindowGroup("Velo Mail") {
+            // Keyed on the account so switching rebuilds the tree rather than
+            // handing the old views a different view model underneath them.
             RootView(app: host.app)
-                    .task { await host.start() }
+                .id(host.currentAccountID)
+                .task { await host.start() }
                 .frame(minWidth: 900, minHeight: 560)
         }
         .windowToolbarStyle(.unified)
