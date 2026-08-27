@@ -41,13 +41,21 @@ public final class AuthCoordinator: NSObject, ObservableObject {
 
     /// Looks for a session left by a previous run.
     ///
-    /// Deliberately *not* in `init`. A Keychain read can block on an
-    /// authorisation prompt -- and does whenever the app's code signature
-    /// changes, which an ad-hoc signed build does on every rebuild. Doing it
-    /// during construction blocks the main thread before SwiftUI has created a
-    /// window, so the app launches and shows nothing at all, with no error.
-    public func restoreState() {
-        guard ((try? tokenStore.load()) ?? nil) != nil else { return }
+    /// Off the main actor, and deliberately *not* in `init`. A Keychain read
+    /// blocks on an authorisation prompt -- and prompts whenever the app's
+    /// code signature changes, which an ad-hoc signed build does on every
+    /// rebuild. Held on the main thread it blocks before SwiftUI can draw, so
+    /// the app launches to a Dock icon and no window at all, with no error and
+    /// nothing on screen to explain the prompt that is waiting.
+    ///
+    /// Awaiting it instead lets the window come up signed-out and settle once
+    /// the answer arrives.
+    public func restoreState() async {
+        let store = tokenStore
+        let hasSession = await Task.detached(priority: .userInitiated) {
+            ((try? store.load()) ?? nil) != nil
+        }.value
+        guard hasSession else { return }
         state = .signedIn
     }
 
