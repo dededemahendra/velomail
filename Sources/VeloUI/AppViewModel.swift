@@ -134,10 +134,18 @@ public final class AppViewModel: ObservableObject {
         // palette is where a keyboard-first client puts what cannot have a key
         // of its own, and labels are the clearest case of that.
         let perLabel = labels.flatMap { label in
-            [Command(title: "Go to \(label.displayName)", action: .goToLabel, argument: label.id),
+            [Command(title: "Go to \(label.displayName)"
+                     + AppViewModel.waiting(unreadCount(in: .label(label.id, label.displayName))),
+                     action: .goToLabel, argument: label.id),
              Command(title: "File in \(label.displayName)", action: .fileInLabel, argument: label.id)]
         }
-        return CommandRegistry(commands: base + perAccount + unfile + perLabel)
+        // The fixed commands, with a count on the ones it means something for.
+        let counted = base.map { command -> Command in
+            guard let scope = AppViewModel.scope(forGoTo: command.action) else { return command }
+            return Command(title: command.title + AppViewModel.waiting(unreadCount(in: scope)),
+                           action: command.action, argument: command.argument)
+        }
+        return CommandRegistry(commands: counted + perAccount + unfile + perLabel)
     }
 
     /// The mailboxes the app knows about, and which one is open. Set by the
@@ -208,6 +216,23 @@ public final class AppViewModel: ObservableObject {
                 try outbound.removeLabel(label.id, fromThread: id)
             }
             try inbox.reload()
+        }
+    }
+
+    /// How much is waiting in a list, so it does not have to be visited to
+    /// find out whether it is worth visiting.
+    ///
+    /// Zero while focused. Focus exists to stop the app saying how much is
+    /// waiting, and a number beside every list would be exactly that.
+    public func unreadCount(in scope: MailScope) -> Int {
+        guard !isFocused else { return 0 }
+        switch scope {
+        case .inbox: return inbox.threads.filter(\.isUnread).count
+        case .starred: return (try? store.unreadCount(withLabel: "STARRED")) ?? 0
+        case let .label(id, _): return (try? store.unreadCount(withLabel: id)) ?? 0
+        // Sent, snoozed and archive are places you put things rather than
+        // places things arrive, so a count there answers nothing.
+        case .sent, .snoozed, .archive: return 0
         }
     }
 
@@ -640,6 +665,19 @@ public final class AppViewModel: ObservableObject {
             openURL(url)
         }
     }
+
+    /// The list a "Go to" command opens, when it opens one.
+    static func scope(forGoTo action: MailAction) -> MailScope? {
+        switch action {
+        case .goToInbox: return .inbox
+        case .goToStarred: return .starred
+        default: return nil
+        }
+    }
+
+    /// " (3)", or nothing at all. "Go to Sent (0)" is noise on every list that
+    /// happens to be quiet.
+    static func waiting(_ count: Int) -> String { count > 0 ? " (\(count))" : "" }
 
     /// The scope a stored name refers to. Unknown names fall back to the
     /// inbox: a setting written by a newer build should not open nothing.
