@@ -12,6 +12,8 @@ public enum MailScope: Equatable, Sendable {
     case inbox
     case sent
     case snoozed
+    case starred
+    case archive
 
     /// What the list calls itself.
     public var title: String {
@@ -19,6 +21,8 @@ public enum MailScope: Equatable, Sendable {
         case .inbox: return "Inbox"
         case .sent: return "Sent"
         case .snoozed: return "Snoozed"
+        case .starred: return "Starred"
+        case .archive: return "Archive"
         }
     }
 }
@@ -130,6 +134,8 @@ public final class InboxViewModel: ObservableObject {
         case .inbox: return try store.inboxThreads()
         case .sent: return try store.sentThreads()
         case .snoozed: return try store.snoozedThreads()
+        case .starred: return try store.starredThreads()
+        case .archive: return try store.archivedThreads()
         }
     }
 

@@ -20,6 +20,8 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     case goToSent
     case goToSnoozed
     case goToDrafts
+    case goToStarred
+    case goToArchive
     case sendTomorrow
     case sendNextWeek
     case snoozeUntilTomorrow

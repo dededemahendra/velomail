@@ -54,10 +54,14 @@ public struct BackfillService: Sendable {
         }
     }
 
-    /// The labels a first sync pulls down. Sent as well as Inbox, because a
-    /// Sent view holding only what this app itself sent would show three
-    /// messages against a mailbox of thousands.
-    public static let backfilledLabels = ["INBOX", "SENT"]
+    /// The labels a sync pulls down. Inbox, plus the two that have views of
+    /// their own: a Sent or Starred list holding only what happened in this app
+    /// would show a handful of threads against a mailbox of thousands.
+    ///
+    /// Adding to this list is enough -- `SyncState` tracks each label
+    /// separately, so an existing account fetches the new one on its next pass
+    /// without re-fetching the rest.
+    public static let backfilledLabels = ["INBOX", "SENT", "STARRED"]
 
     /// Fetches up to `maxMessages` of the most recent messages in each label
     /// that has not been fetched yet, upserts them, and records each label as

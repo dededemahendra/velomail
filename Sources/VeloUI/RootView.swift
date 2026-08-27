@@ -153,27 +153,33 @@ struct MailboxHeader: View {
 struct EmptyListView: View {
     let scope: MailScope
 
-    private var symbol: String {
+    var symbol: String {
         switch scope {
         case .inbox: return "checkmark.circle"
         case .sent: return "paperplane"
         case .snoozed: return "clock"
+        case .starred: return "star"
+        case .archive: return "archivebox"
         }
     }
 
-    private var headline: String {
+    var headline: String {
         switch scope {
         case .inbox: return "Inbox zero"
         case .sent: return "Nothing sent yet"
         case .snoozed: return "Nothing snoozed"
+        case .starred: return "Nothing starred"
+        case .archive: return "Nothing filed away"
         }
     }
 
-    private var detail: String {
+    var detail: String {
         switch scope {
         case .inbox: return "Nothing left to triage."
         case .sent: return "Messages you send appear here."
         case .snoozed: return "Threads you put off come back here."
+        case .starred: return "Press s on a thread to keep it to hand."
+        case .archive: return "Threads you archive with e wait here."
         }
     }
 

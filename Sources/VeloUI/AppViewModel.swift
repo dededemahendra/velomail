@@ -315,6 +315,8 @@ public final class AppViewModel: ObservableObject {
         case .goToInbox: show(.inbox)
         case .goToSent: show(.sent)
         case .goToSnoozed: show(.snoozed)
+        case .goToStarred: show(.starred)
+        case .goToArchive: show(.archive)
         case .goToDrafts: showDrafts()
         case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })

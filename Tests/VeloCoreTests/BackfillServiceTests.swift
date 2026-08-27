@@ -211,7 +211,7 @@ private final class ObservingSource: GmailReading, @unchecked Sendable {
         let state = try syncStore.load(accountID: account)
         #expect(state?.historyId == "1")                 // kept, not rewound to 9000
         #expect(state?.backfillComplete == true)
-        #expect(state?.backfilledLabels == ["INBOX", "SENT"])
+        #expect(state?.backfilledLabels == BackfillService.backfilledLabels)
     }
 
     @Test func aFirstBackfillTakesTheBaselineCursor() async throws {

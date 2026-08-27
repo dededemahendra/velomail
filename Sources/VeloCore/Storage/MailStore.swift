@@ -46,6 +46,41 @@ public final class MailStore: Sendable {
         }
     }
 
+    /// Threads carrying Gmail's own `STARRED` label, newest first.
+    ///
+    /// Not restricted to the inbox: the point of starring something is that it
+    /// survives filing the thread away.
+    public func starredThreads() throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: "labelIDs LIKE ?", arguments: ["%\"STARRED\"%"])
+                .order(sql: "lastMessageDate DESC")
+                .fetchAll(db)
+        }
+    }
+
+    /// Threads filed away: out of the inbox, but not binned, not merely sent,
+    /// and not simply waiting to come back.
+    ///
+    /// Archiving in Gmail is the absence of a label rather than the presence of
+    /// one, so this is defined by what a thread is *not*. Each exclusion earns
+    /// its place: the bin and the snooze pile both leave the inbox too, and a
+    /// sent message was never in it, so without them this view would be
+    /// everything that ever happened.
+    public func archivedThreads(now: Date = Date()) throws -> [MailThread] {
+        try database.dbQueue.read { db in
+            try MailThread
+                .filter(sql: """
+                    labelIDs NOT LIKE '%"INBOX"%'
+                    AND labelIDs NOT LIKE '%"TRASH"%'
+                    AND labelIDs NOT LIKE '%"SENT"%'
+                    AND (snoozedUntil IS NULL OR snoozedUntil <= ?)
+                    """, arguments: [now])
+                .order(sql: "lastMessageDate DESC")
+                .fetchAll(db)
+        }
+    }
+
     /// Threads waiting to come back, soonest first.
     ///
     /// Ordered by wake time rather than arrival: this list answers "what is
