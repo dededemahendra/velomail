@@ -86,20 +86,16 @@ import VeloCore
         #expect(model.isReply)
     }
 
-    @Test func replySeedsTheQuotedParentIntoTheEditor() throws {
+    @Test func replyKeepsTheQuoteOutOfTheEditor() throws {
+        // It used to be pasted in, on the reasoning that what you see is what
+        // gets sent. On real mail that means scrolling past twenty lines of
+        // someone else's tracking URLs to reach your own cursor, so it is
+        // attached at send instead and shown collapsed.
         let (model, store, _) = try makeContext()
         model.startReply(to: try parent(in: store))
 
-        // What is in the editor is what gets sent, so the quote has to be
-        // visible and editable rather than bolted on at send time.
-        #expect(model.body.contains("wrote:"))
-        #expect(model.body.contains("> are you free?"))
-    }
-
-    @Test func replyLeavesRoomToTypeAboveTheQuote() throws {
-        let (model, store, _) = try makeContext()
-        model.startReply(to: try parent(in: store))
-        #expect(model.body.hasPrefix("\n\n"))
+        #expect(!model.body.contains("wrote:"))
+        #expect(model.quotedSummary != nil)
     }
 
     @Test func sendingAReplyDoesNotQuoteTwice() throws {
@@ -144,10 +140,11 @@ import VeloCore
         let (model, store, _) = try makeContext(library: Self.library)
         model.startReply(to: try parent(in: store))
 
-        let signature = try #require(model.body.range(of: "Living Legacy Forest"))
-        let quote = try #require(model.body.range(of: "wrote:"))
-        #expect(signature.lowerBound < quote.lowerBound)
-        #expect(model.body.hasPrefix("\n\n"))
+        // The signature is all the editor starts with now, and the quote goes
+        // under everything at send time -- which is still where a reader looks
+        // for it.
+        #expect(model.body.contains("Living Legacy Forest"))
+        #expect(model.quotedSummary != nil)
     }
 
     @Test func theSignatureGoesOutWithTheDraft() throws {

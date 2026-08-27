@@ -288,9 +288,13 @@ import VeloCore
     }
 
     @Test func usingASuggestionAlsoKeepsTheQuotedParent() throws {
+        // A suggestion replaces the body. The quote survives that now because
+        // it is attached to the reply rather than living inside the text -- it
+        // used to survive only because the model was asked to type around it.
         let app = try makeAIApp(provider: StubProvider("x"))
         app.startReply(with: "Yes.")
-        #expect(app.compose.body.contains("wrote:"))
+        #expect(app.compose.body == "Yes.")
+        #expect(app.compose.quotedSummary != nil)
     }
 
     // MARK: - Search routing

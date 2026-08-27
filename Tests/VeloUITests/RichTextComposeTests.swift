@@ -65,12 +65,32 @@ import VeloCore
         #expect(try sent(model, mutations).bodyText.contains("**One**"))
     }
 
-    @Test func aPlainReplyIsStillPlain() throws {
-        // The quoted parent arrives in the body behind "> " lines. If that were
-        // enough to promote the message, every reply would become HTML.
+    @Test func aPlainReplyToAnHTMLMessageQuotesItsMarkup() throws {
+        // The parent had HTML, so the reply carries the sender's own markup
+        // back to them in a blockquote. This is the engine's original
+        // behaviour, reachable again now the quote is attached at send rather
+        // than re-typed as "> " lines in the editor.
         let (model, store, mutations) = try makeContext()
         model.startReply(to: try parent(in: store))
-        model.body = "Yes, one o'clock.\n" + model.body
+        model.body = "Yes, one o'clock."
+
+        let html = try #require(try sent(model, mutations).bodyHTML)
+        #expect(html.contains("blockquote"))
+        #expect(html.contains("are you free?"))
+    }
+
+    @Test func aPlainReplyToAPlainMessageStaysPlain() throws {
+        let (model, store, mutations) = try makeContext()
+        try store.upsert(MailThread(id: "tp", sender: "Bo <bo@example.com>", snippet: "s",
+                                    lastMessageDate: Date(timeIntervalSince1970: 100),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["INBOX"]))
+        try store.upsert(Message(id: "p", threadID: "tp", sender: "Bo <bo@example.com>",
+                                 recipients: ["me@example.com"], subject: "Plain",
+                                 date: Date(timeIntervalSince1970: 100),
+                                 bodyHTML: nil, bodyText: "no markup here",
+                                 isUnread: false, labelIDs: ["INBOX"]))
+        model.startReply(to: try #require(try store.message(id: "p")))
+        model.body = "Yes."
 
         #expect(try sent(model, mutations).bodyHTML == nil)
     }
