@@ -330,7 +330,7 @@ public final class ComposeViewModel: ObservableObject {
         // someone else's tracking URLs to reach your own cursor. It is shown
         // collapsed instead, and can be dropped.
         body = signatureBlock
-        includesQuote = true
+        includesQuote = preferences.quotesByDefault
         isReply = true
         replyContext = message
     }
@@ -401,6 +401,10 @@ public final class ComposeViewModel: ObservableObject {
 
     /// True when what has been typed will be sent as HTML as well as text.
     public var isRichText: Bool { MarkdownBody.isFormatted(body) }
+
+    /// What would be sent right now, for anything that has to look at a
+    /// message before it goes.
+    public var pendingDraft: Draft { currentDraft() }
 
     /// The composer as a `Draft`. One builder, so what autosave stores is
     /// exactly what send would have sent.
