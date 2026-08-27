@@ -38,7 +38,9 @@ enum CommandSymbol {
         case .goToLabel: return "tag"
         case .switchAccount: return "person.crop.circle"
         case .addAccount: return "person.badge.plus"
+        case .openSettings: return "gearshape"
         case .fileInLabel: return "tag.fill"
+        case .unfileFromLabel: return "tag.slash"
 
         // Writing
         case .compose: return "square.and.pencil"

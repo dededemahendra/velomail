@@ -118,6 +118,15 @@ public final class AppViewModel: ObservableObject {
         let perAccount = accounts.filter { $0.id != currentAccount }.map {
             Command(title: "Switch to \($0.displayName)", action: .switchAccount, argument: $0.id)
         } + [Command(title: "Add another account", action: .addAccount)]
+        // Unfiling is offered for the label being looked at and no other:
+        // "Remove from Promotions" while reading Clients is a command for a
+        // thread that is not on screen.
+        let unfile: [Command]
+        if case let .label(id, name) = inbox.scope {
+            unfile = [Command(title: "Remove from \(name)", action: .unfileFromLabel, argument: id)]
+        } else {
+            unfile = []
+        }
         // One pair per label, built from what the account actually has. The
         // palette is where a keyboard-first client puts what cannot have a key
         // of its own, and labels are the clearest case of that.
@@ -125,7 +134,7 @@ public final class AppViewModel: ObservableObject {
             [Command(title: "Go to \(label.displayName)", action: .goToLabel, argument: label.id),
              Command(title: "File in \(label.displayName)", action: .fileInLabel, argument: label.id)]
         }
-        return CommandRegistry(commands: base + perAccount + perLabel)
+        return CommandRegistry(commands: base + perAccount + unfile + perLabel)
     }
 
     /// The mailboxes the app knows about, and which one is open. Set by the
@@ -134,6 +143,11 @@ public final class AppViewModel: ObservableObject {
     @Published public var currentAccount: String = Account.primaryID
     public var onSwitchAccount: ((String) -> Void)?
     public var onAddAccount: (() -> Void)?
+
+    /// True while the settings window is up. A window rather than a route: it
+    /// is about the app rather than about the mail, and closing it should put
+    /// the reader back exactly where they were.
+    @Published public var isShowingSettings = false
 
     /// The labels worth offering, refreshed when the mail is.
     @Published public private(set) var labels: [MailLabel] = []
@@ -145,10 +159,14 @@ public final class AppViewModel: ObservableObject {
             command.argument.flatMap(label(withID:)).map { show(label: $0) }
         case .fileInLabel:
             command.argument.flatMap(label(withID:)).map { applyLabel($0) }
+        case .unfileFromLabel:
+            command.argument.flatMap(label(withID:)).map { removeLabel($0) }
         case .switchAccount:
             command.argument.map { onSwitchAccount?($0) }
         case .addAccount:
             onAddAccount?()
+        case .openSettings:
+            isShowingSettings = true
         default:
             perform(command.action)
         }
@@ -170,6 +188,17 @@ public final class AppViewModel: ObservableObject {
         dispose("Filed") {
             for id in inbox.targetThreadIDs {
                 try outbound.addLabel(label.id, toThread: id)
+            }
+            try inbox.reload()
+        }
+    }
+
+    /// Takes a label off the selected threads. Offered only while looking at
+    /// that label, so the thread visibly leaves the list it was in.
+    public func removeLabel(_ label: MailLabel) {
+        dispose("Unfiled") {
+            for id in inbox.targetThreadIDs {
+                try outbound.removeLabel(label.id, fromThread: id)
             }
             try inbox.reload()
         }
@@ -404,7 +433,8 @@ public final class AppViewModel: ObservableObject {
         case .goToArchive: show(.archive)
         // Reached through `run(_:)`, which knows which label. Landing here
         // means a caller had the action without the label to go with it.
-        case .goToLabel, .fileInLabel, .switchAccount, .addAccount: break
+        case .openSettings: isShowingSettings = true
+        case .goToLabel, .fileInLabel, .unfileFromLabel, .switchAccount, .addAccount: break
         case .goToDrafts: showDrafts()
         case .toggleRemoteImages: alwaysLoadsImages = imagePreference.toggle()
         case .snoozeUntilTomorrow: snoozeSelected(until: { Horizon.tomorrow() })
