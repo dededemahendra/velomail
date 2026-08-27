@@ -28,8 +28,10 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// cards and a raw-valued enum cannot carry one anyway.
     case goToLabel
     case fileInLabel
+    case unfileFromLabel
     case switchAccount
     case addAccount
+    case openSettings
     case sendTomorrow
     case sendNextWeek
     case snoozeUntilTomorrow
@@ -74,5 +76,5 @@ public enum MailAction: String, Equatable, Sendable, CaseIterable {
     /// They are absent from the fixed registry on purpose: there is one per
     /// label, and which labels exist is a question about the account rather
     /// than about the app.
-    public static let needingAnArgument: Set<MailAction> = [.goToLabel, .fileInLabel, .switchAccount]
+    public static let needingAnArgument: Set<MailAction> = [.goToLabel, .fileInLabel, .unfileFromLabel, .switchAccount]
 }

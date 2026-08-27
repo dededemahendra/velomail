@@ -54,6 +54,7 @@ public struct CommandRegistry: Equatable, Sendable {
         Command(title: "Go to Archive", action: .goToArchive),
         Command(title: "Load older mail", action: .loadOlderMail),
         Command(title: "Add another account", action: .addAccount),
+        Command(title: "Settings", action: .openSettings),
         Command(title: "Send tomorrow morning", action: .sendTomorrow),
         Command(title: "Send next week", action: .sendNextWeek),
         Command(title: "Snooze until tomorrow", action: .snoozeUntilTomorrow),

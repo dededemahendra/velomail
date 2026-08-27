@@ -106,4 +106,42 @@ private struct Quiet: GmailWriting {
         #expect(app.palette.commands.contains { $0.title == "Go to Clients" })
         #expect(app.palette.commands.contains { $0.title == "File in Clients" })
     }
+
+    // MARK: - Taking a label off
+
+    @Test func unfilingRemovesTheLabelAndLeavesTheRest() throws {
+        let (app, _) = try makeApp()
+        app.show(label: MailLabel(id: "Label_7", name: "Clients", kind: .user))
+        let unfiled = try #require(app.inbox.selectedThread?.id)
+
+        app.removeLabel(MailLabel(id: "Label_7", name: "Clients", kind: .user))
+
+        #expect(!app.inbox.threads.map(\.id).contains(unfiled))
+        app.perform(.goToInbox)
+        #expect(app.inbox.threads.map(\.id).contains(unfiled))   // still in the inbox
+    }
+
+    @Test func unfilingIsUndoable() throws {
+        let (app, _) = try makeApp()
+        app.show(label: MailLabel(id: "Label_7", name: "Clients", kind: .user))
+
+        app.removeLabel(MailLabel(id: "Label_7", name: "Clients", kind: .user))
+
+        #expect(app.undoPrompt == "Unfiled")
+    }
+
+    @Test func theLabelYouAreLookingAtOffersToUnfile() throws {
+        // Only that one: "Remove from Promotions" while reading Clients is a
+        // command for a thread you cannot see.
+        let (app, _) = try makeApp()
+        app.show(label: MailLabel(id: "Label_7", name: "Clients", kind: .user))
+
+        #expect(app.palette.commands.contains { $0.title == "Remove from Clients" })
+        #expect(!app.palette.commands.contains { $0.title == "Remove from Updates" })
+    }
+
+    @Test func theInboxOffersNoUnfiling() throws {
+        let (app, _) = try makeApp()
+        #expect(!app.palette.commands.contains { $0.title.hasPrefix("Remove from") })
+    }
 }

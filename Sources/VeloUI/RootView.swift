@@ -5,6 +5,10 @@ import VeloCore
 /// Routes to whichever surface the app state says is focused, and hosts the
 /// single key monitor that drives the whole app.
 public struct RootView: View {
+    /// Built once and kept: reopening settings should show what was typed last
+    /// time, not a fresh read of files that have not changed.
+    @StateObject private var settings = SettingsViewModel()
+
     @ObservedObject var app: AppViewModel
 
     public init(app: AppViewModel) { self.app = app }
@@ -63,6 +67,19 @@ public struct RootView: View {
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
         .animation(.easeOut(duration: 0.18), value: app.failurePrompt)
         .animation(.easeOut(duration: 0.18), value: app.notice)
+        .sheet(isPresented: $app.isShowingSettings) {
+            SettingsView(model: settings,
+                         accounts: app.accounts,
+                         currentAccount: app.currentAccount,
+                         onSwitchAccount: {
+                             app.isShowingSettings = false
+                             app.onSwitchAccount?($0)
+                         },
+                         onAddAccount: {
+                             app.isShowingSettings = false
+                             app.onAddAccount?()
+                         })
+        }
         .overlay(alignment: .top) {
             if app.route == .palette {
                 CommandPaletteView(registry: app.palette,
