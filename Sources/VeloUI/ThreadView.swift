@@ -357,6 +357,8 @@ struct ThreadView: View {
     /// Named labels, so a thread can say what it was filed as. Filing was
     /// possible and invisible before this.
     var knownLabels: [MailLabel] = []
+    /// The reader's own address, so a message to them reads "to me".
+    var identity: String = ""
     let onUnsubscribe: () -> Void
 
     /// Whether this thread can be left. Parsed rather than merely present: a
@@ -469,6 +471,7 @@ struct ThreadView: View {
                                             attachmentModel: attachmentModel,
                                             alwaysLoadsImages: alwaysLoadsImages,
                                             paneHeight: proxy.size.height,
+                                            identity: identity,
                                             onToggle: { onToggle(row.message.id) })
                                 // No rule under the last message: it would draw
                                 // a line across empty space.
@@ -521,6 +524,9 @@ private struct MessageCard: View {
     var alwaysLoadsImages = false
     /// How tall the pane is, so an unmeasured body can fill it.
     let paneHeight: CGFloat
+    /// The reader's own address, so a message addressed to them can say "to
+    /// me" rather than reading their address back at them.
+    var identity: String = ""
     let onToggle: () -> Void
 
     /// Per message and never persisted: asking once should not sign the reader
@@ -547,7 +553,18 @@ private struct MessageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onToggle) {
-                VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top, spacing: 10) {
+                    // A disc rather than a picture: there is no avatar to
+                    // fetch, and a coloured initial is enough to tell one
+                    // correspondent from another down a long thread. Held at
+                    // the run's first message, so a run reads as one block
+                    // rather than a column of repeated badges.
+                    if row.showsSender {
+                        SenderDisc(sender: message.sender)
+                    } else {
+                        Color.clear.frame(width: SenderDisc.size, height: 1)
+                    }
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         // Named only when it changes. Twelve alerts from one
                         // sender do not need the name twelve times, and the
@@ -571,10 +588,21 @@ private struct MessageCard: View {
                             .accessibilityLabel(MailFormatting.fullStamp(message.date))
                     }
                     if isExpanded {
-                        // The full address earns its space only once opened.
-                        Text(addressLine)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(2)
+                        // The address earns its space only once opened -- and
+                        // only the address: the name is in bold directly above
+                        // and saying it twice is repetition, not detail.
+                        HStack(spacing: 6) {
+                            Text(MessageAddressing.address(of: message.sender))
+                                .lineLimit(1).truncationMode(.middle)
+                            if let to = MessageAddressing.recipients(
+                                to: message.recipients, cc: message.cc, identity: identity) {
+                                // Tertiary, not quaternary: a separator you
+                                // cannot see is not a separator.
+                                Text("\u{00B7}").foregroundStyle(.tertiary)
+                                Text(to).lineLimit(1)
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
                     } else if row.showsPreview {
                         // Collapsed: one line of what it said, so the thread can
                         // be skimmed without opening every message. Left out
@@ -585,6 +613,7 @@ private struct MessageCard: View {
                                              ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                             .lineLimit(1)
                     }
+                }
                 }
                 .contentShape(Rectangle())
             }
@@ -620,14 +649,6 @@ private struct MessageCard: View {
                     .background(bodyBackground)
             }
         }
-    }
-
-    private var addressLine: String {
-        var line = message.sender
-        if !message.recipients.isEmpty {
-            line += " → " + message.recipients.map(MailFormatting.displayName).joined(separator: ", ")
-        }
-        return line
     }
 
     private var preview: String {

@@ -177,6 +177,7 @@ public struct RootView: View {
                                    attachmentModel: app.attachments,
                                    alwaysLoadsImages: app.alwaysLoadsImages,
                                    knownLabels: app.labels,
+                                   identity: app.identity,
                                    onUnsubscribe: { app.unsubscribeSelected() })
                     }
                 } else {
