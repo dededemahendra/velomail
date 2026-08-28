@@ -113,9 +113,15 @@ public actor GmailSync {
             // people to ignore the red light. Anything else says plainly what
             // happened, rather than printing the Swift value.
             let transient = (error as? AuthError)?.isTransient ?? (error is URLError)
-            status = transient
-                ? .offline(consecutiveFailures: consecutiveFailures)
-                : .failed(reason: AuthError.message(for: error))
+            if (error as? AuthError)?.needsSignIn == true {
+                // Retrying cannot fix this and backing off further only delays
+                // the moment the reader finds out.
+                status = .expired
+            } else if transient {
+                status = .offline(consecutiveFailures: consecutiveFailures)
+            } else {
+                status = .failed(reason: AuthError.message(for: error))
+            }
             throw error
         }
 
