@@ -33,6 +33,36 @@ public final class SettingsViewModel: ObservableObject {
         public var isEnabled: Bool
         public var senderContains: String
         public var archives: Bool
+        /// The rule as it was read, so everything this editor has no field for
+        /// survives a visit to this window.
+        ///
+        /// Without it, opening Settings and pressing Done silently destroyed
+        /// any rule using more than a sender and an archive: a block rule came
+        /// back with no actions at all -- still listed, quietly doing nothing,
+        /// so mail the reader asked never to see came back with no sign why --
+        /// and a rule matching on subject vanished entirely. The rules file is
+        /// meant to be edited by hand, and the Senders screen writes to it too,
+        /// so this window is not the only author.
+        var original: MailRule?
+
+        /// True when the rule does more than this editor can show, so the
+        /// window can say so rather than implying the two fields are all of it.
+        public var hasMoreToIt: Bool {
+            guard let original else { return false }
+            let otherConditions = original.conditions.contains { $0.senderText == nil }
+            let otherActions = original.actions.contains { $0 != .archive }
+            return otherConditions || otherActions
+        }
+
+        /// What it does beyond archiving, in words, for that note.
+        public var extraSummary: String {
+            guard let original else { return "" }
+            var parts = original.actions.filter { $0 != .archive }.map(\.rawValue)
+            if original.conditions.contains(where: { $0.senderText == nil }) {
+                parts.append("other conditions")
+            }
+            return parts.joined(separator: ", ")
+        }
     }
 
     @Published public var signature = ""
@@ -121,7 +151,8 @@ public final class SettingsViewModel: ObservableObject {
         rules = store.rules().rules.map { rule in
             EditableRule(id: rule.id, name: rule.name, isEnabled: rule.isEnabled,
                          senderContains: rule.conditions.compactMap(\.senderText).first ?? "",
-                         archives: rule.actions.contains(.archive))
+                         archives: rule.actions.contains(.archive),
+                         original: rule)
         }
         loadsImages = preferences.loadsRemoteImages
         showsNotifications = preferences.showsNotifications
@@ -157,7 +188,7 @@ public final class SettingsViewModel: ObservableObject {
     public func addRule() {
         rules.append(EditableRule(id: UUID().uuidString, name: "New rule",
                                   isEnabled: true, senderContains: "example.com",
-                                  archives: true))
+                                  archives: true, original: nil))
     }
 
     public func removeRule(at index: Int) {
@@ -194,12 +225,23 @@ private extension SettingsViewModel.EditableSnippet {
 private extension SettingsViewModel.EditableRule {
     /// A rule with nothing to match matches everything, and these actions are
     /// not undoable in bulk.
+    ///
+    /// Rebuilt from the rule as it was read rather than from the two fields
+    /// alone, so conditions and actions this window cannot show are carried
+    /// through instead of being dropped on the way out.
     var saveable: MailRule? {
         let trimmed = senderContains.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        var conditions = original?.conditions.filter { $0.senderText == nil } ?? []
+        if !trimmed.isEmpty { conditions.append(.senderContains(trimmed)) }
+        guard !conditions.isEmpty else { return nil }
+
+        var actions = original?.actions.filter { $0 != .archive } ?? []
+        if archives { actions.append(.archive) }
+
         return MailRule(id: id, name: name, isEnabled: isEnabled,
-                        conditions: [.senderContains(trimmed)],
-                        actions: archives ? [.archive] : [])
+                        order: original?.order ?? 0,
+                        matchAll: original?.matchAll ?? true,
+                        conditions: conditions, actions: actions)
     }
 }
 

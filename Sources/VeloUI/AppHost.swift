@@ -82,6 +82,26 @@ final class AppHost: ObservableObject {
         if !app.identity.isEmpty { accounts.setAddress(app.identity, on: accounts.current) }
         app.accounts = accounts.accounts
         await notifications.requestAuthorizationIfNeeded()
+        notifications.handleActions(
+            open: { [weak self] threadID in
+                guard let self else { return }
+                // Clicking the banner is a request to look at it, so the app
+                // comes forward. The two buttons deliberately do not.
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                self.app.openFromNotification(threadID)
+            },
+            archive: { [weak self] threadID in
+                self?.app.archiveFromNotification(threadID)
+                self?.announceNewMail()
+            },
+            markRead: { [weak self] threadID in
+                self?.app.markReadFromNotification(threadID)
+                self?.announceNewMail()
+            },
+            openFailures: { [weak self] in
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                self?.app.refreshFailures()
+            })
         announceNewMail()
         guard let sync else { return }
         syncTask = Task { [interval = app.preferences.syncInterval] in
@@ -129,6 +149,9 @@ final class AppHost: ObservableObject {
             return
         }
         notifications.setBadge(app.visibleUnreadCount)
+        // Before the new-mail check: a message that did not send is worth
+        // saying even on the first run, and even in focus mode.
+        notifications.present(failures: app.failures)
         guard app.shouldAnnounce else { return }
 
         let messages = (try? store.recentInboxMessages(limit: 100)) ?? []
