@@ -93,14 +93,24 @@ struct SenderDisc: View {
 
     static let size: CGFloat = 26
 
+    /// The disc's colour for a sender.
+    ///
+    /// Separated from the view so its contrast can be measured rather than
+    /// judged by eye. It is fixed across themes on purpose -- one
+    /// correspondent, one colour -- which makes it the one colour in the app
+    /// no theme can rescue.
+    ///
+    /// Muted rather than saturated: it sits beside body text all the way down
+    /// a transcript and must not shout at it. Deep enough that the white
+    /// letter has something to sit on: at 0.78 brightness the contrast was
+    /// about two to one and the initial looked washed out.
+    static func fill(for sender: String) -> Color {
+        Color(hue: MessageAddressing.hue(for: sender), saturation: 0.52, brightness: 0.62)
+    }
+
     var body: some View {
-        let hue = MessageAddressing.hue(for: sender)
         Circle()
-            // Muted rather than saturated: this sits beside body text all the
-            // way down a transcript and must not shout at it. Deep enough that
-            // the white letter has something to sit on -- at 0.78 the contrast
-            // was about two to one and the initial looked washed out.
-            .fill(Color(hue: hue, saturation: 0.52, brightness: 0.62))
+            .fill(Self.fill(for: sender))
             .frame(width: Self.size, height: Self.size)
             .overlay {
                 Text(MessageAddressing.initial(for: sender))
