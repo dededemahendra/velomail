@@ -177,7 +177,12 @@ public struct Draft: Codable, Equatable, Sendable {
 
     /// Extracts the bare address from a `Display Name <addr>` header value and
     /// lowercases it, so identity comparisons survive display names.
-    static func normalizedAddress(_ value: String) -> String {
+    /// The bare, lowercased address inside a `Name <addr>` header.
+    ///
+    /// Public because the identity of a correspondent is the same question in
+    /// storage, in the rules and on screen, and three answers to it would
+    /// disagree eventually.
+    public static func normalizedAddress(_ value: String) -> String {
         guard let open = value.lastIndex(of: "<"),
               let close = value.lastIndex(of: ">"), open < close else {
             return value.trimmingCharacters(in: .whitespaces).lowercased()
