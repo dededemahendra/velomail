@@ -47,6 +47,11 @@ public struct RootView: View {
         }
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
+                // Above everything: a client that has stopped syncing looks
+                // exactly like a client nobody has written to.
+                if app.syncStatus == .expired {
+                    SignInAgainBanner(onSignIn: { app.signIn() })
+                }
                 // Above undo, because it is the one that does not expire.
                 if let failure = app.failurePrompt {
                     FailureBanner(prompt: failure,
@@ -68,6 +73,7 @@ public struct RootView: View {
         .animation(.easeOut(duration: 0.18), value: app.undoPrompt)
         .animation(.easeOut(duration: 0.18), value: app.failurePrompt)
         .animation(.easeOut(duration: 0.18), value: app.notice)
+        .animation(.easeOut(duration: 0.18), value: app.syncStatus == .expired)
         .alert("Send this message?", isPresented: Binding(
             get: { app.sendWarning != nil },
             set: { if !$0 { app.cancelSend() } })) {
@@ -141,7 +147,15 @@ public struct RootView: View {
                 if app.inbox.threads.isEmpty {
                     EmptyListView(scope: app.inbox.scope, status: app.syncStatus,
                                   hasSeenMail: app.inbox.hasSeenMail,
-                                  onRetry: { Task { await app.syncMailNow() } })
+                                  // Retrying an expired sign-in achieves
+                                  // nothing; the button has to sign in.
+                                  onRetry: {
+                                      if app.syncStatus == .expired {
+                                          app.signIn()
+                                      } else {
+                                          Task { await app.syncMailNow() }
+                                      }
+                                  })
                 } else {
                     MessageListView(sections: app.sections,
                                     selectedIndex: app.inbox.selectedIndex,
@@ -290,23 +304,25 @@ struct StatusBar: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
     }
 
-    private var colour: Color {
+    var colour: Color {
         switch status {
         case .idle: return .secondary
         case .syncing: return .blue
         case .upToDate: return .green
         case .offline: return .orange
         case .failed: return .red
+        case .expired: return .red
         }
     }
 
-    private var label: String {
+    var label: String {
         switch status {
         case .idle: return "Not synced"
         case .syncing: return "Syncing…"
         case let .upToDate(at): return "Updated \(at.formatted(date: .omitted, time: .shortened))"
         case let .offline(failures): return "Offline (retry \(failures))"
         case let .failed(reason): return "Sync problem: \(reason)"
+        case .expired: return "Sign-in expired"
         }
     }
 }

@@ -48,6 +48,38 @@ struct UndoBanner: View {
 /// Deliberately unlike `UndoBanner`: no countdown and no automatic dismissal.
 /// A message that never went is not a ten second offer, and the writer has to
 /// be the one who decides it has been dealt with.
+/// Says the sign-in has run out, and offers the one thing that fixes it.
+///
+/// Not dismissible, and above everything else: a mail client that has quietly
+/// stopped syncing looks exactly like a mail client where nobody has written
+/// to you. It sits over the list rather than in the empty state, because an
+/// inbox with four hundred threads in it is never empty and would never have
+/// shown one.
+struct SignInAgainBanner: View {
+    let onSignIn: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.caption).foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Sign-in expired").font(.callout.weight(.medium))
+                Text("New mail has stopped arriving.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Button("Sign in", action: onSignIn).buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .floatingSurface()
+        .padding(.horizontal, 16).padding(.bottom, 12)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sign-in expired. New mail has stopped arriving.")
+    }
+}
+
 struct FailureBanner: View {
     let prompt: String
     /// Present only when there is a draft to put back in the composer.

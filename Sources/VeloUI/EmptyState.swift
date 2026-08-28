@@ -38,6 +38,11 @@ struct EmptyState: Equatable {
                               headline: "Cannot reach Gmail",
                               detail: "Your mail will appear once the connection is back.",
                               isWaiting: false, retry: "Try again")
+        case .expired:
+            return EmptyState(symbol: "person.crop.circle.badge.exclamationmark",
+                              headline: "Sign-in expired",
+                              detail: "Gmail needs you to sign in again.",
+                              isWaiting: false, retry: "Sign in")
         case let .failed(reason):
             return EmptyState(symbol: "exclamationmark.triangle",
                               headline: "Sync could not finish",
