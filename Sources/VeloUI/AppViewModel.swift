@@ -119,6 +119,24 @@ public final class AppViewModel: ObservableObject {
     /// in a row do not have the second cut short by the first one's timer.
     private var noticeToken = 0
 
+    /// How a timed dismissal waits before firing.
+    ///
+    /// Injected so a test can drive the countdown rather than sleep against
+    /// it. Waiting out a real timer means racing it: a notice window of 50ms
+    /// and a test that sleeps 200ms looks like a wide margin, and under a
+    /// loaded scheduler the sleep still loses -- one parallel run in three.
+    /// A test that can only pass serially is a test whose timing assumptions
+    /// are unstated.
+    typealias DelayedWork = @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void
+
+    var afterDelay: DelayedWork = { seconds, body in
+        let nanoseconds = UInt64(seconds > 0 ? seconds * 1_000_000_000 : 0)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            body()
+        }
+    }
+
     /// True when every message's pictures load without being asked for.
     @Published public private(set) var alwaysLoadsImages = false
     /// The choices the app makes on the reader's behalf. Read at the moment
@@ -881,11 +899,7 @@ public final class AppViewModel: ObservableObject {
         notice = text
         noticeToken += 1
         let token = noticeToken
-        let window = noticeWindow
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
-            await MainActor.run { self?.expireNotice(token) }
-        }
+        afterDelay(noticeWindow) { [weak self] in self?.expireNotice(token) }
     }
 
     /// Clears the banner only if it is still the one that started this
@@ -1214,10 +1228,7 @@ public final class AppViewModel: ObservableObject {
         // left, which makes a deliberate wait feel like a gamble.
         let opened = Date()
         undoInterval = opened...opened.addingTimeInterval(window)
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
-            await MainActor.run { self?.expireUndo(action) }
-        }
+        afterDelay(window) { [weak self] in self?.expireUndo(action) }
     }
 
     /// Clears the banner only if it still refers to *this* action; a newer one
