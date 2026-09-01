@@ -1,6 +1,6 @@
 # Velo Mail — Superhuman Feature Roadmap
 
-**Date:** 2026-08-24
+**Date:** 2026-08-24, revised 2026-09-01
 **Purpose:** map all 100 requested features to honest status, so scope is visible
 rather than implied.
 
@@ -31,26 +31,30 @@ we do not have · **FLAG** buildable but see the note.
 | 2, 51/52, 65/66, 70, 86 | Split Inbox, Custom Sections / Priority Inbox, Bulk Actions / Multi-select, Star, Inbox Zero | increment N — a wider cursor and a frozen grouping |
 | 27/28/29 | Templates / Snippets / Signature | increment O — one `SnippetLibrary` from a file; a template is a snippet with a subject |
 | 60/61 | Newsletter Management / Unsubscribe | increment O — `List-Unsubscribe`, mailto through the outbound queue |
+| 30/31/32 | Attachments / search / inline | increments P/Q — parts, download, send; `has:attachment` and `filename:` (2026-09-01) |
+| 57/58/59, 62/63 | Filters / Rules / Sorting, Blocking / Spam | increment U — one rule engine, `rules.json`, incremental arrivals only |
+| 80/81, 83 | Notifications, Focus Mode | increment R — `MailAnnouncer` + `UNUserNotificationCenter` |
+| 53 | VIP | the Senders screen (`g u`) plus always-archive rules |
+| 3 | Multiple Accounts | `AccountList`, per-account database and sign-in — see the caveat below |
 
 ## NEXT — planned, nothing blocking
 
+Rewritten 2026-09-01. Everything previously in this section had shipped and was
+still listed here; planning off it would have meant planning work already done.
+The check that produced this list is in the note at the bottom.
+
 | # | Feature | Note |
 |---|---|---|
-| 30/31/32 | Attachments / search / inline | `hasAttachments` exists; parts do not |
+| 37/38 | Contacts / Profiles | People API: real names and avatars. The list's letter disc (2026-09-01) is the placeholder it replaces |
 | 33 | Link Previews | fetch + cache, respecting the remote-content block |
-| 53 | VIP | sender-based sections over the existing grouping |
-| 57/58/59 | Filters / Rules / Automatic Sorting | local rule engine over incoming messages |
-| 62/63 | Blocking / Spam | filter rules + Gmail labels |
 | 71 | Pin | deliberately not built — see the FLAG note |
-| 80/81 | Notifications | `UNUserNotificationCenter` |
-| 83 | Focus Mode | suppress notifications + hide counts |
 | — | Snippet editor | increment O ships the file and the expansion, not an editor |
+| — | Second-account sign-in | switching is tested; the OAuth path for account two has never been run end to end, and needs a real Google account to exercise |
 
 ## BIG — real, but each is its own project
 
 | # | Feature | Why |
 |---|---|---|
-| 3 | Multiple Accounts | account id is threaded through storage but singular everywhere |
 | 5 | Outlook Integration | needs a Graph/IMAP backend beside Gmail |
 | 34/35/36 | Calendar / Meeting Scheduling / Availability | a second Google API surface |
 | 37/38 | Contacts Integration / Profiles | People API |
@@ -87,3 +91,20 @@ we do not have · **FLAG** buildable but see the note.
 6. **O** — templates, snippets, signatures, unsubscribe. *(done)*
 7. **P** — attachments: MIME parts, download, and search over them. The last
    large gap between this and a mail client you could use exclusively.
+
+
+## How this file goes stale
+
+Every row above that turned out to be wrong on 2026-09-01 was wrong in the same
+direction: shipped, still listed as planned. Reading it is not enough. Before
+planning an increment, check the code:
+
+- `public func` in `Sources/VeloCore` with no caller in `Sources/VeloUI` — an
+  engine capability nothing can reach. Nine have turned up this way.
+- `MailAction` cases against the keymap and `CommandRegistry` — an action bound
+  to nothing is unreachable by definition.
+- A value written for a consumer that does not exist, and a predicate nobody
+  asks. Neither shows up in an API-level sweep.
+
+Quote the glob: `grep -r --include='*.swift'` unquoted is eaten by zsh, searches
+nothing, and reports everything as unreferenced.
