@@ -173,13 +173,23 @@ import VeloCore
         #expect(snippet.stringValue == "the snippet")
     }
 
-    /// The tick and the unread dot are blank on most rows and must not be
-    /// swept up by the same rule -- they hold the gutter open.
+    /// The tick and the unread dot are blank on most rows and must stay
+    /// visible anyway -- they hold the gutter open, and a gutter that collapses
+    /// moves the whole row sideways as mail is read.
+    ///
+    /// Named rather than found by "a blank field": the snippet and the label
+    /// chip are also blank sometimes and are legitimately hidden, and an
+    /// earlier version of this swept them up and broke when the chip learned
+    /// to hide itself.
     @Test func theBlankTickAndDotAreStillVisible() {
         let row = laidOutRow(unread: false)
-        let blanks = allFields(in: row).filter { $0.stringValue.isEmpty && $0.identifier != ThreadRowView.snippetIdentifier }
-        #expect(!blanks.isEmpty)
-        #expect(blanks.allSatisfy { !$0.isHidden })
+        let gutter = allFields(in: row).filter {
+            $0.identifier.map(ThreadRowView.gutterIdentifiers.contains) ?? false
+        }
+
+        #expect(gutter.count == 2)
+        #expect(gutter.allSatisfy { !$0.isHidden })
+        #expect(gutter.allSatisfy { $0.frame.width > 0 })
     }
 
     private func allFields(in view: NSView) -> [NSTextField] {
@@ -191,5 +201,83 @@ import VeloCore
 
     private func snippetField(in view: NSView) -> NSTextField? {
         allFields(in: view).first { $0.identifier == ThreadRowView.snippetIdentifier }
+    }
+
+    // MARK: - The label chip
+
+    /// Rendering rows at 300, 380 and 520pt found the chip in three different
+    /// states for the same data: absent, "Re", and "In...". It shared the top
+    /// line with the sender and lost, because it is the first thing told to
+    /// give up space -- and a chip reduced to two letters reads as a rendering
+    /// fault, not as a label.
+    ///
+    /// It now sits on the snippet line, where the only thing it competes with
+    /// is preview text that was already being truncated.
+
+    private func chipField(in view: NSView) -> NSTextField? {
+        allFields(in: view).first { $0.identifier == ThreadRowView.labelIdentifier }
+    }
+
+    private func rowWith(label: String, sender: String, width: CGFloat) -> ThreadRowView {
+        let subject = MailThread(id: "t", sender: sender, snippet: "a snippet worth reading",
+                                 lastMessageDate: Date(timeIntervalSince1970: 0),
+                                 isUnread: false, hasAttachments: false, labelIDs: ["INBOX"])
+        let row = ThreadRowView(thread: subject, isMarked: false,
+                                name: MailFormatting.displayName(sender),
+                                dateText: "Yesterday", previewLines: 1,
+                                labels: label.isEmpty ? [] : [label])
+        row.frame = NSRect(x: 0, y: 0, width: width, height: 64)
+        row.layoutSubtreeIfNeeded()
+        return row
+    }
+
+    /// The case that produced "In..." -- a long sender beside a long label.
+    @Test func aLongSenderNoLongerSqueezesTheLabelToNothing() throws {
+        let row = rowWith(label: "Invoices to pay this quarter",
+                          sender: "A Very Long Organisation Name Indeed Pty Ltd <x@y.com>",
+                          width: 520)
+        let chip = try #require(chipField(in: row))
+
+        #expect(!chip.isHidden)
+        #expect(chip.frame.width > 40,
+                "the chip got \(chip.frame.width)pt, which shows about two letters")
+    }
+
+    /// And the sender keeps its own space, which is what putting the chip up
+    /// there cost in the first place.
+    @Test func theSenderIsNotTruncatedByALongLabel() throws {
+        let withLabel = rowWith(label: "Invoices to pay this quarter",
+                                sender: "Peta Bilston <peta@x.com>", width: 380)
+        let without = rowWith(label: "", sender: "Peta Bilston <peta@x.com>", width: 380)
+
+        let a = try #require(textField("Peta Bilston", in: withLabel))
+        let b = try #require(textField("Peta Bilston", in: without))
+        #expect(abs(a.frame.width - b.frame.width) < 0.5,
+                "a label cost the sender \(b.frame.width - a.frame.width)pt")
+    }
+
+    @Test func aRowWithNoLabelShowsNoChip() throws {
+        let row = rowWith(label: "", sender: "Peta Bilston <peta@x.com>", width: 380)
+        #expect(chipField(in: row)?.isHidden == true)
+    }
+
+    /// The invariant, whatever the widths happen to be: the chip shows what it
+    /// was given, or it is not there at all. Anything between is a smudge.
+    ///
+    /// Checked across widths and label lengths because the first attempt at
+    /// this passed every test in the suite and still came out as a lone "..."
+    /// in the running app -- a spacer view was quietly winning the space.
+    @Test func theChipIsEitherFullyReadableOrAbsent() throws {
+        for width in [300.0, 380.0, 450.0, 520.0] {
+            for label in ["Updates", "Clients", "Receipts", "Invoices to pay this quarter"] {
+                let row = rowWith(label: label, sender: "Hostinger <h@x.com>", width: width)
+                let chip = try #require(chipField(in: row))
+                guard !chip.isHidden else { continue }
+
+                let needed = chip.intrinsicContentSize.width
+                let note = "at \(width)pt the chip '\(chip.stringValue)' got \(chip.frame.width)pt of the \(needed)pt it needs"
+                #expect(chip.frame.width >= needed - 0.5, "\(note)")
+            }
+        }
     }
 }

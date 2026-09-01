@@ -270,6 +270,11 @@ final class ThreadRowView: NSView {
     /// another 1.08ms for every row scrolled into view, against a 16.7ms frame.
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow")
     static let snippetIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow.snippet")
+    static let labelIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow.label")
+    /// The two that are blank on most rows and must stay visible anyway: they
+    /// hold the gutter open, and a gutter that collapses moves the whole row.
+    static let gutterIdentifiers = [NSUserInterfaceItemIdentifier("velo.threadRow.mark"),
+                                    NSUserInterfaceItemIdentifier("velo.threadRow.dot")]
 
     // Fixed width whether or not it is showing, so marking a row does not
     // shuffle the text next to it.
@@ -303,9 +308,11 @@ final class ThreadRowView: NSView {
         super.init(frame: .zero)
         identifier = Self.reuseIdentifier
 
+        mark.identifier = Self.gutterIdentifiers[0]
         mark.font = .systemFont(ofSize: 11, weight: .bold)
         mark.textColor = .controlAccentColor
 
+        dot.identifier = Self.gutterIdentifiers[1]
         dot.font = .systemFont(ofSize: 7)
         dot.textColor = .controlAccentColor
 
@@ -320,13 +327,17 @@ final class ThreadRowView: NSView {
 
         clip.font = .systemFont(ofSize: 10)
 
+        labelChip.identifier = Self.labelIdentifier
         labelChip.font = .systemFont(ofSize: 9, weight: .medium)
         labelChip.textColor = .tertiaryLabelColor
         labelChip.lineBreakMode = .byTruncatingTail
-        // Below the sender's own low resistance, so a long label gives up its
-        // space first. It used to win, and "Invoices to pay this quarter"
-        // printed in full while the sender read "Peta Bil...".
-        labelChip.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+        // High, now that it sits beside the snippet rather than the sender.
+        // On the top line it had to yield -- a long label printed in full
+        // while the sender read "Peta Bil..." -- and yielding turned it into
+        // "In...", which is not a label, it is a smudge. Down here the only
+        // thing it takes from is preview text that is already truncated.
+        labelChip.setContentCompressionResistancePriority(.required, for: .horizontal)
+        labelChip.setContentHuggingPriority(.required, for: .horizontal)
 
         star.font = .systemFont(ofSize: 11)
         star.textColor = .systemYellow
@@ -347,7 +358,7 @@ final class ThreadRowView: NSView {
         snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
 
-        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), labelChip, clip, star, date])
+        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
@@ -355,7 +366,21 @@ final class ThreadRowView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.row)
 
-        let stack = NSStackView(views: [top, snippet])
+        // No spacer view between them. A bare `NSView` has no intrinsic size
+        // but does have default compression resistance, so it competed for the
+        // room and the chip lost -- in the running app it came out as a single
+        // ellipsis with nothing in front of it. The snippet expands and yields
+        // instead, which it was already doing before the chip arrived.
+        snippet.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        snippet.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let preview = NSStackView(views: [snippet, labelChip])
+        preview.orientation = .horizontal
+        preview.spacing = 8
+        preview.alignment = .firstBaseline
+        preview.distribution = .fill
+
+        let stack = NSStackView(views: [top, preview])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 2
@@ -395,12 +420,15 @@ final class ThreadRowView: NSView {
 
         clip.stringValue = thread.hasAttachments ? "\u{1F4CE}" : ""
         labelChip.stringValue = MailFormatting.shortLabel(labels.first ?? "")
+        labelChip.isHidden = labelChip.stringValue.isEmpty
         star.stringValue = thread.labelIDs.contains("STARRED") ? "\u{2605}" : ""
         date.stringValue = dateText
 
-        // Gmail sends this escaped; without decoding the list reads
-        // "It&#39;s Friday".
-        snippet.stringValue = HTMLText.decoded(thread.snippet)
+        // Gmail sends this escaped -- without decoding the list reads
+        // "It&#39;s Friday" -- and marketing mail pads it with invisible
+        // characters that draw nothing and still take up room. `preview`
+        // handles both.
+        snippet.stringValue = HTMLText.preview(thread.snippet)
         snippet.maximumNumberOfLines = previewLines
         // Removed rather than left as an empty gap, in both the cases that
         // produce one: a reader who goes by subject alone and has set the
@@ -490,7 +518,10 @@ enum MailFormatting {
         if thread.messageCount > 1 { parts.append("\(thread.messageCount) messages") }
         // Spelled out: a listener has no dot to see.
         if isToYouAlone(recipientCount: thread.recipientCount) { parts.append("to you only") }
-        if !thread.snippet.isEmpty { parts.append(HTMLText.decoded(thread.snippet)) }
+        // Spoken aloud, the padding is worse than on screen: a listener gets
+        // the words and then nothing at all for a long time.
+        let spoken = HTMLText.preview(thread.snippet)
+        if !spoken.isEmpty { parts.append(spoken) }
         if thread.hasAttachments { parts.append("has attachment") }
         // Every label, not just the one the row has room to draw: a listener
         // has no header beside them to read the rest from.

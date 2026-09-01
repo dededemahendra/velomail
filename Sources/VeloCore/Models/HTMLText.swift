@@ -48,4 +48,30 @@ public enum HTMLText {
         }
         return out
     }
+
+    /// A snippet as it should be shown in a list.
+    ///
+    /// Decodes entities, then strips the invisible characters marketing mail
+    /// pads its preheader with -- zero-width joiners, byte-order marks,
+    /// combining grapheme joiners and the bidi marks. They are there to stop a
+    /// client showing more of the message than the sender wants, they draw
+    /// nothing, and they still take up room: a real row read "Review your
+    /// plugins and themes", then a gap the width of the list, then a stranded
+    /// ellipsis where the text had been truncated far off to the right.
+    ///
+    /// The runs of ordinary space they are separated by are collapsed too --
+    /// removing only the characters leaves the same wide empty tail behind.
+    public static func preview(_ raw: String) -> String {
+        let decoded = decoded(raw)
+        let visible = decoded.unicodeScalars.filter { scalar in
+            // Format characters (Cf) covers ZWSP, ZWNJ, ZWJ, word joiner, BOM
+            // and the bidi marks in one go. The other two are not Cf: a soft
+            // hyphen is punctuation and a combining grapheme joiner is a mark.
+            !(scalar.properties.generalCategory == .format
+                || scalar == "\u{00AD}" || scalar == "\u{034F}")
+        }
+        return String(String.UnicodeScalarView(visible))
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
 }

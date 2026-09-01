@@ -108,7 +108,7 @@ struct SearchView: View {
                 // The matched words, marked. Without them a result looks
                 // arbitrary: searching "youtube" returns marketing mail whose
                 // subject never says it, and nothing on the row explains why.
-                highlighted(HTMLText.decoded(thread.snippet))
+                highlighted(HTMLText.preview(thread.snippet))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
