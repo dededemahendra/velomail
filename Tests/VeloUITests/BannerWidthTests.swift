@@ -62,7 +62,7 @@ import Foundation
     }
 
     @Test func theUndoBannerDoesNotRunTheWidthOfTheWindow() {
-        expectCapped(UndoBanner(prompt: "Archived", deadline: nil, onUndo: {}), "undo")
+        expectCapped(UndoBanner(prompt: "Archived", interval: nil, onUndo: {}), "undo")
     }
 
     @Test func theNoticeBannerDoesNotRunTheWidthOfTheWindow() {
@@ -123,7 +123,7 @@ import Foundation
     /// half and near-white on its right, with "Undo" on a ground barely
     /// distinguishable from its own white text.
     @Test func theBannerLooksTheSameWhateverIsBehindIt() throws {
-        let banner = UndoBanner(prompt: "Archived", deadline: nil, onUndo: {})
+        let banner = UndoBanner(prompt: "Archived", interval: nil, onUndo: {})
         let onDark = try #require(interiorLuminance(of: banner, over: .black))
         let onLight = try #require(interiorLuminance(of: banner, over: .white))
 
@@ -133,7 +133,7 @@ import Foundation
 
     /// And it has to stay dark enough for white text to sit on.
     @Test func theBannerStaysDarkOverAWhiteMessageBody() throws {
-        let banner = UndoBanner(prompt: "Archived", deadline: nil, onUndo: {})
+        let banner = UndoBanner(prompt: "Archived", interval: nil, onUndo: {})
         let onLight = try #require(interiorLuminance(of: banner, over: .white))
 
         #expect(onLight < 0.45, "banner interior is \(onLight) over white -- white text on it")
