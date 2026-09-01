@@ -11,6 +11,7 @@ set -euo pipefail
 # symbols nobody shipping needs. Pass "debug" for a build you intend to attach
 # a debugger to.
 CONFIG="${1:-release}"
+ICON_NAME_KEY=""
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/VeloMail.app"
 
@@ -47,6 +48,28 @@ trap 'rm -rf "$ICON_TMP"' EXIT
 "$ICON_BIN" "$ICON_TMP/AppIcon.iconset" >/dev/null
 iconutil -c icns "$ICON_TMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 
+# macOS 26 draws the tile itself and composites the app's layers over it, once
+# per appearance -- which is the only way an icon gets a light form, a dark form
+# and a tinted one. That needs an Icon Composer `.icon`, compiled by `actool`.
+#
+# Best-effort: `actool` ships with Xcode, and this repo builds fine with the
+# Command Line Tools alone. Without it the app keeps the .icns and simply has
+# one appearance, which is what it had before.
+if ICON_TOOL="$(xcrun --find actool 2>/dev/null)" && [ -d "$ICON_TMP/AppIcon.icon" ]; then
+    mkdir -p "$ICON_TMP/compiled"
+    if "$ICON_TOOL" "$ICON_TMP/AppIcon.icon" --compile "$ICON_TMP/compiled" \
+        --platform macosx --minimum-deployment-target 26.0 --app-icon AppIcon \
+        --output-partial-info-plist "$ICON_TMP/icon.plist" >/dev/null 2>&1 \
+        && [ -f "$ICON_TMP/compiled/Assets.car" ]; then
+        cp "$ICON_TMP/compiled/Assets.car" "$APP/Contents/Resources/Assets.car"
+        # Overwrites the flat one: actool's carries the layered recipe the
+        # system needs, and its own flattened fallback.
+        [ -f "$ICON_TMP/compiled/AppIcon.icns" ] \
+            && cp "$ICON_TMP/compiled/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+        ICON_NAME_KEY='    <key>CFBundleIconName</key><string>AppIcon</string>'
+    fi
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -56,6 +79,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>Velo Mail</string>
     <key>CFBundleExecutable</key><string>VeloMail</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+${ICON_NAME_KEY}
     <key>CFBundleIdentifier</key><string>co.sistercreatives.velomail</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>

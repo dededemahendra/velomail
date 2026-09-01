@@ -102,7 +102,12 @@ public enum AppIconRenderer {
     private static let groundBottom = rgb(0x12, 0x12, 0x14)
 
     /// The mark's gradient, running top-left to bottom-right.
-    private static let markStops = [rgb(0xFF, 0xA0, 0xF0), rgb(0x8F, 0xA8, 0xFF), rgb(0x22, 0xE6, 0xFF)]
+    ///
+    /// Deeper than the pale pink-to-cyan it started as. That pair was chosen
+    /// against charcoal and was the right choice while the artwork carried its
+    /// own dark tile. Now macOS draws the tile -- near-white in light mode --
+    /// and those colours disappeared on it. These carry against both grounds.
+    private static let markStops = [rgb(0xD9, 0x46, 0xEF), rgb(0x7C, 0x5C, 0xF5), rgb(0x22, 0x99, 0xDD)]
 
     private static func rgb(_ r: Int, _ g: Int, _ b: Int) -> CGColor {
         CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255,
@@ -264,6 +269,29 @@ public enum AppIconRenderer {
         return result
     }
 
+    /// The mark alone, on transparency, for the layered `.icon`.
+    ///
+    /// macOS 26 draws the tile itself, once per appearance, and composites the
+    /// app's layers over it -- which is the whole mechanism by which an icon
+    /// has a light and a dark form. Handing it a flat picture of a dark tile,
+    /// which is what the `.icns` is, hides the ground and looks identical in
+    /// both.
+    public static func markLayer(pixels side: Int) -> CGImage {
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CGContext(data: nil, width: side, height: side,
+                                bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setAllowsAntialiasing(true)
+        let unit = CGFloat(side) / 1024
+        context.scaleBy(x: unit, y: unit)
+
+        // The full design: a layered icon is only ever drawn large, and the
+        // system does its own scaling.
+        guard let mark = markPath(for: design(forPointSize: 512)) else { return context.makeImage()! }
+        fillWithMarkGradient(mark, in: context)
+        return context.makeImage()!
+    }
+
     // MARK: - Output
 
     public static func writeIconset(to directory: URL) throws {
@@ -279,6 +307,47 @@ public enum AppIconRenderer {
                 throw IconError.couldNotWrite(representation.filename)
             }
         }
+    }
+
+    /// Writes an Icon Composer `.icon` bundle for `actool` to compile.
+    ///
+    /// Hand-written rather than produced by Icon Composer, which is a GUI. The
+    /// shape was established by compiling candidates and reading the result
+    /// back with `assetutil`: the `fill` belongs to a *group*, not to the
+    /// document -- at the top level it compiles without complaint and is
+    /// silently ignored, which is how a near-white ground came out charcoal.
+    public static func writeIconBundle(to directory: URL, named name: String = "AppIcon") throws {
+        let bundle = directory.appendingPathComponent("\(name).icon")
+        let assets = bundle.appendingPathComponent("Assets")
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+
+        let markURL = assets.appendingPathComponent("mark.png")
+        guard let destination = CGImageDestinationCreateWithURL(
+            markURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw IconError.couldNotWrite("mark.png")
+        }
+        CGImageDestinationAddImage(destination, markLayer(pixels: 1024), nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw IconError.couldNotWrite("mark.png")
+        }
+
+        // The near-white is the *light* ground; the system derives the dark one
+        // from it, which is what gives the icon its two appearances. A charcoal
+        // fill here would produce two identical dark icons.
+        let manifest = """
+        {
+          "groups" : [
+            {
+              "fill" : { "automatic-gradient" : "extended-srgb:0.96,0.96,0.98,1.00" },
+              "layers" : [ { "image-name" : "mark.png", "name" : "Chevrons" } ]
+            }
+          ],
+          "supported-platforms" : { "circles" : [], "squares" : [ "macOS" ] },
+          "version" : 1
+        }
+        """
+        try manifest.write(to: bundle.appendingPathComponent("icon.json"),
+                           atomically: true, encoding: .utf8)
     }
 
     public enum IconError: Error, CustomStringConvertible {
