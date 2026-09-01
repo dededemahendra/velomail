@@ -107,11 +107,20 @@ private final class RefusingWriter: GmailWriting {
     @Test func theBannerOutlastsTheUndoWindow() async throws {
         // Unlike undo, this is not a ten second offer: a message that never
         // went has to still be there when the writer next looks up.
+        //
+        // Driven rather than slept through. The old form waited 60ms against a
+        // ten-second window, which proves almost nothing -- it would have
+        // passed even if the banner expired at eleven seconds. Winding the
+        // clock well past the undo window is the assertion that was meant.
         let (app, outbound, mutations) = try makeApp()
+        let clock = TestClock()
+        app.afterDelay = clock.delay
         try await failASend(outbound, mutations)
 
         app.refreshFailures()
-        try await Task.sleep(nanoseconds: 60_000_000)
+        #expect(app.failurePrompt != nil)
+
+        clock.advance(by: AppViewModel.undoWindow * 3)
 
         #expect(app.failurePrompt != nil)
     }

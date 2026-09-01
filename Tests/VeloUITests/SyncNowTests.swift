@@ -68,7 +68,7 @@ private actor Counter {
 
 @MainActor
 @Suite struct NoticeLifetimeTests {
-    private func makeApp() throws -> AppViewModel {
+    private func makeApp() throws -> (AppViewModel, TestClock) {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
         let app = AppViewModel(
@@ -78,31 +78,44 @@ private actor Counter {
                                       mutations: MutationStore(db), identity: "me@x.com"),
             identity: "me@x.com", isSignedIn: true, syncNow: { })
         try app.start()
-        app.noticeWindow = 0.05
-        return app
+        app.noticeWindow = 4
+        // The countdown is driven rather than waited out. These used to set a
+        // 50ms window and sleep 200ms, which is a race between two real timers
+        // -- and one parallel run in three lost it.
+        let clock = TestClock()
+        app.afterDelay = clock.delay
+        return (app, clock)
     }
 
     @Test func aPassingMessagePasses() async throws {
         // It had no lifetime at all: "Up to date" stayed until the reader
         // happened to sync again.
-        let app = try makeApp()
+        let (app, clock) = try makeApp()
         await app.syncMailNow()
         #expect(app.notice == "Up to date")
-        try await Task.sleep(for: .milliseconds(200))
+
+        clock.advance(by: 3.9)
+        #expect(app.notice == "Up to date", "cleared before its window was up")
+
+        clock.advance(by: 0.2)
         #expect(app.notice == nil)
     }
 
     @Test func theSameMessageTwiceKeepsItsFullWindow() async throws {
         // Comparing by text alone would let the first countdown clear the
         // second message early.
-        let app = try makeApp()
-        app.noticeWindow = 0.35
+        let (app, clock) = try makeApp()
         await app.syncMailNow()
-        try await Task.sleep(for: .milliseconds(250))
+        clock.advance(by: 3)
         await app.syncMailNow()
-        try await Task.sleep(for: .milliseconds(200))
-        // The first timer has fired by now; the second must have survived it.
+
+        // Past the first timer, well inside the second.
+        clock.advance(by: 1.5)
         #expect(app.notice == "Up to date")
+
+        // And the second still ends on time rather than living forever.
+        clock.advance(by: 2.6)
+        #expect(app.notice == nil)
     }
 }
 
