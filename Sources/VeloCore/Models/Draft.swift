@@ -163,7 +163,6 @@ public struct Draft: Codable, Equatable, Sendable {
         return (quotedText, "\(written)\n\(QuotedReply.html(quoting: parent))")
     }
 
-    /// Prefixes `Re: ` unless the subject already carries one, in any case form.
     /// Who a reply to `message` is addressed to, and who else was on it.
     ///
     /// Normally the sender: they spoke, you answer them. But when *you* sent
@@ -172,21 +171,34 @@ public struct Draft: Codable, Equatable, Sendable {
     /// had sent came up addressed from them, to them. Continuing a conversation
     /// you spoke last in means writing to the people you wrote to.
     ///
-    /// A message you sent only to yourself is left alone: it still has to go
-    /// somewhere, and yourself is the only candidate.
+    /// Who "the people you wrote to" are is the part worth being careful about,
+    /// and the first version of this got it wrong twice. It asked only whether
+    /// `To` was empty, so a message you sent with everyone in `Cc` fell through
+    /// and re-addressed itself to you; and it fell back to the whole of `To`
+    /// when none of it was anyone but you, which put you back in `To` and lost
+    /// the `Cc` audience entirely on a plain reply.
+    ///
+    /// So: the audience is `To` and `Cc` together, less yourself, preferring
+    /// `To` when it has anyone real in it. Only when that leaves nobody at all
+    /// -- a note you wrote to yourself -- does the reply go back to you, because
+    /// then you are the only address there is.
     private static func audience(of message: Message,
                                  from sender: String) -> (to: [String], rest: [String]) {
         let me = normalizedAddress(sender)
-        guard normalizedAddress(message.sender) == me, !message.recipients.isEmpty else {
+        guard normalizedAddress(message.sender) == me else {
             return (to: [message.sender], rest: message.recipients + message.cc)
         }
-        // Yourself dropped from the audience too, unless you are all of it --
-        // you were on your own message because you sent it, and a reply that
-        // puts you back in `To` delivers you your own words.
-        let others = message.recipients.filter { normalizedAddress($0) != me }
-        return (to: others.isEmpty ? message.recipients : others, rest: message.cc)
+        let notMe = { (address: String) in normalizedAddress(address) != me }
+        if case let addressed = message.recipients.filter(notMe), !addressed.isEmpty {
+            return (to: addressed, rest: message.cc)
+        }
+        if case let copied = message.cc.filter(notMe), !copied.isEmpty {
+            return (to: copied, rest: [])
+        }
+        return (to: [message.sender], rest: [])
     }
 
+    /// Prefixes `Re: ` unless the subject already carries one, in any case form.
     private static func replySubject(_ subject: String) -> String {
         subject.lowercased().hasPrefix("re:") ? subject : "Re: \(subject)"
     }

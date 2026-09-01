@@ -104,11 +104,45 @@ private func parent(
         #expect(!(draft.to + draft.cc).contains { $0.lowercased().contains("me@example.com") })
     }
 
+    /// Your own message whose `To` is empty and whose real audience is in `Cc`.
+    /// The first fix guarded on `recipients.isEmpty` and fell through to the
+    /// generic branch, which addresses the sender -- reintroducing exactly the
+    /// bug it was written to remove.
+    @Test func yourOwnMessageWithOnlyCcRecipientsStillRepliesToThem() {
+        let mine = parent(sender: "Me <me@example.com>", recipients: [],
+                          cc: ["Bob <bob@example.com>"])
+
+        #expect(Draft.reply(to: mine, from: "me@example.com").to
+                    == ["Bob <bob@example.com>"])
+    }
+
+    /// Your own message addressed to yourself and copied to somebody real. The
+    /// `To` is non-empty, so the guard passed, but every name in it was you --
+    /// and the fallback then put you back in `To` and dropped Bob from a plain
+    /// reply entirely.
+    @Test func yourOwnMessageToYourselfCopyingSomebodyRepliesToThem() {
+        let mine = parent(sender: "Me <me@example.com>",
+                          recipients: ["me@example.com"],
+                          cc: ["Bob <bob@example.com>"])
+
+        let draft = Draft.reply(to: mine, from: "me@example.com")
+        #expect(draft.to == ["Bob <bob@example.com>"])
+
+        let all = Draft.replyAll(to: mine, from: "me@example.com")
+        #expect(all.to == ["Bob <bob@example.com>"])
+        #expect(!(all.to + all.cc).contains { $0.lowercased().contains("me@example.com") })
+    }
+
     /// A message you sent to nobody but yourself still has to go somewhere.
+    ///
+    /// Asserted on the bare address rather than the exact header: "me@example.com"
+    /// and "Me <me@example.com>" are the same person, and which one a reply
+    /// happens to carry is not a requirement.
     @Test func aMessageOnlyToYourselfStillRepliesToYourself() {
         let mine = parent(sender: "Me <me@example.com>", recipients: ["me@example.com"])
 
-        #expect(Draft.reply(to: mine, from: "me@example.com").to == ["me@example.com"])
+        let draft = Draft.reply(to: mine, from: "me@example.com")
+        #expect(draft.to.map(Draft.normalizedAddress) == ["me@example.com"])
     }
 
     @Test func replyAllCarriesOtherRecipientsToCcExcludingSelf() {
