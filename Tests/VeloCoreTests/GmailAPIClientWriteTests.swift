@@ -39,6 +39,12 @@ private func http(_ status: Int) -> HTTPURLResponse {
                     statusCode: status, httpVersion: nil, headerFields: nil)!
 }
 
+private struct DecodedBatchModifyBody: Decodable, Equatable {
+    let ids: [String]
+    let addLabelIds: [String]
+    let removeLabelIds: [String]
+}
+
 private func makeClient(_ postResult: Result<(Data, HTTPURLResponse), Error>) throws
     -> (GmailAPIClient, PostMockHTTPClient) {
     let store = InMemoryTokenStore()
@@ -53,53 +59,65 @@ private func makeClient(_ postResult: Result<(Data, HTTPURLResponse), Error>) th
 }
 
 @Suite struct GmailAPIClientWriteTests {
-    @Test func modifyMessageSendsLabelsToModifyEndpoint() async throws {
-        let responseJSON = Data(#"{"id":"m1","threadId":"t1","labelIds":["UNREAD"]}"#.utf8)
-        let (api, client) = try makeClient(.success((responseJSON, http(200))))
+    // MARK: - batchModify
 
-        let dto = try await api.modifyMessage(id: "m1", addLabelIDs: [], removeLabelIDs: ["INBOX"])
+    /// These were five tests of `modifyMessage`, which nothing but they ever
+    /// called: production has always gone through `batchModifyMessages`, and
+    /// that had no test against the real client at all -- every other reference
+    /// to it in the suite is a stub conforming to `GmailWriting`. Deleting the
+    /// dead method would have taken the only coverage of this POST path with
+    /// it, so they were pointed at the live one instead.
+    ///
+    /// It returns 204 with no body, so there is no decoded resource to check;
+    /// what is left is the request it builds and the errors it maps.
 
-        #expect(dto.id == "m1")
-        #expect((client.lastPostURL?.path ?? "").hasSuffix("/messages/m1/modify"))
+    @Test func batchModifySendsIDsAndLabelsToTheBatchEndpoint() async throws {
+        let (api, client) = try makeClient(.success((Data(), http(204))))
+
+        try await api.batchModifyMessages(ids: ["m1", "m2"], addLabelIDs: [],
+                                          removeLabelIDs: ["INBOX"])
+
+        #expect((client.lastPostURL?.path ?? "").hasSuffix("/messages/batchModify"))
         let body = try #require(client.lastPostBody)
-        let decoded = try JSONDecoder().decode(DecodedModifyBody.self, from: body)
-        #expect(decoded == DecodedModifyBody(addLabelIds: [], removeLabelIds: ["INBOX"]))
+        let decoded = try JSONDecoder().decode(DecodedBatchModifyBody.self, from: body)
+        #expect(decoded == DecodedBatchModifyBody(ids: ["m1", "m2"], addLabelIds: [],
+                                                  removeLabelIds: ["INBOX"]))
     }
 
-    @Test func modifyMessageAttachesBearerAndJSONContentType() async throws {
-        let responseJSON = Data(#"{"id":"m1","threadId":"t1","labelIds":[]}"#.utf8)
-        let (api, client) = try makeClient(.success((responseJSON, http(200))))
+    @Test func batchModifyAttachesBearerAndJSONContentType() async throws {
+        let (api, client) = try makeClient(.success((Data(), http(204))))
 
-        _ = try await api.modifyMessage(id: "m1", addLabelIDs: ["STARRED"], removeLabelIDs: [])
+        try await api.batchModifyMessages(ids: ["m1"], addLabelIDs: ["STARRED"],
+                                          removeLabelIDs: [])
 
         #expect(client.lastPostHeaders?["Authorization"] == "Bearer tok")
         #expect(client.lastPostHeaders?["Content-Type"] == "application/json")
     }
 
-    @Test func modifyMessageParsesUpdatedResource() async throws {
-        let responseJSON = Data(#"{"id":"m9","threadId":"t9","labelIds":["UNREAD"]}"#.utf8)
-        let (api, _) = try makeClient(.success((responseJSON, http(200))))
+    /// The success case has an empty body. Decoding one anyway would fail on
+    /// every archive.
+    @Test func batchModifyAcceptsAnEmptyBodyOnSuccess() async throws {
+        let (api, _) = try makeClient(.success((Data(), http(204))))
 
-        let dto = try await api.modifyMessage(id: "m9", addLabelIDs: [], removeLabelIDs: ["INBOX"])
-
-        #expect(dto.id == "m9")
-        #expect(dto.labelIds == ["UNREAD"])   // INBOX omitted in response
+        try await api.batchModifyMessages(ids: ["m1"], addLabelIDs: [], removeLabelIDs: ["INBOX"])
     }
 
-    @Test func modifyMessageNonSuccessMapsToServerError() async throws {
+    @Test func batchModifyNonSuccessMapsToServerError() async throws {
         let json = Data(#"{"error":{"code":403,"message":"nope","status":"PERMISSION_DENIED"}}"#.utf8)
         let (api, _) = try makeClient(.success((json, http(403))))
 
         await #expect(throws: AuthError.server(code: "PERMISSION_DENIED", description: "nope")) {
-            _ = try await api.modifyMessage(id: "m1", addLabelIDs: [], removeLabelIDs: ["INBOX"])
+            try await api.batchModifyMessages(ids: ["m1"], addLabelIDs: [],
+                                              removeLabelIDs: ["INBOX"])
         }
     }
 
-    @Test func modifyMessageTransportFailureMapsToNetworkError() async throws {
+    @Test func batchModifyTransportFailureMapsToNetworkError() async throws {
         let (api, _) = try makeClient(.failure(Boom()))
 
         await #expect(throws: AuthError.network(NSError(domain: "", code: 0))) {
-            _ = try await api.modifyMessage(id: "m1", addLabelIDs: [], removeLabelIDs: ["INBOX"])
+            try await api.batchModifyMessages(ids: ["m1"], addLabelIDs: [],
+                                              removeLabelIDs: ["INBOX"])
         }
     }
 

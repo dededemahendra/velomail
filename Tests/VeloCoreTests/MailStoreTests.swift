@@ -57,12 +57,16 @@ import Foundation
         #expect(ids == ["m1", "m2"])
     }
 
-    @Test func setLabelsArchivesThreadOutOfInbox() throws {
+    /// Was written through `setLabels`, which nothing in the app ever called.
+    /// The property it was really about -- the inbox is defined by the label,
+    /// not by the row existing -- is worth keeping, so it is asserted directly.
+    @Test func aThreadWithoutTheInboxLabelIsNotInTheInbox() throws {
         let store = try makeStore()
         try store.upsert(thread("t", date: 100, labels: ["INBOX"]))
-        try store.setLabels([], onThread: "t")
-        let isEmpty = try store.inboxThreads().isEmpty
-        #expect(isEmpty)
+        #expect(try store.inboxThreads().count == 1)
+
+        try store.upsert(thread("t", date: 100, labels: []))
+        #expect(try store.inboxThreads().isEmpty)
     }
 
     @Test func threadByIDReturnsStoredOrNil() throws {
