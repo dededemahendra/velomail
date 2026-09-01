@@ -17,7 +17,7 @@ public struct RootView: View {
         Group {
             switch app.route {
             case .setup:
-                SetupView(clientIDHint: app.setupHint)
+                SetupView()
             case .signIn:
                 SignInView(state: app.authState, onSignIn: app.signIn)
             case .analytics:
