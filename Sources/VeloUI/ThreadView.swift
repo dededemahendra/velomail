@@ -27,6 +27,11 @@ struct MessageBodyView: NSViewRepresentable {
         let webView = PassThroughWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
+        // Also the UI delegate: a `target="_blank"` link -- which is what the
+        // buttons in marketing mail almost always are -- never reaches the
+        // navigation delegate at all. WebKit asks for a new web view instead,
+        // and with nobody to ask, the click did nothing.
+        webView.uiDelegate = context.coordinator
         context.coordinator.onMeasure = onMeasure
         context.coordinator.attach(webView, document: currentDocument,
                                    allowingRemote: loadsRemoteImages)
@@ -42,7 +47,7 @@ struct MessageBodyView: NSViewRepresentable {
     /// the rules: compilation is async, so loading immediately would let the
     /// first message fetch trackers before the blocker existed.
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         private enum State {
             case compiling
             case ready
@@ -59,6 +64,46 @@ struct MessageBodyView: NSViewRepresentable {
         /// it flash and threw away wherever the reader had scrolled to.
         private var loaded: String?
         var onMeasure: (CGFloat) -> Void = { _ in }
+        /// How a link leaves the app. Injected so a test never launches a
+        /// browser.
+        var openLink: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
+        /// Decides what a click in the message means.
+        ///
+        /// Mail is not a browser: a link goes to the reader's browser rather
+        /// than replacing the message they are reading. Without this the body
+        /// had no policy at all -- a click either tried to navigate in place or
+        /// was swallowed by the content blocker, which refuses every remote
+        /// load so trackers cannot fetch. Either way, nothing happened.
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            switch BodyLink.decide(url: navigationAction.request.url,
+                                   type: navigationAction.navigationType,
+                                   isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true) {
+            case .allow:
+                decisionHandler(.allow)
+            case .cancel:
+                decisionHandler(.cancel)
+            case let .open(url):
+                openLink(url)
+                decisionHandler(.cancel)
+            }
+        }
+
+        /// A link asking for a window of its own. Returning nil refuses the
+        /// window; the destination has already been handed to the browser.
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                     for navigationAction: WKNavigationAction,
+                     windowFeatures: WKWindowFeatures) -> WKWebView? {
+            // `targetFrame` is nil here -- that absence is what makes it a
+            // request for a new window -- so the frame is not in question.
+            if case let .open(url) = BodyLink.decide(url: navigationAction.request.url,
+                                                     type: navigationAction.navigationType,
+                                                     isMainFrame: true) {
+                openLink(url)
+            }
+            return nil
+        }
 
         /// Asks the page how tall it turned out.
         ///
