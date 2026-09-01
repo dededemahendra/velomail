@@ -160,6 +160,7 @@ public struct RootView: View {
                     MessageListView(sections: app.sections,
                                     selectedIndex: app.inbox.selectedIndex,
                                     markedIndices: app.inbox.markedIndices,
+                                    scope: app.inbox.scope,
                                     name: { app.inbox.correspondent(of: $0) },
                                     date: { app.inbox.rowDate(of: $0) },
                                     rowHeight: app.preferences.listRowHeight,
