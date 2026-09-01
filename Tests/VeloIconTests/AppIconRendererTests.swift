@@ -97,11 +97,13 @@ import Foundation
     /// Each chevron is symmetric about the tile's centre line, so the mark
     /// must paint the same area above it as below.
     ///
-    /// This is what caught the gradient clipping its own artwork: with no
-    /// extension options a `CGGradient` paints nothing beyond its start point,
-    /// so the corner of the mark that lay before the axis start came out
-    /// unpainted -- a hard straight cut across the top-left arm, perpendicular
-    /// to the gradient, that read as a design choice rather than a bug.
+    /// This is how the gradient clipping its own artwork was first caught, back
+    /// when the mark ran to 68% of the tile and its top-left corner fell outside
+    /// the gradient's axis. At 58% it no longer does, so this no longer detects
+    /// that particular bug -- `theMarkGradientPaintsEveryPixelItIsGivenEvenOutsideItsAxis`
+    /// took that job, and does it whatever size the mark is. What remains here
+    /// is still worth asserting: a geometry change that made the mark lopsided
+    /// would show up nowhere else.
     @Test func theMarkIsPaintedSymmetricallyAboutTheCentreLine() throws {
         let representation = try #require(iconNamed("icon_512x512.png"))
         let image = AppIconRenderer.image(representation)
@@ -130,41 +132,31 @@ import Foundation
     }
 
 
-    /// Every pixel of the mark must actually receive colour.
+    /// The mark's gradient must paint every pixel it is given, including any
+    /// that fall outside the gradient's own axis.
     ///
-    /// Measured against the mark's own outline rather than against a symmetry
-    /// property, so it catches the gradient failing to reach *any* part of the
-    /// artwork rather than only a part that happens to break the symmetry. The
-    /// symmetry test above is blind to a shortfall at the far end of the axis;
-    /// this is not.
-    @Test func theGradientReachesEveryPartOfTheMark() throws {
-        let representation = try #require(iconNamed("icon_512x512.png"))
-        let design = AppIconRenderer.design(forPointSize: representation.pointSize)
-        let path = try #require(AppIconRenderer.markPath(for: design))
-
-        // The mark's own area, drawn flat, at the same scale the icon uses.
-        let side = representation.pixels
+    /// Handed an oversized path on purpose. The shipped mark sits well inside
+    /// the axis, so the icon's own pixels can no longer tell whether the
+    /// extension options are set -- a coverage test against the real artwork
+    /// passes either way and guards nothing. This one fails the moment either
+    /// option is dropped, whatever size the mark happens to be.
+    @Test func theMarkGradientPaintsEveryPixelItIsGivenEvenOutsideItsAxis() throws {
+        let side = 512
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
-        let scratch = try #require(CGContext(data: nil, width: side, height: side,
+        let context = try #require(CGContext(data: nil, width: side, height: side,
                                              bitsPerComponent: 8, bytesPerRow: 0, space: space,
                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-        scratch.scaleBy(x: CGFloat(side) / 1024, y: CGFloat(side) / 1024)
-        scratch.addPath(path)
-        scratch.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
-        scratch.fillPath()
-        let outline = try #require(scratch.makeImage())
+        context.scaleBy(x: CGFloat(side) / 1024, y: CGFloat(side) / 1024)
 
-        let expected = pixels(of: outline).count { $0 & 0xFF > 0x80 }
-        let painted = pixels(of: AppIconRenderer.image(representation)).count(where: isLit)
+        // The whole canvas: its corners lie well before the gradient's start
+        // and well past its end.
+        AppIconRenderer.fillWithMarkGradient(
+            CGPath(rect: CGRect(x: 0, y: 0, width: 1024, height: 1024), transform: nil),
+            in: context)
 
-        #expect(expected > 10_000, "the mark outline is suspiciously small: \(expected)")
-        let shortfall = Double(expected - painted) / Double(expected)
-        // Threshold set from measurement, not taste: correct comes out at
-        // -0.46% (the lit test is marginally more generous than the outline's
-        // alpha cut, so painted slightly exceeds it), and dropping the gradient
-        // extensions gives +1.19%. 0.5% sits between them with room either way.
-        #expect(shortfall < 0.005,
-                "the gradient left \(expected - painted) of \(expected) mark pixels unpainted")
+        let raw = pixels(of: try #require(context.makeImage()))
+        let unpainted = raw.count { ($0 >> 24) & 0xFF < 0xFF }
+        #expect(unpainted == 0, "\(unpainted) of \(raw.count) pixels left unpainted")
     }
 
     /// Clearly not the charcoal ground: the mark is the only saturated thing

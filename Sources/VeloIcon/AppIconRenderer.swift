@@ -67,6 +67,13 @@ public enum AppIconRenderer {
     /// as a "greater than" sign; rounding it is what makes it a mark.
     public static let apexRadius: CGFloat = 88
 
+    /// The mark's longest dimension, on the 1024 canvas.
+    ///
+    /// 58% of the 824 tile. It started at 560 -- 68% -- which crowded the
+    /// corners: the mark ran nearly edge to edge and the tile stopped reading
+    /// as a tile with something on it.
+    public static let markSide: CGFloat = 480
+
     /// One chevron: two arms meeting at the right, corner rounded.
     ///
     /// `addArc(tangent1End:tangent2End:radius:)` replaces the corner with an arc
@@ -160,9 +167,18 @@ public enum AppIconRenderer {
     /// first chevron through the second rather than restarting on each.
     private static func drawMark(in context: CGContext, design: Design) {
         guard let placed = markPath(for: design) else { return }
+        fillWithMarkGradient(placed, in: context)
+    }
 
-        context.saveGState()
-        context.addPath(placed)
+    /// Fills `path` with the mark's gradient.
+    ///
+    /// Separated so it can be tested against a path larger than the gradient's
+    /// axis. The mark currently sits well inside that axis, which means the
+    /// icon's own pixels can no longer tell whether the extension options below
+    /// are present -- so testing this at today's geometry proves nothing, and
+    /// the test hands it something oversized instead.
+    public static func fillWithMarkGradient(_ path: CGPath, in context: CGContext) {
+        context.addPath(path)
         context.clip()
         let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   colors: markStops as CFArray, locations: [0, 0.55, 1])!
@@ -215,7 +231,7 @@ public enum AppIconRenderer {
         // Centred and sized by its own bounds rather than by fixed coordinates,
         // so dropping a chevron at 16pt does not leave the survivor sitting off
         // to one side, and both designs carry the same weight on the tile.
-        var placement = centring(mark.boundingBoxOfPath, longestSide: 560)
+        var placement = centring(mark.boundingBoxOfPath, longestSide: markSide)
         return mark.copy(using: &placement)
     }
 
