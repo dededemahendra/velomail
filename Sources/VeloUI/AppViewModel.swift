@@ -37,9 +37,16 @@ public final class AppViewModel: ObservableObject {
     /// One slot, not a stack: offering to undo something the user stopped
     /// thinking about two actions ago is worse than offering nothing.
     @Published public private(set) var undoable: Undoable?
-    /// When the offer runs out. Published so the banner can show how much of
-    /// the window is left rather than making the reader guess.
-    @Published public private(set) var undoDeadline: Date?
+    /// The undo window, start to finish. Published so the banner can show how
+    /// much of it is left rather than making the reader guess.
+    ///
+    /// The whole interval rather than only its end, because the bar needs to
+    /// know how much time there was as well as how much remains -- and because
+    /// a start read from the clock at render time is a start that moves.
+    @Published public private(set) var undoInterval: ClosedRange<Date>?
+
+    /// When the offer runs out.
+    public var undoDeadline: Date? { undoInterval?.upperBound }
 
     /// What the banner says, or nil when there is nothing to undo.
     public var undoPrompt: String? { undoable?.prompt }
@@ -1185,7 +1192,7 @@ public final class AppViewModel: ObservableObject {
             for threadID in threadIDs { try? outbound.notSpam(threadID: threadID) }
         }
         self.undoable = nil
-        undoDeadline = nil
+        undoInterval = nil
         try? inbox.reload()
     }
 
@@ -1205,7 +1212,8 @@ public final class AppViewModel: ObservableObject {
         let window = preferences.undoWindow
         // The banner offered ten seconds and gave no sign of how many were
         // left, which makes a deliberate wait feel like a gamble.
-        undoDeadline = Date().addingTimeInterval(window)
+        let opened = Date()
+        undoInterval = opened...opened.addingTimeInterval(window)
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
             await MainActor.run { self?.expireUndo(action) }
@@ -1217,7 +1225,7 @@ public final class AppViewModel: ObservableObject {
     private func expireUndo(_ action: Undoable) {
         if undoable == action {
             undoable = nil
-            undoDeadline = nil
+            undoInterval = nil
         }
     }
 

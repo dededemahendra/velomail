@@ -6,8 +6,14 @@ import VeloCore
 struct UndoBanner: View {
     let prompt: String
     var symbol: String = "arrow.uturn.backward"
-    /// When the offer runs out, when there is one worth drawing.
-    var deadline: Date?
+    /// The whole window, start to finish, when there is one worth drawing.
+    ///
+    /// The interval and not just its end: a bar showing how much is left has to
+    /// know how much there was. Written as `Date()...deadline` it read the
+    /// clock inside `body`, so every recomputation started the interval again
+    /// from the current moment and the bar snapped back to full -- which is
+    /// most of the time while a run of threads is being archived.
+    var interval: ClosedRange<Date>?
     let onUndo: () -> Void
 
     var body: some View {
@@ -19,17 +25,22 @@ struct UndoBanner: View {
             // The shortcut is the way this is meant to be used; the button is
             // for the times the writer has already reached for the mouse.
             Text("\u{2318}Z").font(.caption2).foregroundStyle(.tertiary)
-            if let deadline, deadline > Date() {
+            if let interval, interval.upperBound > Date() {
                 // A hairline rather than a number: it answers "how long have I
                 // got" at a glance without asking to be read.
-                ProgressView(timerInterval: Date()...deadline, countsDown: true) {
-                    EmptyView()
-                } currentValueLabel: {
-                    EmptyView()
+                //
+                // Driven by a timeline over an explicit fraction rather than by
+                // `ProgressView(timerInterval:)`. The timer form has to be told
+                // an interval, and an interval is a value, so it restarts
+                // whenever the value does -- which is every time this body runs.
+                // A fraction computed from a fixed window and the current tick
+                // cannot restart, and unlike the timer form it can be tested.
+                TimelineView(.periodic(from: interval.lowerBound, by: 0.1)) { tick in
+                    ProgressView(value: UndoBanner.fractionRemaining(at: tick.date, of: interval))
+                        .progressViewStyle(.linear)
+                        .frame(width: 46)
+                        .tint(.secondary)
                 }
-                .progressViewStyle(.linear)
-                .frame(width: 46)
-                .tint(.secondary)
                 .accessibilityHidden(true)
             }
             Button("Undo", action: onUndo)
@@ -41,6 +52,17 @@ struct UndoBanner: View {
         .bannerWidth()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// How much of the window is left at `moment`, from 1 down to 0.
+    ///
+    /// Clamped at both ends: a tick can arrive after the deadline, and a window
+    /// of no length at all would otherwise divide by zero.
+    static func fractionRemaining(at moment: Date, of window: ClosedRange<Date>) -> Double {
+        let span = window.upperBound.timeIntervalSince(window.lowerBound)
+        guard span > 0 else { return 0 }
+        let left = window.upperBound.timeIntervalSince(moment)
+        return min(1, max(0, left / span))
     }
 }
 
