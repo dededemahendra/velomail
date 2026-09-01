@@ -91,11 +91,11 @@ public struct Draft: Codable, Equatable, Sendable {
     /// body is the caller's job, so `bodyText` is whatever it passes.
     /// - Parameter quoting: append the parent, quoted. Opt-in, because the
     ///   engine should not impose composition policy on every caller.
-    public static func reply(to message: Message, from _: String,
+    public static func reply(to message: Message, from sender: String,
                              bodyText: String = "", bodyHTML: String? = nil,
                              quoting: Bool = false) -> Draft {
         let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
-        return Draft(to: [message.sender],
+        return Draft(to: audience(of: message, from: sender).to,
                      subject: replySubject(message.subject),
                      bodyText: text,
                      bodyHTML: html,
@@ -110,9 +110,9 @@ public struct Draft: Codable, Equatable, Sendable {
     public static func replyAll(to message: Message, from sender: String,
                                 bodyText: String = "", bodyHTML: String? = nil,
                                 quoting: Bool = false) -> Draft {
-        let excluded = Set([normalizedAddress(sender), normalizedAddress(message.sender)])
-        var seen = excluded
-        let others = (message.recipients + message.cc).filter { address in
+        let audience = audience(of: message, from: sender)
+        var seen = Set(audience.to.map(normalizedAddress) + [normalizedAddress(sender)])
+        let others = audience.rest.filter { address in
             let key = normalizedAddress(address)
             guard !seen.contains(key) else { return false }
             seen.insert(key)
@@ -120,7 +120,7 @@ public struct Draft: Codable, Equatable, Sendable {
         }
 
         let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
-        return Draft(to: [message.sender],
+        return Draft(to: audience.to,
                      cc: others,
                      subject: replySubject(message.subject),
                      bodyText: text,
@@ -161,6 +161,41 @@ public struct Draft: Codable, Equatable, Sendable {
         guard parent.bodyHTML != nil else { return (quotedText, html) }
         let written = html ?? "<p>\(MarkdownBody.escape(text))</p>"
         return (quotedText, "\(written)\n\(QuotedReply.html(quoting: parent))")
+    }
+
+    /// Who a reply to `message` is addressed to, and who else was on it.
+    ///
+    /// Normally the sender: they spoke, you answer them. But when *you* sent
+    /// the message, answering the sender means writing to yourself -- which is
+    /// what it did, live, on a real account: reply-all on a message the reader
+    /// had sent came up addressed from them, to them. Continuing a conversation
+    /// you spoke last in means writing to the people you wrote to.
+    ///
+    /// Who "the people you wrote to" are is the part worth being careful about,
+    /// and the first version of this got it wrong twice. It asked only whether
+    /// `To` was empty, so a message you sent with everyone in `Cc` fell through
+    /// and re-addressed itself to you; and it fell back to the whole of `To`
+    /// when none of it was anyone but you, which put you back in `To` and lost
+    /// the `Cc` audience entirely on a plain reply.
+    ///
+    /// So: the audience is `To` and `Cc` together, less yourself, preferring
+    /// `To` when it has anyone real in it. Only when that leaves nobody at all
+    /// -- a note you wrote to yourself -- does the reply go back to you, because
+    /// then you are the only address there is.
+    private static func audience(of message: Message,
+                                 from sender: String) -> (to: [String], rest: [String]) {
+        let me = normalizedAddress(sender)
+        guard normalizedAddress(message.sender) == me else {
+            return (to: [message.sender], rest: message.recipients + message.cc)
+        }
+        let notMe = { (address: String) in normalizedAddress(address) != me }
+        if case let addressed = message.recipients.filter(notMe), !addressed.isEmpty {
+            return (to: addressed, rest: message.cc)
+        }
+        if case let copied = message.cc.filter(notMe), !copied.isEmpty {
+            return (to: copied, rest: [])
+        }
+        return (to: [message.sender], rest: [])
     }
 
     /// Prefixes `Re: ` unless the subject already carries one, in any case form.

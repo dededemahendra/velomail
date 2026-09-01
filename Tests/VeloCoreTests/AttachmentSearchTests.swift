@@ -2,88 +2,126 @@ import Testing
 import Foundation
 @testable import VeloCore
 
+/// Attachments have been searchable by filename since migration v15 -- free
+/// text already matches `attachmentSearch`. What there was no way to say is
+/// "only threads that have a file" or "a file called this and never mind the
+/// message body", which is how people actually go looking for a document they
+/// know they were sent.
 @Suite struct AttachmentSearchTests {
-    private func makeContext() throws -> (SearchService, MailStore) {
-        let db = try AppDatabase.makeInMemory()
-        return (SearchService(db), MailStore(db))
+    // MARK: - Parsing
+
+    @Test func hasAttachmentIsRecognised() {
+        #expect(SearchQuery.parse("has:attachment").hasAttachment == true)
+        #expect(SearchQuery.parse("invoice has:attachment").terms == "invoice")
     }
 
-    private func seed(_ store: MailStore, thread: String = "t", message: String = "m",
-                      subject: String = "Here it is", body: String = "see attached",
-                      files: [String] = []) throws {
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
-        try store.upsert(MailThread(id: thread, sender: "a@b.com", snippet: body,
-                                    lastMessageDate: date, isUnread: false,
-                                    hasAttachments: !files.isEmpty, labelIDs: ["INBOX"]))
-        try store.upsert(Message(id: message, threadID: thread, sender: "a@b.com",
-                                 recipients: [], subject: subject, date: date,
-                                 bodyHTML: nil, bodyText: body, isUnread: false,
-                                 labelIDs: ["INBOX"]))
-        for (index, name) in files.enumerated() {
-            try store.upsert(MailAttachment(id: "\(message):\(index)", messageID: message,
-                                            filename: name, mimeType: "application/pdf",
-                                            size: 10, attachmentID: "a", inlineData: nil))
+    @Test func gmailsPluralSpellingWorksToo() {
+        // Gmail accepts `has:attachment`; enough people type the plural that
+        // rejecting it would just look broken.
+        #expect(SearchQuery.parse("has:attachments").hasAttachment == true)
+    }
+
+    @Test func hasSomethingElseIsLeftAsWords() {
+        // Not silently swallowed: searching for what was typed beats dropping it.
+        let query = SearchQuery.parse("has:wings")
+        #expect(query.hasAttachment == nil)
+        #expect(query.terms == "has:wings")
+    }
+
+    @Test func filenameIsRecognisedAndQuotable() {
+        #expect(SearchQuery.parse("filename:invoice.pdf").filename == "invoice.pdf")
+        #expect(SearchQuery.parse("filename:\"end of year.pdf\"").filename == "end of year.pdf")
+    }
+
+    @Test func aFilenameDoesNotAlsoBecomeFreeText() {
+        let query = SearchQuery.parse("filename:report.pdf quarterly")
+        #expect(query.filename == "report.pdf")
+        #expect(query.terms == "quarterly")
+    }
+
+    @Test func bothCountAsOperatorsAndAsNonEmpty() {
+        #expect(SearchQuery.parse("has:attachment").hasOperators)
+        #expect(!SearchQuery.parse("has:attachment").isEmpty)
+        #expect(SearchQuery.parse("filename:x.pdf").hasOperators)
+        #expect(!SearchQuery.parse("filename:x.pdf").isEmpty)
+    }
+
+    @Test func bothAreShownBackToThePersonWhoTypedThem() {
+        // Otherwise there is no telling whether it filtered or searched for the
+        // literal string, and an empty result looks identical either way.
+        #expect(SearchQuery.parse("has:attachment").filterLabels().contains("Has a file"))
+        #expect(SearchQuery.parse("filename:invoice.pdf").filterLabels()
+                    .contains("File named invoice.pdf"))
+    }
+
+    // MARK: - Searching
+
+    private func store() throws -> (MailStore, SearchService) {
+        let database = try AppDatabase.makeInMemory()
+        return (MailStore(database), SearchService(database))
+    }
+
+    private func message(_ id: String, thread: String, subject: String,
+                         hasAttachments: Bool) -> Message {
+        Message(id: id, threadID: thread, sender: "alice@example.com",
+                recipients: ["me@example.com"], subject: subject,
+                date: Date(timeIntervalSince1970: 100), bodyHTML: nil, bodyText: "body",
+                isUnread: false, labelIDs: ["INBOX"])
+    }
+
+    private func seed(_ store: MailStore) throws {
+        for (id, subject, hasFile) in [("t1", "Quarterly report", true),
+                                       ("t2", "Quarterly chat", false)] {
+            try store.upsert(MailThread(id: id, sender: "alice@example.com", snippet: subject,
+                                        lastMessageDate: Date(timeIntervalSince1970: 100),
+                                        isUnread: false, hasAttachments: hasFile,
+                                        labelIDs: ["INBOX"]))
+            try store.upsert(message("m\(id)", thread: id, subject: subject,
+                                     hasAttachments: hasFile))
         }
+        try store.upsert(MailAttachment(id: "mt1-1", messageID: "mt1",
+                                        filename: "invoice.pdf",
+                                        mimeType: "application/pdf", size: 10,
+                                        attachmentID: "a1", inlineData: nil))
     }
 
-    @Test func aThreadIsFoundByItsAttachmentName() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["mornington-invoice.pdf"])
+    @Test func hasAttachmentKeepsOnlyThreadsCarryingAFile() throws {
+        let (store, search) = try store()
+        try seed(store)
 
-        // The whole point of attaching a file is that you go looking for it later.
-        #expect(try search.search(SearchQuery(terms: "mornington")).map(\.id) == ["t"])
+        let all = try search.search(SearchQuery.parse("quarterly"))
+        #expect(all.count == 2)
+
+        let withFiles = try search.search(SearchQuery.parse("quarterly has:attachment"))
+        #expect(withFiles.map(\.id) == ["t1"])
     }
 
-    @Test func theExtensionIsSearchable() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["report.xlsx"])
-        #expect(try search.search(SearchQuery(terms: "xlsx")).map(\.id) == ["t"])
+    @Test func filenameFindsAThreadByItsFileAlone() throws {
+        let (store, search) = try store()
+        try seed(store)
+
+        // No word of "invoice" appears in either subject or body.
+        let found = try search.search(SearchQuery.parse("filename:invoice"))
+        #expect(found.map(\.id) == ["t1"])
     }
 
-    @Test func hyphenatedNamesMatchTheirParts() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["eastern-boundary-survey.pdf"])
-        #expect(try search.search(SearchQuery(terms: "boundary")).map(\.id) == ["t"])
+    @Test func aFilenameThatMatchesNothingFindsNothing() throws {
+        let (store, search) = try store()
+        try seed(store)
+
+        #expect(try search.search(SearchQuery.parse("filename:receipt")).isEmpty)
     }
 
-    @Test func aThreadWithoutThatFileIsNotFound() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["invoice.pdf"])
-        #expect(try search.search(SearchQuery(terms: "spreadsheet")).isEmpty)
-    }
+    /// The filter has to be the thread's own flag, not "some message here has a
+    /// row in the attachment table" -- attachments are fetched on demand, so a
+    /// thread can be known to carry a file long before any row exists for it.
+    @Test func hasAttachmentDoesNotWaitForAttachmentRowsToBeFetched() throws {
+        let (store, search) = try store()
+        try store.upsert(MailThread(id: "t9", sender: "alice@example.com", snippet: "deck",
+                                    lastMessageDate: Date(timeIntervalSince1970: 100),
+                                    isUnread: false, hasAttachments: true, labelIDs: ["INBOX"]))
+        try store.upsert(message("m9", thread: "t9", subject: "deck", hasAttachments: true))
 
-    @Test func aThreadAppearsOnceEvenWithSeveralMatchingFiles() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["survey-one.pdf", "survey-two.pdf"])
-        #expect(try search.search(SearchQuery(terms: "survey")).map(\.id) == ["t"])
-    }
-
-    @Test func removingAnAttachmentRemovesItFromTheIndex() throws {
-        let (search, store) = try makeContext()
-        try seed(store, files: ["invoice.pdf"])
-        try store.deleteMessage(id: "m")
-
-        #expect(try search.search(SearchQuery(terms: "invoice")).isEmpty)
-    }
-
-    @Test func bodyAndSubjectSearchStillWork() throws {
-        let (search, store) = try makeContext()
-        try seed(store, subject: "Quarterly report", body: "numbers inside", files: ["x.pdf"])
-
-        #expect(try search.search(SearchQuery(terms: "quarterly")).map(\.id) == ["t"])
-        #expect(try search.search(SearchQuery(terms: "numbers")).map(\.id) == ["t"])
-    }
-
-    @Test func existingAttachmentsAreBackfilledIntoTheIndex() throws {
-        // The migration must index what is already stored, or attachment search
-        // silently returns nothing for every file received before the upgrade.
-        let db = try AppDatabase.makeInMemory()
-        let store = MailStore(db)
-        try seed(store, files: ["already-here.pdf"])
-
-        let rows = try db.dbQueue.read {
-            try Int.fetchOne($0, sql: "SELECT count(*) FROM attachmentSearch") ?? 0
-        }
-        #expect(rows == 1)
+        #expect(try search.search(SearchQuery.parse("deck has:attachment")).map(\.id) == ["t9"])
     }
 }
