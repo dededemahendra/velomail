@@ -17,6 +17,11 @@ APP="$ROOT/VeloMail.app"
 swift build -c "$CONFIG" --product VeloMail
 BIN="$(swift build -c "$CONFIG" --product VeloMail --show-bin-path)/VeloMail"
 
+# The icon is drawn, not stored: Sources/VeloIcon renders every representation
+# macOS asks for. Built separately and never linked into the app.
+swift build -c "$CONFIG" --product velo-icon
+ICON_BIN="$(swift build -c "$CONFIG" --product velo-icon --show-bin-path)/velo-icon"
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/VeloMail"
@@ -32,8 +37,13 @@ cp "$BIN" "$APP/Contents/MacOS/VeloMail"
 if [ "$CONFIG" = "release" ]; then
     strip -rSTx "$APP/Contents/MacOS/VeloMail" 2>/dev/null || true
 fi
-codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true
-codesign --verify --deep "$APP" 2>/dev/null || echo "warning: bundle signature did not verify"
+# Icon before signing, along with the Info.plist below: a signature covers the
+# bundle's resources, so anything added afterwards is outside it. These used to
+# be written after `codesign` for the plist, which left it unsigned.
+ICONSET="$(mktemp -d)/AppIcon.iconset"
+"$ICON_BIN" "$ICONSET" >/dev/null
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "$(dirname "$ICONSET")"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -43,6 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key><string>Velo Mail</string>
     <key>CFBundleDisplayName</key><string>Velo Mail</string>
     <key>CFBundleExecutable</key><string>VeloMail</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIdentifier</key><string>co.sistercreatives.velomail</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
@@ -54,6 +65,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true
+codesign --verify --deep "$APP" 2>/dev/null || echo "warning: bundle signature did not verify"
 
 printf "built %s (%s, %s)\n" "$APP" "$CONFIG" \
     "$(du -h "$APP/Contents/MacOS/VeloMail" | cut -f1)"
