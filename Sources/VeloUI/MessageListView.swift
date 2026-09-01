@@ -241,8 +241,7 @@ private final class SectionHeaderView: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
-/// One row: a disc, a mark, sender, subject, snippet, date, a star and an
-/// unread dot.
+/// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 final class ThreadRowView: NSView {
     init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
          previewLines: Int, labels: [String] = []) {
@@ -321,7 +320,7 @@ final class ThreadRowView: NSView {
         // removed rather than left as an empty gap.
         snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [sender, count, direct, NSView(), tag, clip, star, date])
+        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), tag, clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
@@ -336,23 +335,16 @@ final class ThreadRowView: NSView {
         stack.alignment = .leading
         stack.spacing = 2
 
-        // The tick and the unread dot live in a gutter to the left of the disc,
-        // not inside the text block. Inside it they indented the sender past
-        // the snippet beneath it -- by 22pt, and by 29pt when the row was
-        // unread, since the dot is an empty field on a read one and collapses.
-        // Both carry a fixed width for the same reason: a gutter that changes
-        // size shifts the whole row as mail is read.
-        let disc = SenderDiscView(name: name)
-        let row = NSStackView(views: [mark, dot, disc, stack])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            // Both fixed, so the sender sits at the same x whether or not the
+            // row has a tick or a dot to show. The dot used to be an empty
+            // field on a read row and collapsed, moving the whole line 7pt as
+            // mail was read.
             mark.widthAnchor.constraint(equalToConstant: 10),
             dot.widthAnchor.constraint(equalToConstant: 8),
         ])
