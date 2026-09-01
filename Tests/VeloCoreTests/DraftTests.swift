@@ -47,6 +47,70 @@ private func parent(
         #expect(draft.references == [])
     }
 
+
+    // MARK: - Replying to your own message
+
+    /// Observed live: reply-all on a message the reader had sent produced a
+    /// draft addressed *to the reader*, from the reader. `to` was always
+    /// `[message.sender]`, and `reply` discarded its `from` argument entirely
+    /// -- the parameter was named `_` in the signature.
+    ///
+    /// Continuing a conversation you spoke last in means writing to the people
+    /// you wrote to, not to yourself.
+
+    @Test func replyingToYourOwnMessageWritesToThePeopleYouWroteTo() {
+        let mine = parent(sender: "Me <me@example.com>",
+                          recipients: ["Gede <gede@example.com>"])
+
+        let draft = Draft.reply(to: mine, from: "me@example.com")
+
+        #expect(draft.to == ["Gede <gede@example.com>"])
+        #expect(!draft.to.contains { $0.contains("me@example.com") })
+    }
+
+    @Test func replyAllOnYourOwnMessageKeepsTheOriginalAudienceAndDropsYou() {
+        let mine = parent(sender: "Me <me@example.com>",
+                          recipients: ["Gede <gede@example.com>"],
+                          cc: ["Warren <warren@example.com>", "me@example.com"])
+
+        let draft = Draft.replyAll(to: mine, from: "me@example.com")
+
+        #expect(draft.to == ["Gede <gede@example.com>"])
+        #expect(draft.cc == ["Warren <warren@example.com>"])
+        let everyone = draft.to + draft.cc
+        #expect(!everyone.contains { $0.lowercased().contains("me@example.com") })
+    }
+
+    /// The identity is matched by bare address, so a display name on the
+    /// sending header must not defeat it.
+    @Test func yourOwnMessageIsRecognisedThroughADisplayName() {
+        let mine = parent(sender: "\"Roberts, Me\" <me@example.com>",
+                          recipients: ["Gede <gede@example.com>"])
+
+        #expect(Draft.reply(to: mine, from: "Me <me@example.com>").to
+                    == ["Gede <gede@example.com>"])
+    }
+
+    /// A message you sent to yourself as well as others. `replyAll` promises
+    /// "minus the sending identity", and putting yourself back in To means
+    /// receiving your own reply.
+    @Test func replyAllDropsYouFromToWhenYouWereOneOfYourOwnRecipients() {
+        let mine = parent(sender: "Me <me@example.com>",
+                          recipients: ["me@example.com", "Gede <gede@example.com>"])
+
+        let draft = Draft.replyAll(to: mine, from: "me@example.com")
+
+        #expect(draft.to == ["Gede <gede@example.com>"])
+        #expect(!(draft.to + draft.cc).contains { $0.lowercased().contains("me@example.com") })
+    }
+
+    /// A message you sent to nobody but yourself still has to go somewhere.
+    @Test func aMessageOnlyToYourselfStillRepliesToYourself() {
+        let mine = parent(sender: "Me <me@example.com>", recipients: ["me@example.com"])
+
+        #expect(Draft.reply(to: mine, from: "me@example.com").to == ["me@example.com"])
+    }
+
     @Test func replyAllCarriesOtherRecipientsToCcExcludingSelf() {
         let draft = Draft.replyAll(
             to: parent(recipients: ["me@example.com", "Bob <bob@example.com>"],

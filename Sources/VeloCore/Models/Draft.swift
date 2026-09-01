@@ -91,11 +91,11 @@ public struct Draft: Codable, Equatable, Sendable {
     /// body is the caller's job, so `bodyText` is whatever it passes.
     /// - Parameter quoting: append the parent, quoted. Opt-in, because the
     ///   engine should not impose composition policy on every caller.
-    public static func reply(to message: Message, from _: String,
+    public static func reply(to message: Message, from sender: String,
                              bodyText: String = "", bodyHTML: String? = nil,
                              quoting: Bool = false) -> Draft {
         let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
-        return Draft(to: [message.sender],
+        return Draft(to: audience(of: message, from: sender).to,
                      subject: replySubject(message.subject),
                      bodyText: text,
                      bodyHTML: html,
@@ -110,9 +110,9 @@ public struct Draft: Codable, Equatable, Sendable {
     public static func replyAll(to message: Message, from sender: String,
                                 bodyText: String = "", bodyHTML: String? = nil,
                                 quoting: Bool = false) -> Draft {
-        let excluded = Set([normalizedAddress(sender), normalizedAddress(message.sender)])
-        var seen = excluded
-        let others = (message.recipients + message.cc).filter { address in
+        let audience = audience(of: message, from: sender)
+        var seen = Set(audience.to.map(normalizedAddress) + [normalizedAddress(sender)])
+        let others = audience.rest.filter { address in
             let key = normalizedAddress(address)
             guard !seen.contains(key) else { return false }
             seen.insert(key)
@@ -120,7 +120,7 @@ public struct Draft: Codable, Equatable, Sendable {
         }
 
         let (text, html) = body(bodyText, bodyHTML, quoting: quoting, parent: message)
-        return Draft(to: [message.sender],
+        return Draft(to: audience.to,
                      cc: others,
                      subject: replySubject(message.subject),
                      bodyText: text,
@@ -164,6 +164,29 @@ public struct Draft: Codable, Equatable, Sendable {
     }
 
     /// Prefixes `Re: ` unless the subject already carries one, in any case form.
+    /// Who a reply to `message` is addressed to, and who else was on it.
+    ///
+    /// Normally the sender: they spoke, you answer them. But when *you* sent
+    /// the message, answering the sender means writing to yourself -- which is
+    /// what it did, live, on a real account: reply-all on a message the reader
+    /// had sent came up addressed from them, to them. Continuing a conversation
+    /// you spoke last in means writing to the people you wrote to.
+    ///
+    /// A message you sent only to yourself is left alone: it still has to go
+    /// somewhere, and yourself is the only candidate.
+    private static func audience(of message: Message,
+                                 from sender: String) -> (to: [String], rest: [String]) {
+        let me = normalizedAddress(sender)
+        guard normalizedAddress(message.sender) == me, !message.recipients.isEmpty else {
+            return (to: [message.sender], rest: message.recipients + message.cc)
+        }
+        // Yourself dropped from the audience too, unless you are all of it --
+        // you were on your own message because you sent it, and a reply that
+        // puts you back in `To` delivers you your own words.
+        let others = message.recipients.filter { normalizedAddress($0) != me }
+        return (to: others.isEmpty ? message.recipients : others, rest: message.cc)
+    }
+
     private static func replySubject(_ subject: String) -> String {
         subject.lowercased().hasPrefix("re:") ? subject : "Re: \(subject)"
     }
