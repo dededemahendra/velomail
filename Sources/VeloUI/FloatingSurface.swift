@@ -22,17 +22,32 @@ extension View {
     /// everywhere else. Shared rather than written per banner: three floating
     /// things with three slightly different grounds looks like an accident,
     /// and they appear together -- a failed send above an undo above a notice.
+    ///
+    /// A glass or material surface alone was not enough. These float over the
+    /// split, with the dark list on one side and a message body on the other,
+    /// and an HTML mail is usually white. The same toast came out dark on its
+    /// left half and near-white on its right, with "Undo" on a ground barely
+    /// distinguishable from its own text -- it was legible or not depending on
+    /// which message happened to be open behind it.
+    ///
+    /// So the content sits on a defined ground and the glass goes behind that:
+    /// enough of it to keep an edge and a sense of depth, not enough to decide
+    /// whether the words can be read. `windowBackgroundColor` rather than a
+    /// fixed dark, so it follows the appearance the text colour follows.
     @ViewBuilder
     func floatingSurface(cornerRadius: CGFloat = 12,
                          shadow: CGFloat = 18) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        let ground = Color(nsColor: .windowBackgroundColor).opacity(0.92)
+
         if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+            self.background(ground, in: shape)
+                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
                 .shadow(color: .black.opacity(0.22), radius: shadow, y: shadow / 3)
         } else {
-            self.background(.regularMaterial,
-                            in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1))
+            self.background(ground, in: shape)
+                .background(.regularMaterial, in: shape)
+                .overlay(shape.strokeBorder(.white.opacity(0.10), lineWidth: 1))
                 .shadow(color: .black.opacity(0.22), radius: shadow, y: shadow / 3)
         }
     }
