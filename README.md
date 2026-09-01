@@ -391,10 +391,18 @@ device. A malformed rules file disables rules rather than guessing.
 
 ## Search
 
-Operators first, model second. `from:`, `is:unread`, `is:read`, `before:` and
-`after:` are parsed before anything is sent anywhere, so a typed query is
-honoured exactly rather than reinterpreted — and works with no AI configured at
-all. Dates take `2026-08-01` or `today`, `yesterday`, `week`, `month`, `year`.
+Operators first, model second. `from:`, `is:unread`, `is:read`, `before:`,
+`after:`, `has:attachment` and `filename:` are parsed before anything is sent
+anywhere, so a typed query is honoured exactly rather than reinterpreted — and
+works with no AI configured at all. Dates take `2026-08-01` or `today`,
+`yesterday`, `week`, `month`, `year`.
+
+`has:attachment` reads the thread's own flag rather than joining the attachment
+table, because parts are fetched on demand: a thread is known to carry a file
+long before there is a row describing it, and joining would hide exactly the
+mail you were looking for. `filename:` matches a substring, so `filename:invoice`
+finds `2026-invoice-final.pdf` — the FTS index matches whole tokens and would
+not.
 
 Anything that does not parse is left as words: `after:soon` searches for
 "after:soon", which is a worse answer than filtering and a much better one than

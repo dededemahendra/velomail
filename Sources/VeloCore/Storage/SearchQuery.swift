@@ -13,14 +13,24 @@ public struct SearchQuery: Equatable, Sendable, Codable {
     public var isUnread: Bool?
     public var after: Date?
     public var before: Date?
+    /// Only threads carrying a file. Read off the thread's own flag rather than
+    /// the attachment table: content is fetched on demand, so a thread is known
+    /// to have a file long before there is a row describing it.
+    public var hasAttachment: Bool?
+    /// Substring of an attachment's name, matched on its own -- for finding the
+    /// document when you remember the file and not a word of the message.
+    public var filename: String?
 
     public init(terms: String = "", from: String? = nil, isUnread: Bool? = nil,
-                after: Date? = nil, before: Date? = nil) {
+                after: Date? = nil, before: Date? = nil,
+                hasAttachment: Bool? = nil, filename: String? = nil) {
         self.terms = terms
         self.from = from
         self.isUnread = isUnread
         self.after = after
         self.before = before
+        self.hasAttachment = hasAttachment
+        self.filename = filename
     }
 
     /// True when this would match everything — used to decide whether a query is
@@ -28,6 +38,7 @@ public struct SearchQuery: Equatable, Sendable, Codable {
     public var isEmpty: Bool {
         terms.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && from == nil && isUnread == nil && after == nil && before == nil
+            && hasAttachment == nil && filename == nil
     }
 
     /// True when something narrower than free text was asked for.
@@ -36,6 +47,7 @@ public struct SearchQuery: Equatable, Sendable, Codable {
     /// handing to a model to interpret.
     public var hasOperators: Bool {
         from != nil || isUnread != nil || after != nil || before != nil
+            || hasAttachment != nil || filename != nil
     }
 
     /// What was narrowed, in words, for showing back to the person who typed it.
@@ -49,6 +61,8 @@ public struct SearchQuery: Equatable, Sendable, Codable {
         if let isUnread { labels.append(isUnread ? "Unread" : "Read") }
         if let after { labels.append("After \(SearchQuery.day.string(from: after))") }
         if let before { labels.append("Before \(SearchQuery.day.string(from: before))") }
+        if hasAttachment == true { labels.append("Has a file") }
+        if let filename { labels.append("File named \(filename)") }
         return labels
     }
 
@@ -99,6 +113,12 @@ public struct SearchQuery: Equatable, Sendable, Codable {
                     words.append(token); continue
                 }
                 query.after = date
+            case "has" where ["attachment", "attachments"].contains(value.lowercased()):
+                // Gmail spells it singular; enough people type the plural that
+                // refusing it would just look broken.
+                query.hasAttachment = true
+            case "filename", "file":
+                query.filename = value
             case "before":
                 guard let date = date(from: value, now: now, calendar: calendar) else {
                     words.append(token); continue

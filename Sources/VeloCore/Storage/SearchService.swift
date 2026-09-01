@@ -49,6 +49,24 @@ public struct SearchService: Sendable {
                 conditions.append("thread.lastMessageDate <= ?")
                 arguments.append(before)
             }
+            if let hasAttachment = query.hasAttachment {
+                // The thread's own flag, not a join against the attachment
+                // table: parts are fetched on demand, so a thread is known to
+                // carry a file long before any row describes it, and joining
+                // would hide exactly the mail being looked for.
+                conditions.append("thread.hasAttachments = ?")
+                arguments.append(hasAttachment)
+            }
+            if let filename = query.filename, !filename.isEmpty {
+                // LIKE rather than the FTS index: people search for "invoice"
+                // meaning `2026-invoice-final.pdf`, and FTS5 matches tokens,
+                // not fragments of them.
+                conditions.append("""
+                    message.id IN (SELECT messageID FROM attachment
+                                   WHERE lower(filename) LIKE ?)
+                    """)
+                arguments.append("%\(filename.lowercased())%")
+            }
 
             let whereClause = conditions.isEmpty ? "" : " WHERE " + conditions.joined(separator: " AND ")
             arguments.append(limit)
