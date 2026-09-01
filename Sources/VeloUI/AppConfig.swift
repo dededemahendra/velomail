@@ -33,23 +33,6 @@ public struct AppConfig: Equatable, Sendable {
             demoRoute: nonBlank(environment["VELOMAIL_DEMO_ROUTE"])?.lowercased())
     }
 
-    public static let setupInstructions = """
-        Velo Mail needs a Google Cloud OAuth client id (Desktop app type) with \
-        the Gmail API enabled.
-
-        Create one at console.cloud.google.com → APIs & Services → Credentials, \
-        then provide it either way:
-
-          • export VELOMAIL_CLIENT_ID="…apps.googleusercontent.com"
-          • or ~/.config/velomail/config.json  →  {"clientID": "…"}
-
-        A Desktop-app client also has a secret. Add it as VELOMAIL_CLIENT_SECRET,         or "clientSecret" in the same file. An iOS client has none.
-
-        Restart Velo Mail once it is set.
-
-        To look around without an account first, launch with VELOMAIL_DEMO=1.
-        """
-
     // MARK: - Internals
 
     /// A whitespace-only value is a half-finished setup, not a credential.

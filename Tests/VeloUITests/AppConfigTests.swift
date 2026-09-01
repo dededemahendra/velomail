@@ -37,7 +37,6 @@ import Foundation
         #expect(config.clientID == nil)
         #expect(!config.isConfigured)
         // Must still be usable enough to render a setup screen.
-        #expect(!AppConfig.setupInstructions.isEmpty)
     }
 
     @Test func blankClientIDCountsAsMissing() {

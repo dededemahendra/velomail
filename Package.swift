@@ -30,7 +30,9 @@ let package = Package(
             name: "VeloCoreTests",
             dependencies: ["VeloCore"]
         ),
-        .testTarget(name: "VeloUITests", dependencies: ["VeloUI"]),
+        // VeloIcon so `VeloMarkTests` can hold the app's drawn mark up
+        // against the one the icon is built from.
+        .testTarget(name: "VeloUITests", dependencies: ["VeloUI", "VeloIcon"]),
         .testTarget(name: "VeloIconTests", dependencies: ["VeloIcon"]),
     ]
 )

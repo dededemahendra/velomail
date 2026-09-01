@@ -347,7 +347,6 @@ public final class AppViewModel: ObservableObject {
     /// else — a sync tick — happened to redraw the surface.
     private var inboxChanges: AnyCancellable?
 
-    public var setupHint: String { AppConfig.setupInstructions }
     public var isConfigured: Bool { config.isConfigured }
 
     /// Demo mode exists precisely to be looked at without credentials, so it
