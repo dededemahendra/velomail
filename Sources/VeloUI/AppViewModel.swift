@@ -433,6 +433,22 @@ public final class AppViewModel: ObservableObject {
             route = landingRoute
             return
         }
+        try openMail()
+        openDemoRouteIfRequested()
+    }
+
+    /// Everything that only makes sense once there is a mailbox to show.
+    ///
+    /// Shared with `setSignedIn`, and that is the point. It used to live only
+    /// in `start()`, behind a guard that requires being signed in *already* --
+    /// and since the Keychain read moved off the main actor so the window could
+    /// draw, that guard is false on essentially every launch. The app started
+    /// signed out, returned early here, and authorisation landed a moment
+    /// later; the inbox reloaded and nothing else did. `labels` stayed empty
+    /// for the whole session, so no row carried a label chip, `g l` had nothing
+    /// to browse and the palette offered no "Remove from ...". Silently: mail
+    /// arrived and the list filled, exactly as if there were no labels.
+    private func openMail() throws {
         // Whichever list the reader chose to start on.
         try? inbox.show(AppViewModel.scope(named: preferences.opensAt))
         try inbox.reload()
@@ -440,7 +456,6 @@ public final class AppViewModel: ObservableObject {
         refreshLabels()
         alwaysLoadsImages = preferences.loadsRemoteImages
         route = .list
-        openDemoRouteIfRequested()
     }
 
     /// Opens a named surface on a demo launch, so every screen can be reviewed
@@ -472,7 +487,9 @@ public final class AppViewModel: ObservableObject {
     public func setSignedIn(_ signedIn: Bool) {
         isSignedIn = signedIn
         route = landingRoute
-        if route == .list { try? inbox.reload() }
+        // The whole of it, not just the inbox: signing in after launch is the
+        // ordinary path, not an edge case.
+        if route == .list { try? openMail() }
     }
 
     /// Where a fresh launch lands. Order matters: with no credentials there is
