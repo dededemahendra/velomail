@@ -76,4 +76,55 @@ import VeloCore
         let disc = SenderDiscView(name: "Cloudflare")
         #expect(disc.isAccessibilityElement() == false)
     }
+
+    /// Both lines of a row must start at the same x.
+    ///
+    /// They did not. The multi-select tick and the unread dot sat inside the
+    /// text block, ahead of the sender, so the name was indented past the
+    /// snippet beneath it -- and by a different amount depending on whether the
+    /// row was unread, because the dot is empty when it is not. Beside the new
+    /// disc it read as a gap somebody forgot to close.
+    private func field(_ text: String, in view: NSView) -> NSTextField? {
+        if let field = view as? NSTextField, field.stringValue == text { return field }
+        for child in view.subviews {
+            if let found = field(text, in: child) { return found }
+        }
+        return nil
+    }
+
+    private func laidOutRow(unread: Bool) -> ThreadRowView {
+        let subject = MailThread(id: "t1", sender: "Cloudflare <ops@cloudflare.com>",
+                                 snippet: "the snippet",
+                                 lastMessageDate: Date(timeIntervalSince1970: 0),
+                                 isUnread: unread, hasAttachments: false, labelIDs: ["INBOX"])
+        let row = ThreadRowView(thread: subject, isMarked: false, name: "Cloudflare",
+                                dateText: "Today", previewLines: 1)
+        row.frame = NSRect(x: 0, y: 0, width: 380, height: 64)
+        row.layoutSubtreeIfNeeded()
+        return row
+    }
+
+    private func leading(of text: String, in row: ThreadRowView) -> CGFloat? {
+        guard let field = field(text, in: row) else { return nil }
+        return field.convert(field.bounds, to: row).minX
+    }
+
+    @Test func theSenderAndTheSnippetStartAtTheSameX() throws {
+        for unread in [false, true] {
+            let row = laidOutRow(unread: unread)
+            let sender = try #require(leading(of: "Cloudflare", in: row))
+            let snippet = try #require(leading(of: "the snippet", in: row))
+
+            #expect(abs(sender - snippet) < 0.5,
+                    "unread=\(unread): sender at \(sender), snippet at \(snippet)")
+        }
+    }
+
+    /// And the indent must not depend on whether the row happens to be unread.
+    @Test func theRowDoesNotShiftWhenItIsRead() throws {
+        let unreadX = try #require(leading(of: "Cloudflare", in: laidOutRow(unread: true)))
+        let readX = try #require(leading(of: "Cloudflare", in: laidOutRow(unread: false)))
+
+        #expect(abs(unreadX - readX) < 0.5)
+    }
 }
