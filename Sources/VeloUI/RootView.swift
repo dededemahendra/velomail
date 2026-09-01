@@ -193,7 +193,8 @@ public struct RootView: View {
                                    alwaysLoadsImages: app.alwaysLoadsImages,
                                    knownLabels: app.labels,
                                    identity: app.identity,
-                                   onUnsubscribe: { app.unsubscribeSelected() })
+                                   onUnsubscribe: { app.unsubscribeSelected() },
+                                   onComposeTo: { app.startMessage(from: $0) })
                     }
                 } else {
                     // Whatever there is to say about an empty inbox, the list

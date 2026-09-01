@@ -1,6 +1,7 @@
 import Testing
 import WebKit
 import Foundation
+import VeloCore
 @testable import VeloUI
 
 /// Clicking a link or a button in a message did nothing at all.
@@ -36,9 +37,25 @@ import Foundation
                     == .open(URL(string: "https://example.com/subscribe")!))
     }
 
-    @Test func mailtoAndTelAreHandedOnToo() {
-        #expect(decide("mailto:someone@example.com") == .open(URL(string: "mailto:someone@example.com")!))
+    @Test func telIsHandedOnToo() {
         #expect(decide("tel:+61400000000") == .open(URL(string: "tel:+61400000000")!))
+    }
+
+    /// A mailto is the one address the app should not hand to the system: that
+    /// opens whichever mail client the system prefers, which may not be this
+    /// one and in any case is a strange thing for a mail client to do.
+    @Test func aMailtoGoesToThisAppsComposer() {
+        guard case let .compose(link) = decide("mailto:peta@x.com?subject=Hello") else {
+            Issue.record("a mailto did not route to the composer")
+            return
+        }
+        #expect(link.to == ["peta@x.com"])
+        #expect(link.subject == "Hello")
+    }
+
+    /// A mailto that will not parse must not fall through to the system.
+    @Test func anUnparseableMailtoIsRefusedRatherThanHandedOn() {
+        #expect(decide("mailto:") == .compose(MailtoLink(url: URL(string: "mailto:")!)!))
     }
 
     // MARK: - What must never reach the system

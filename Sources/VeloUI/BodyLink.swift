@@ -1,4 +1,5 @@
 import WebKit
+import VeloCore
 
 /// What to do when a message body asks to navigate somewhere.
 ///
@@ -14,6 +15,10 @@ enum BodyLink {
         /// The reader asked to go somewhere. Hand it to whatever they use for
         /// that kind of address.
         case open(URL)
+        /// The reader asked to write to somebody. That belongs in the composer
+        /// already in front of them, not in whichever mail client the system
+        /// happens to prefer.
+        case compose(MailtoLink)
         /// Refuse, and do not pass it to the system either.
         case cancel
     }
@@ -24,15 +29,21 @@ enum BodyLink {
     /// registered for a scheme, so anything not named here -- `file:`, `data:`,
     /// `javascript:`, and every application's own custom scheme -- is refused
     /// rather than forwarded on a stranger's say-so.
-    private static let handedOn: Set<String> = ["http", "https", "mailto", "tel"]
+    private static let handedOn: Set<String> = ["http", "https", "tel"]
 
     static func decide(url: URL?, type: WKNavigationType, isMainFrame: Bool) -> Decision {
         switch type {
         case .linkActivated, .formSubmitted:
             // The reader did something. The only question is whether the
             // destination is one we are willing to pass on.
-            guard let scheme = url?.scheme?.lowercased(), handedOn.contains(scheme),
-                  let url else { return .cancel }
+            guard let url, let scheme = url.scheme?.lowercased() else { return .cancel }
+            if scheme == "mailto" {
+                // A mail client that hands these to the system opens somebody
+                // else's composer.
+                guard let link = MailtoLink(url: url) else { return .cancel }
+                return .compose(link)
+            }
+            guard handedOn.contains(scheme) else { return .cancel }
             return .open(url)
 
         default:
