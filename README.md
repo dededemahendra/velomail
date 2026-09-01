@@ -18,6 +18,11 @@ A keyboard-first macOS Gmail client, in the spirit of Superhuman.
 open VeloMail.app
 ```
 
+The app icon is drawn, not stored: `Sources/VeloIcon` renders every
+representation macOS asks for and `make-app.sh` pipes them through `iconutil`.
+There are no binary assets in the repo, so changing the icon means changing
+numbers. `swift run velo-icon <dir>` writes an `.iconset` to look at.
+
 ### Look around first, without an account
 
 ```bash
