@@ -17,6 +17,9 @@ struct MessageBodyView: NSViewRepresentable {
     /// Set to the document's own height once it has laid out, so the body can
     /// be as tall as the message instead of scrolling inside a fixed box.
     var onMeasure: (CGFloat) -> Void = { _ in }
+    /// Where a `mailto:` in the body goes. Into this app's composer, not the
+    /// system's idea of a mail client.
+    var onComposeTo: (MailtoLink) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -33,6 +36,7 @@ struct MessageBodyView: NSViewRepresentable {
         // and with nobody to ask, the click did nothing.
         webView.uiDelegate = context.coordinator
         context.coordinator.onMeasure = onMeasure
+        context.coordinator.onComposeTo = onComposeTo
         context.coordinator.attach(webView, document: currentDocument,
                                    allowingRemote: loadsRemoteImages)
         return webView
@@ -40,6 +44,7 @@ struct MessageBodyView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMeasure = onMeasure
+        context.coordinator.onComposeTo = onComposeTo
         context.coordinator.render(currentDocument, allowingRemote: loadsRemoteImages)
     }
 
@@ -67,6 +72,7 @@ struct MessageBodyView: NSViewRepresentable {
         /// How a link leaves the app. Injected so a test never launches a
         /// browser.
         var openLink: (URL) -> Void = { NSWorkspace.shared.open($0) }
+        var onComposeTo: (MailtoLink) -> Void = { _ in }
 
         /// Decides what a click in the message means.
         ///
@@ -87,6 +93,9 @@ struct MessageBodyView: NSViewRepresentable {
             case let .open(url):
                 openLink(url)
                 decisionHandler(.cancel)
+            case let .compose(link):
+                onComposeTo(link)
+                decisionHandler(.cancel)
             }
         }
 
@@ -97,10 +106,11 @@ struct MessageBodyView: NSViewRepresentable {
                      windowFeatures: WKWindowFeatures) -> WKWebView? {
             // `targetFrame` is nil here -- that absence is what makes it a
             // request for a new window -- so the frame is not in question.
-            if case let .open(url) = BodyLink.decide(url: navigationAction.request.url,
-                                                     type: navigationAction.navigationType,
-                                                     isMainFrame: true) {
-                openLink(url)
+            switch BodyLink.decide(url: navigationAction.request.url,
+                                   type: navigationAction.navigationType, isMainFrame: true) {
+            case let .open(url): openLink(url)
+            case let .compose(link): onComposeTo(link)
+            case .allow, .cancel: break
             }
             return nil
         }
@@ -405,6 +415,8 @@ struct ThreadView: View {
     /// The reader's own address, so a message to them reads "to me".
     var identity: String = ""
     let onUnsubscribe: () -> Void
+    /// Where a `mailto:` in a message body goes.
+    var onComposeTo: (MailtoLink) -> Void = { _ in }
 
     /// Whether this thread can be left. Parsed rather than merely present: a
     /// header we cannot act on must not put a button on screen that does
@@ -517,7 +529,8 @@ struct ThreadView: View {
                                             alwaysLoadsImages: alwaysLoadsImages,
                                             paneHeight: proxy.size.height,
                                             identity: identity,
-                                            onToggle: { onToggle(row.message.id) })
+                                            onToggle: { onToggle(row.message.id) },
+                                            onComposeTo: onComposeTo)
                                 // No rule under the last message: it would draw
                                 // a line across empty space.
                                 if index < messages.count - 1 { Divider() }
@@ -573,6 +586,8 @@ private struct MessageCard: View {
     /// me" rather than reading their address back at them.
     var identity: String = ""
     let onToggle: () -> Void
+    /// Where a `mailto:` in this message body goes.
+    var onComposeTo: (MailtoLink) -> Void = { _ in }
 
     /// Per message and never persisted: asking once should not sign the reader
     /// up to be counted by every sender afterwards.
@@ -685,7 +700,8 @@ private struct MessageCard: View {
                 }
                 MessageBodyView(message: message, attachments: attachments,
                                 loadsRemoteImages: loadsImages,
-                                onMeasure: { bodyHeight = max($0, 60) })
+                                onMeasure: { bodyHeight = max($0, 60) },
+                                onComposeTo: onComposeTo)
                     .frame(height: bodyHeight ?? paneHeight)
                     // Painted behind the web view, which is transparent until
                     // WebKit's first paint. Without it the window's own dark

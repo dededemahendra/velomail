@@ -1161,6 +1161,25 @@ public final class AppViewModel: ObservableObject {
 
     /// Puts a chosen draft back in the composer, keeping its row so further
     /// edits update it rather than forking a copy.
+    /// Opens the composer on a `mailto:` from a message body.
+    ///
+    /// In this app's composer rather than the system's idea of a mail client,
+    /// which is what handing the URL to `NSWorkspace` did. The query comes with
+    /// it: an unsubscribe link is routinely
+    /// `mailto:leave@list?subject=unsubscribe`, and a message sent without that
+    /// subject does nothing at all.
+    public func startMessage(from link: MailtoLink) {
+        // A fresh message, not whatever was half-written: following a link is
+        // starting something, and silently editing an unrelated draft would
+        // send it to the wrong person.
+        compose.startNew()
+        compose.to = link.to.joined(separator: ", ")
+        compose.cc = link.cc.joined(separator: ", ")
+        compose.subject = link.subject ?? ""
+        compose.body = link.body ?? ""
+        route = .compose
+    }
+
     public func resumeDraft(_ stored: StoredDraft) {
         compose.resume(stored)
         route = .compose
