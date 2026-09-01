@@ -15,9 +15,9 @@ import VeloCore
     }
 
     private func list(_ threads: [MailThread], selected: Int? = nil,
-                      marked: Set<Int> = []) -> MessageListView {
+                      marked: Set<Int> = [], scope: MailScope = .inbox) -> MessageListView {
         MessageListView(sections: InboxSections.split(threads), selectedIndex: selected,
-                        markedIndices: marked,
+                        markedIndices: marked, scope: scope,
                         name: { MailFormatting.displayName($0.sender) },
                         date: { MailFormatting.relativeDate($0.lastMessageDate) },
                         onSelect: { _ in }, onOpen: {})
@@ -98,34 +98,34 @@ import VeloCore
         let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
         let coordinator = view.makeCoordinator()
 
-        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        #expect(coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
     }
 
     @Test func theViewportDoesNotFollowTheSameSelectionTwice() {
         let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
         let coordinator = view.makeCoordinator()
 
-        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        #expect(coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
         // The second update is the once-a-second status tick, not the reader
         // moving. Following it here is the scroll-snapback bug.
-        #expect(!coordinator.shouldFollowSelection(toRow: 1))
-        #expect(!coordinator.shouldFollowSelection(toRow: 1))
+        #expect(!coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
+        #expect(!coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
     }
 
     @Test func theViewportFollowsWhenTheSelectionMoves() {
         let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
         let coordinator = view.makeCoordinator()
 
-        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        #expect(coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
         // j/k must still drag the viewport with it, or the cursor walks
         // off-screen.
-        #expect(coordinator.shouldFollowSelection(toRow: 2))
+        #expect(coordinator.shouldFollowSelection(toRow: 2, in: .inbox))
     }
 
     @Test func mailArrivingAboveTheSelectionDoesNotMoveTheViewport() {
         let view = list([thread("b"), thread("c")], selected: 0)
         let coordinator = view.makeCoordinator()
-        #expect(coordinator.shouldFollowSelection(toRow: 0))
+        #expect(coordinator.shouldFollowSelection(toRow: 0, in: .inbox))
 
         // A sync lands a newer thread on top: the reader's thread is the same
         // conversation at a different row, and they have not asked to go
@@ -134,18 +134,42 @@ import VeloCore
         coordinator.parent = after
         coordinator.rows = after.rows
 
-        #expect(!coordinator.shouldFollowSelection(toRow: 1))
+        #expect(!coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
     }
 
     @Test func reselectingAThreadAfterADeselectFollowsItAgain() {
         let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
         let coordinator = view.makeCoordinator()
-        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        #expect(coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
 
         // Clearing the list drops the selection entirely; coming back to the
         // same thread is a fresh request to go there.
         coordinator.forgetFollowedSelection()
 
-        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        #expect(coordinator.shouldFollowSelection(toRow: 1, in: .inbox))
+    }
+
+    @Test func switchingListPutsTheSelectionBackInView() {
+        // The cursor clamps rather than clearing when the list changes
+        // (`SelectionCursor.reset`), so switching Inbox -> Starred can land on
+        // the very same thread. Keyed on the thread alone that reads as "the
+        // reader has not moved", and the viewport keeps the offset it had in
+        // the list it just left -- leaving the selection off-screen.
+        let view = list([thread("a"), thread("b")], selected: 0)
+        let coordinator = view.makeCoordinator()
+        #expect(coordinator.shouldFollowSelection(toRow: 0, in: .inbox))
+
+        #expect(coordinator.shouldFollowSelection(toRow: 0, in: .starred))
+    }
+
+    @Test func aLabelIsItsOwnListToo() {
+        let view = list([thread("a"), thread("b")], selected: 0)
+        let coordinator = view.makeCoordinator()
+        #expect(coordinator.shouldFollowSelection(toRow: 0, in: .label("Label_7", "Invoices")))
+
+        // Same scope, same thread: the once-a-second tick again.
+        #expect(!coordinator.shouldFollowSelection(toRow: 0, in: .label("Label_7", "Invoices")))
+        // A different label is a different list.
+        #expect(coordinator.shouldFollowSelection(toRow: 0, in: .label("Label_9", "Receipts")))
     }
 }

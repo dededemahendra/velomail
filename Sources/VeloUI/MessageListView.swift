@@ -13,6 +13,10 @@ struct MessageListView: NSViewRepresentable {
     let sections: [ThreadSection]
     let selectedIndex: Int?
     let markedIndices: Set<Int>
+    /// Which list this is. Needed because the viewport follows the selection
+    /// only when it moves, and "moved" has to count arriving in a different
+    /// list on the same thread.
+    var scope: MailScope = .inbox
     /// The person a row is about. Supplied rather than read off the thread,
     /// because in Sent that is the recipient, not the sender.
     let name: (MailThread) -> String
@@ -100,7 +104,7 @@ struct MessageListView: NSViewRepresentable {
         // selection off-screen -- but only when the selection has actually
         // moved. This runs on every update, and an update is not the reader
         // asking to go anywhere.
-        if context.coordinator.shouldFollowSelection(toRow: row) {
+        if context.coordinator.shouldFollowSelection(toRow: row, in: scope) {
             table.scrollRowToVisible(row)
         }
     }
@@ -112,7 +116,8 @@ struct MessageListView: NSViewRepresentable {
         var rows: [Row] = []
         /// Guards against the selection change we just applied bouncing back.
         private var isApplyingSelection = false
-        /// The thread the viewport was last moved to follow.
+        /// The thread the viewport was last moved to follow, and the list it
+        /// was in.
         ///
         /// Keyed on the thread rather than on its row: `updateNSView` runs on
         /// every published change anywhere in the app -- the sync status ticks
@@ -121,22 +126,33 @@ struct MessageListView: NSViewRepresentable {
         /// every manual scroll. Keying on the thread also means mail landing
         /// above the selection, which moves its row without the reader having
         /// asked for anything, leaves the viewport alone.
+        ///
+        /// The scope is half of the key because the cursor clamps rather than
+        /// clearing when the list changes (`SelectionCursor.reset`), so Inbox
+        /// -> Starred can land on the very thread that was already selected.
+        /// On the thread alone that reads as "nobody moved", and the viewport
+        /// would keep the offset it had in the list it just left.
         private var followedThreadID: String?
+        private var followedScope: MailScope?
 
         /// Whether the viewport should be dragged to `row`, recording that it
-        /// was. True only when this is a different conversation from the one
-        /// the viewport was last moved for.
-        func shouldFollowSelection(toRow row: Int) -> Bool {
+        /// was. True when this is a different conversation from the one the
+        /// viewport was last moved for, or a different list.
+        func shouldFollowSelection(toRow row: Int, in scope: MailScope) -> Bool {
             guard rows.indices.contains(row),
-                  case let .thread(thread, _) = rows[row],
-                  thread.id != followedThreadID else { return false }
+                  case let .thread(thread, _) = rows[row] else { return false }
+            guard scope != followedScope || thread.id != followedThreadID else { return false }
+            followedScope = scope
             followedThreadID = thread.id
             return true
         }
 
         /// Drops the record, so the next selection scrolls even if it lands on
         /// the same thread.
-        func forgetFollowedSelection() { followedThreadID = nil }
+        func forgetFollowedSelection() {
+            followedThreadID = nil
+            followedScope = nil
+        }
 
         init(_ parent: MessageListView) {
             self.parent = parent
