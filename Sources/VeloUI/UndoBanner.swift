@@ -38,6 +38,7 @@ struct UndoBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .floatingSurface()
+        .bannerWidth()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -73,6 +74,7 @@ struct SignInAgainBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .floatingSurface()
+        .bannerWidth()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .contain)
@@ -112,6 +114,7 @@ struct FailureBanner: View {
         .accessibilityLabel(prompt)
         .overlay(
             RoundedRectangle(cornerRadius: 12).strokeBorder(.orange.opacity(0.45), lineWidth: 1))
+        .bannerWidth()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -130,6 +133,7 @@ struct NoticeBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .floatingSurface()
+        .bannerWidth()
         .padding(.horizontal, 16).padding(.bottom, 12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
