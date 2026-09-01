@@ -147,4 +147,49 @@ import VeloCore
                       previewLines: 1, labels: [])
         #expect(row.identifier == ThreadRowView.reuseIdentifier)
     }
+
+    /// A thread whose snippet is empty left a blank second line: the row drew a
+    /// sender and then a void the height of a line of text. Found by rendering
+    /// rows at three widths with deliberately awkward data -- an empty snippet
+    /// is what a message with only an attachment, or an empty body, produces.
+    @Test func aThreadWithNoSnippetDoesNotLeaveAnEmptyLine() {
+        let bare = MailThread(id: "t", sender: "Alice <a@x.com>", snippet: "",
+                              lastMessageDate: Date(timeIntervalSince1970: 0),
+                              isUnread: false, hasAttachments: true, labelIDs: ["INBOX"])
+        let row = ThreadRowView(thread: bare, isMarked: false, name: "Alice",
+                                dateText: "Today", previewLines: 1)
+        row.frame = NSRect(x: 0, y: 0, width: 380, height: 64)
+        row.layoutSubtreeIfNeeded()
+
+        let snippet = snippetField(in: row)
+        #expect(snippet?.isHidden == true, "an empty snippet is still taking up a line")
+    }
+
+    /// And a row that has one still shows it.
+    @Test func aThreadWithASnippetStillShowsIt() throws {
+        let row = laidOutRow(unread: false)
+        let snippet = try #require(snippetField(in: row))
+        #expect(!snippet.isHidden)
+        #expect(snippet.stringValue == "the snippet")
+    }
+
+    /// The tick and the unread dot are blank on most rows and must not be
+    /// swept up by the same rule -- they hold the gutter open.
+    @Test func theBlankTickAndDotAreStillVisible() {
+        let row = laidOutRow(unread: false)
+        let blanks = allFields(in: row).filter { $0.stringValue.isEmpty && $0.identifier != ThreadRowView.snippetIdentifier }
+        #expect(!blanks.isEmpty)
+        #expect(blanks.allSatisfy { !$0.isHidden })
+    }
+
+    private func allFields(in view: NSView) -> [NSTextField] {
+        var found: [NSTextField] = []
+        if let field = view as? NSTextField { found.append(field) }
+        for child in view.subviews { found.append(contentsOf: allFields(in: child)) }
+        return found
+    }
+
+    private func snippetField(in view: NSView) -> NSTextField? {
+        allFields(in: view).first { $0.identifier == ThreadRowView.snippetIdentifier }
+    }
 }

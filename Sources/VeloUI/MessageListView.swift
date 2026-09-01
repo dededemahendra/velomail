@@ -269,6 +269,7 @@ final class ThreadRowView: NSView {
     /// constraints, measured at 1.08ms. That is ~12ms to refill a screen and
     /// another 1.08ms for every row scrolled into view, against a 16.7ms frame.
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow")
+    static let snippetIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow.snippet")
 
     // Fixed width whether or not it is showing, so marking a row does not
     // shuffle the text next to it.
@@ -336,6 +337,10 @@ final class ThreadRowView: NSView {
         date.textColor = .tertiaryLabelColor
         date.setContentCompressionResistancePriority(.required, for: .horizontal)
 
+        // Named so a test can find this one field among several that are
+        // legitimately empty -- the tick and the unread dot are blank on most
+        // rows and must stay visible.
+        snippet.identifier = Self.snippetIdentifier
         snippet.font = .systemFont(ofSize: 12)
         // Secondary, not tertiary: the snippet is the thing you actually read
         // when deciding whether to open something.
@@ -397,9 +402,13 @@ final class ThreadRowView: NSView {
         // "It&#39;s Friday".
         snippet.stringValue = HTMLText.decoded(thread.snippet)
         snippet.maximumNumberOfLines = previewLines
-        // Zero lines is a reader who goes by subject alone; the field is
-        // removed rather than left as an empty gap.
-        snippet.isHidden = previewLines == 0
+        // Removed rather than left as an empty gap, in both the cases that
+        // produce one: a reader who goes by subject alone and has set the
+        // preview to zero lines, and a thread that simply has no snippet --
+        // which is what a message carrying only an attachment, or an empty
+        // body, arrives as. That drew a sender and then a void the height of a
+        // line of text.
+        snippet.isHidden = previewLines == 0 || snippet.stringValue.isEmpty
 
         setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText,
                                                             labels: labels))
