@@ -332,19 +332,6 @@ public struct OutboundService: Sendable {
         try enqueueLabelChange(threadID: threadID, kind: .unstar, add: [], remove: ["STARRED"])
     }
 
-    /// Stars or unstars depending on where the thread is now.
-    ///
-    /// The direction is decided from the stored labels *before* anything is
-    /// enqueued; deciding afterwards would make a double-tap enqueue two adds.
-    public func toggleStar(threadID: String) throws {
-        guard let thread = try store.thread(id: threadID) else { return }
-        if thread.labelIDs.contains("STARRED") {
-            try unstar(threadID: threadID)
-        } else {
-            try star(threadID: threadID)
-        }
-    }
-
     /// Moves a thread to the bin.
     ///
     /// Applies Gmail's `TRASH` alongside removing `INBOX`, so it is recoverable

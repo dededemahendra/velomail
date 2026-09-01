@@ -162,15 +162,6 @@ public struct GmailAPIClient: GmailReading, GmailWriting, GmailDrafting, @unchec
         let size: Int?
     }
 
-    /// Adds/removes labels on a message via `users.messages.modify`. Returns the
-    /// updated message resource. Idempotent (removing a label twice is a no-op).
-    public func modifyMessage(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessageDTO {
-        let url = baseURL.appendingPathComponent("users/me/messages/\(id)/modify")
-        let body = try JSONEncoder().encode(ModifyRequest(addLabelIds: addLabelIDs, removeLabelIds: removeLabelIDs))
-        let (data, response) = try await authorizedPOST(url, body: body)
-        return try checkedDecode(data, response)
-    }
-
     /// Atomically adds/removes labels on many messages via
     /// `users.messages.batchModify` (returns 204 No Content on success).
     public func batchModifyMessages(ids: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {

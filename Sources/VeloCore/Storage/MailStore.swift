@@ -285,14 +285,6 @@ public final class MailStore: Sendable {
         }
     }
 
-    public func setLabels(_ labelIDs: [String], onThread threadID: String) throws {
-        try database.dbQueue.write { db in
-            guard var thread = try MailThread.fetchOne(db, key: threadID) else { return }
-            thread.labelIDs = labelIDs
-            try thread.update(db)
-        }
-    }
-
     /// Observes the inbox and calls `onChange` with the current threads immediately,
     /// then again on every relevant database change.
     ///

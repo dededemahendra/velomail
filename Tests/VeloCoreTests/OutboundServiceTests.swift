@@ -709,21 +709,25 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
         #expect(p.addLabelIDs == [])
     }
 
-    @Test func toggleStarStarsAnUnstarredThread() async throws {
+    /// `toggleStar` is gone; production always knew which way it was going and
+    /// called `star` or `unstar`. What is kept is the pair of behaviours those
+    /// two have to get right on their own.
+
+    @Test func starringMarksTheThreadAndQueuesIt() async throws {
         let (service, store, mutations) = try makeContext()
         try seedThread(store, id: "t", labels: ["INBOX"], unread: false, messageIDs: ["m1"])
 
-        try service.toggleStar(threadID: "t")
+        try service.star(threadID: "t")
 
         #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == true)
         #expect(try mutations.pending()[0].kind == .star)
     }
 
-    @Test func toggleStarUnstarsAStarredThread() async throws {
+    @Test func unstarringClearsTheThreadAndQueuesIt() async throws {
         let (service, store, mutations) = try makeContext()
         try seedThread(store, id: "t", labels: ["INBOX", "STARRED"], unread: false, messageIDs: ["m1"])
 
-        try service.toggleStar(threadID: "t")
+        try service.unstar(threadID: "t")
 
         #expect(try store.thread(id: "t")?.labelIDs.contains("STARRED") == false)
         #expect(try mutations.pending()[0].kind == .unstar)
@@ -734,7 +738,6 @@ func decodeMessageDTO(_ json: String) throws -> GmailMessageDTO {
 
         try service.star(threadID: "nope")
         try service.unstar(threadID: "nope")
-        try service.toggleStar(threadID: "nope")
 
         #expect(try mutations.all().isEmpty)
     }
