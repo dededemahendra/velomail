@@ -186,4 +186,47 @@ import Foundation
         }
         return buffer
     }
+
+    // MARK: - The layered mark
+
+    /// macOS 26 draws the tile itself, per appearance, and composites the app's
+    /// layers on top. That is how an icon comes to have a light and a dark
+    /// form at all: the artwork supplies the mark, the system supplies the
+    /// ground. A flat picture of a dark tile -- which is what the `.icns` is --
+    /// hides the ground and looks the same in both.
+    ///
+    /// So the layer has to be the chevrons alone, on nothing.
+    @Test func theLayerIsTheMarkAloneOnTransparency() throws {
+        let image = AppIconRenderer.markLayer(pixels: 512)
+        #expect(image.width == 512)
+
+        let pixels = pixels(of: image)
+        let side = image.width
+        func alpha(_ x: Int, _ y: Int) -> UInt32 { (pixels[y * side + x] >> 24) & 0xFF }
+
+        // The corners are where a tile would be, and there must not be one.
+        for (x, y) in [(4, 4), (side - 5, 4), (4, side - 5), (side - 5, side - 5)] {
+            #expect(alpha(x, y) == 0, "something is drawn at \(x),\(y) -- a tile would be")
+        }
+        // And the mark itself is there.
+        #expect(pixels.count { ($0 >> 24) & 0xFF > 0x80 } > 10_000)
+    }
+
+    /// The mark sits on a near-white tile in light mode and a dark one in dark
+    /// mode, so its colours have to carry against both. The first pair --
+    /// pale pink to pale cyan, chosen against charcoal -- vanished on white.
+    @Test func theMarkIsDarkEnoughToReadOnALightTile() {
+        let image = AppIconRenderer.markLayer(pixels: 256)
+        let lit = pixels(of: image).filter { ($0 >> 24) & 0xFF > 0xC0 }
+        #expect(!lit.isEmpty)
+
+        // Relative luminance of every solid pixel of the mark, against white.
+        let luminances = lit.map { pixel -> Double in
+            let r = Double(pixel & 0xFF), g = Double((pixel >> 8) & 0xFF), b = Double((pixel >> 16) & 0xFF)
+            return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        }
+        let brightest = luminances.max() ?? 1
+        #expect(brightest < 0.62,
+                "the palest part of the mark is \(brightest) against a 0.95 tile")
+    }
 }
