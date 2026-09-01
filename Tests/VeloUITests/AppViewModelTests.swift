@@ -260,9 +260,10 @@ import VeloCore
 
         app.handle(KeyInput(.character("a")))
         app.handle(KeyInput(.character("s")))
-        try await Task.sleep(nanoseconds: 200_000_000)
 
-        #expect(app.assistant.state == .result("A short summary."))
+        await eventually("the assistant produced a summary") {
+            app.assistant.state == .result("A short summary.")
+        }
     }
 
     @Test func aiChordStillDoesNothingWithoutAProvider() async throws {
@@ -270,8 +271,11 @@ import VeloCore
 
         app.handle(KeyInput(.character("a")))
         app.handle(KeyInput(.character("s")))
-        try await Task.sleep(nanoseconds: 150_000_000)
 
+        // Nothing is started at all without a provider, so there is nothing to
+        // wait for -- the old 150ms sleep was waiting on work that never
+        // existed. Yielding once is enough to catch a task that did start.
+        await Task.yield()
         #expect(app.assistant.state == .idle)
     }
 

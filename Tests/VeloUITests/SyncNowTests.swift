@@ -32,11 +32,21 @@ private struct Quiet: GmailWriting {
     @Test func theCommandIsWiredToSomething() async throws {
         // Five features in this app were built and left unreachable. This is
         // the check that would have caught them.
+        //
+        // Waits for the call rather than for 120ms. The work runs in a
+        // detached task, and a fixed sleep is a guess about how loaded the
+        // machine is -- wrong in both directions.
         let ran = Counter()
         let app = try makeApp { await ran.bump() }
+
         app.perform(.syncNow)
-        try await Task.sleep(for: .milliseconds(120))
-        #expect(await ran.count == 1)
+
+        var count = 0
+        await eventually("the sync-now command reached the engine") {
+            count = ran.countNow
+            return count == 1
+        }
+        #expect(count == 1)
     }
 
     @Test func aGoodPassSaysSo() async throws {
@@ -61,9 +71,15 @@ private struct Quiet: GmailWriting {
     }
 }
 
-private actor Counter {
-    private(set) var count = 0
-    func bump() { count += 1 }
+/// Counts calls from whatever context makes them, and can be read from the
+/// main actor without awaiting -- a condition that has to `await` cannot be
+/// polled from a synchronous closure.
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func bump() { lock.lock(); value += 1; lock.unlock() }
+    var countNow: Int { lock.lock(); defer { lock.unlock() }; return value }
+    var count: Int { countNow }
 }
 
 @MainActor
