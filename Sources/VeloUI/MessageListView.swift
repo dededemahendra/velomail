@@ -321,7 +321,7 @@ final class ThreadRowView: NSView {
         // removed rather than left as an empty gap.
         snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), tag, clip, star, date])
+        let top = NSStackView(views: [sender, count, direct, NSView(), tag, clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
@@ -336,14 +336,17 @@ final class ThreadRowView: NSView {
         stack.alignment = .leading
         stack.spacing = 2
 
-        // The disc sits outside the text block and is pinned to the top of it
-        // rather than centred: on a two-line row a centred disc floats between
-        // the sender and the snippet, belonging to neither.
+        // The tick and the unread dot live in a gutter to the left of the disc,
+        // not inside the text block. Inside it they indented the sender past
+        // the snippet beneath it -- by 22pt, and by 29pt when the row was
+        // unread, since the dot is an empty field on a read one and collapses.
+        // Both carry a fixed width for the same reason: a gutter that changes
+        // size shifts the whole row as mail is read.
         let disc = SenderDiscView(name: name)
-        let row = NSStackView(views: [disc, stack])
+        let row = NSStackView(views: [mark, dot, disc, stack])
         row.orientation = .horizontal
-        row.alignment = .top
-        row.spacing = 10
+        row.alignment = .centerY
+        row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
@@ -351,6 +354,7 @@ final class ThreadRowView: NSView {
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
             mark.widthAnchor.constraint(equalToConstant: 10),
+            dot.widthAnchor.constraint(equalToConstant: 8),
         ])
     }
 
