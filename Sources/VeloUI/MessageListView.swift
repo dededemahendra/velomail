@@ -88,14 +88,21 @@ struct MessageListView: NSViewRepresentable {
 
         guard let index = selectedIndex, let row = context.coordinator.row(forThread: index) else {
             table.deselectAll(nil)
+            // Coming back to the same thread after the selection was dropped is
+            // a fresh request to go there, not a repeat of one already served.
+            context.coordinator.forgetFollowedSelection()
             return
         }
         if table.selectedRow != row {
             table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
         // Keyboard navigation must drag the viewport with it, or j/k walks the
-        // selection off-screen.
-        table.scrollRowToVisible(row)
+        // selection off-screen -- but only when the selection has actually
+        // moved. This runs on every update, and an update is not the reader
+        // asking to go anywhere.
+        if context.coordinator.shouldFollowSelection(toRow: row) {
+            table.scrollRowToVisible(row)
+        }
     }
 
     final class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource {
@@ -105,6 +112,31 @@ struct MessageListView: NSViewRepresentable {
         var rows: [Row] = []
         /// Guards against the selection change we just applied bouncing back.
         private var isApplyingSelection = false
+        /// The thread the viewport was last moved to follow.
+        ///
+        /// Keyed on the thread rather than on its row: `updateNSView` runs on
+        /// every published change anywhere in the app -- the sync status ticks
+        /// once a second -- and scrolling to the selection on all of them
+        /// dragged the list back under the reader's hands about a second after
+        /// every manual scroll. Keying on the thread also means mail landing
+        /// above the selection, which moves its row without the reader having
+        /// asked for anything, leaves the viewport alone.
+        private var followedThreadID: String?
+
+        /// Whether the viewport should be dragged to `row`, recording that it
+        /// was. True only when this is a different conversation from the one
+        /// the viewport was last moved for.
+        func shouldFollowSelection(toRow row: Int) -> Bool {
+            guard rows.indices.contains(row),
+                  case let .thread(thread, _) = rows[row],
+                  thread.id != followedThreadID else { return false }
+            followedThreadID = thread.id
+            return true
+        }
+
+        /// Drops the record, so the next selection scrolls even if it lands on
+        /// the same thread.
+        func forgetFollowedSelection() { followedThreadID = nil }
 
         init(_ parent: MessageListView) {
             self.parent = parent

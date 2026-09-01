@@ -86,4 +86,66 @@ import VeloCore
         #expect(coordinator.tableView(table, heightOfRow: 0)
                     < coordinator.tableView(table, heightOfRow: 1))
     }
+
+    // MARK: - Following the selection
+
+    /// The bug these cover: `updateNSView` runs on every published change
+    /// anywhere in the app, and the sync status ticks once a second. Scrolling
+    /// to the selection on all of them dragged the list back under the reader's
+    /// hands about a second after every manual scroll.
+
+    @Test func theViewportFollowsASelectionItHasNotFollowedYet() {
+        let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
+        let coordinator = view.makeCoordinator()
+
+        #expect(coordinator.shouldFollowSelection(toRow: 1))
+    }
+
+    @Test func theViewportDoesNotFollowTheSameSelectionTwice() {
+        let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
+        let coordinator = view.makeCoordinator()
+
+        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        // The second update is the once-a-second status tick, not the reader
+        // moving. Following it here is the scroll-snapback bug.
+        #expect(!coordinator.shouldFollowSelection(toRow: 1))
+        #expect(!coordinator.shouldFollowSelection(toRow: 1))
+    }
+
+    @Test func theViewportFollowsWhenTheSelectionMoves() {
+        let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
+        let coordinator = view.makeCoordinator()
+
+        #expect(coordinator.shouldFollowSelection(toRow: 1))
+        // j/k must still drag the viewport with it, or the cursor walks
+        // off-screen.
+        #expect(coordinator.shouldFollowSelection(toRow: 2))
+    }
+
+    @Test func mailArrivingAboveTheSelectionDoesNotMoveTheViewport() {
+        let view = list([thread("b"), thread("c")], selected: 0)
+        let coordinator = view.makeCoordinator()
+        #expect(coordinator.shouldFollowSelection(toRow: 0))
+
+        // A sync lands a newer thread on top: the reader's thread is the same
+        // conversation at a different row, and they have not asked to go
+        // anywhere. Keyed on the row alone this would scroll.
+        let after = list([thread("a"), thread("b"), thread("c")], selected: 1)
+        coordinator.parent = after
+        coordinator.rows = after.rows
+
+        #expect(!coordinator.shouldFollowSelection(toRow: 1))
+    }
+
+    @Test func reselectingAThreadAfterADeselectFollowsItAgain() {
+        let view = list([thread("a"), thread("b"), thread("c")], selected: 1)
+        let coordinator = view.makeCoordinator()
+        #expect(coordinator.shouldFollowSelection(toRow: 1))
+
+        // Clearing the list drops the selection entirely; coming back to the
+        // same thread is a fresh request to go there.
+        coordinator.forgetFollowedSelection()
+
+        #expect(coordinator.shouldFollowSelection(toRow: 1))
+    }
 }
