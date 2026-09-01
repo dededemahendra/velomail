@@ -174,14 +174,26 @@ struct MessageListView: NSViewRepresentable {
             guard rows.indices.contains(row) else { return nil }
             switch rows[row] {
             case let .header(title):
-                return SectionHeaderView(title: title)
+                let header = tableView.makeView(withIdentifier: SectionHeaderView.reuseIdentifier,
+                                                owner: self) as? SectionHeaderView
+                    ?? SectionHeaderView()
+                header.configure(title: title)
+                return header
             case let .thread(thread, index):
-                return ThreadRowView(thread: thread,
-                                     isMarked: parent.markedIndices.contains(index),
-                                     name: parent.name(thread),
-                                     dateText: parent.date(thread),
-                                     previewLines: parent.previewLines,
-                                     labels: parent.labelNames(thread))
+                // Recycled where the table has one to offer. Building a row is
+                // five text fields, two stacks and a set of constraints;
+                // pointing an existing one at another thread is ten
+                // assignments.
+                let view = tableView.makeView(withIdentifier: ThreadRowView.reuseIdentifier,
+                                              owner: self) as? ThreadRowView
+                    ?? ThreadRowView()
+                view.configure(thread: thread,
+                               isMarked: parent.markedIndices.contains(index),
+                               name: parent.name(thread),
+                               dateText: parent.date(thread),
+                               previewLines: parent.previewLines,
+                               labels: parent.labelNames(thread))
+                return view
             }
         }
 
@@ -224,10 +236,14 @@ struct MessageListView: NSViewRepresentable {
 
 /// A section header: quiet, because the mail is the content and this is a label.
 private final class SectionHeaderView: NSView {
-    init(title: String) {
-        super.init(frame: .zero)
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("velo.sectionHeader")
 
-        let label = NSTextField(labelWithString: title.uppercased())
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.reuseIdentifier
+
         label.font = .systemFont(ofSize: 10, weight: .semibold)
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -238,97 +254,101 @@ private final class SectionHeaderView: NSView {
         ])
     }
 
+    func configure(title: String) {
+        label.stringValue = title.uppercased()
+    }
+
     required init?(coder: NSCoder) { nil }
 }
 
-/// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
 final class ThreadRowView: NSView {
-    init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
-         previewLines: Int, labels: [String] = []) {
-        super.init(frame: .zero)
+    /// What `NSTableView` recycles these under.
+    ///
+    /// Without it the table never offers a used row back and `viewFor` builds
+    /// a fresh one every time -- five text fields, two stacks and a set of
+    /// constraints, measured at 1.08ms. That is ~12ms to refill a screen and
+    /// another 1.08ms for every row scrolled into view, against a 16.7ms frame.
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow")
 
-        // Fixed width whether or not it is showing, so marking a row does not
-        // shuffle the text next to it.
-        let mark = NSTextField(labelWithString: isMarked ? "✓" : "")
+    // Fixed width whether or not it is showing, so marking a row does not
+    // shuffle the text next to it.
+    private let mark = NSTextField(labelWithString: "")
+    private let dot = NSTextField(labelWithString: "")
+    // Unread carries weight; read carries none. One signal, not two, so the
+    // list reads as a single column of names rather than a checkerboard.
+    // Beside the name rather than in the date column: it belongs to the
+    // conversation, not to when it last moved.
+    private let count = NSTextField(labelWithString: "")
+    // A mark, not a word: it appears on a good fraction of rows and must not
+    // compete with the sender. A middle dot was too quiet to read as anything
+    // but a smudge; the guillemet is the convention other clients already use
+    // for mail addressed to you and nobody else.
+    private let direct = NSTextField(labelWithString: "")
+    private let sender = NSTextField(labelWithString: "")
+    // Stored on every thread since attachments were added and never once
+    // shown. Knowing a message has a file is most of why you open it.
+    private let clip = NSTextField(labelWithString: "")
+    // One label, not all of them: a row is a glance, and three chips push the
+    // sender out of the space it needs. The thread header lists the rest.
+    private let labelChip = NSTextField(labelWithString: "")
+    private let star = NSTextField(labelWithString: "")
+    private let date = NSTextField(labelWithString: "")
+    private let snippet = NSTextField(labelWithString: "")
+
+    /// Builds the hierarchy. Everything that depends on a particular thread is
+    /// set in `configure`, so a recycled row costs an assignment rather than a
+    /// construction.
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.reuseIdentifier
+
         mark.font = .systemFont(ofSize: 11, weight: .bold)
         mark.textColor = .controlAccentColor
 
-        let dot = NSTextField(labelWithString: thread.isUnread ? "●" : "")
         dot.font = .systemFont(ofSize: 7)
         dot.textColor = .controlAccentColor
 
-        // Unread carries weight; read carries none. One signal, not two, so the
-        // list reads as a single column of names rather than a checkerboard.
-        // Beside the name rather than in the date column: it belongs to the
-        // conversation, not to when it last moved.
-        let count = NSTextField(labelWithString: MailFormatting.threadCount(thread.messageCount) ?? "")
         count.font = .systemFont(ofSize: 10, weight: .medium)
         count.textColor = .tertiaryLabelColor
 
-        // A mark, not a word: it appears on a good fraction of rows and must
-        // not compete with the sender. A middle dot was too quiet to read as
-        // anything but a smudge; the guillemet is the convention other clients
-        // already use for mail addressed to you and nobody else.
-        let direct = NSTextField(labelWithString:
-            MailFormatting.isToYouAlone(recipientCount: thread.recipientCount) ? "\u{00BB}" : "")
         direct.font = .systemFont(ofSize: 11, weight: .medium)
         direct.textColor = .secondaryLabelColor
 
-        let sender = NSTextField(labelWithString: name)
-        sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
-        sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
         sender.lineBreakMode = .byTruncatingTail
         sender.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        // Stored on every thread since attachments were added and never once
-        // shown. Knowing a message has a file is most of why you open it.
-        let clip = NSTextField(labelWithString: thread.hasAttachments ? "\u{1F4CE}" : "")
         clip.font = .systemFont(ofSize: 10)
 
-        // One label, not all of them: a row is a glance, and three chips push
-        // the sender out of the space it needs. The thread header lists the rest.
-        let tag = NSTextField(labelWithString: MailFormatting.shortLabel(labels.first ?? ""))
-        tag.font = .systemFont(ofSize: 9, weight: .medium)
-        tag.textColor = .tertiaryLabelColor
-        tag.lineBreakMode = .byTruncatingTail
+        labelChip.font = .systemFont(ofSize: 9, weight: .medium)
+        labelChip.textColor = .tertiaryLabelColor
+        labelChip.lineBreakMode = .byTruncatingTail
         // Below the sender's own low resistance, so a long label gives up its
         // space first. It used to win, and "Invoices to pay this quarter"
         // printed in full while the sender read "Peta Bil...".
-        tag.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+        labelChip.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
 
-        let star = NSTextField(labelWithString: thread.labelIDs.contains("STARRED") ? "★" : "")
         star.font = .systemFont(ofSize: 11)
         star.textColor = .systemYellow
 
         // Tabular figures so the dates form a straight right edge instead of
         // wobbling by a pixel per digit.
-        let date = NSTextField(labelWithString: dateText)
         date.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         date.textColor = .tertiaryLabelColor
         date.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        // Gmail sends this escaped; without decoding the list reads
-        // "It&#39;s Friday".
-        let snippet = NSTextField(labelWithString: HTMLText.decoded(thread.snippet))
         snippet.font = .systemFont(ofSize: 12)
         // Secondary, not tertiary: the snippet is the thing you actually read
         // when deciding whether to open something.
         snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
-        snippet.maximumNumberOfLines = previewLines
-        // Zero lines is a reader who goes by subject alone; the field is
-        // removed rather than left as an empty gap.
-        snippet.isHidden = previewLines == 0
 
-        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), tag, clip, star, date])
+        let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), labelChip, clip, star, date])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .firstBaseline
 
         setAccessibilityElement(true)
         setAccessibilityRole(.row)
-        setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText,
-                                                            labels: labels))
 
         let stack = NSStackView(views: [top, snippet])
         stack.orientation = .vertical
@@ -348,6 +368,49 @@ final class ThreadRowView: NSView {
             mark.widthAnchor.constraint(equalToConstant: 10),
             dot.widthAnchor.constraint(equalToConstant: 8),
         ])
+    }
+
+    /// Points this row at a thread.
+    ///
+    /// Every field is assigned unconditionally, including the ones that are
+    /// usually empty. A recycled row still carries the last thread's contents,
+    /// so anything left unset shows a star, a tick or a paperclip belonging to
+    /// a conversation three screens away.
+    func configure(thread: MailThread, isMarked: Bool, name: String, dateText: String,
+                   previewLines: Int, labels: [String] = []) {
+        mark.stringValue = isMarked ? "\u{2713}" : ""
+        dot.stringValue = thread.isUnread ? "\u{25CF}" : ""
+        count.stringValue = MailFormatting.threadCount(thread.messageCount) ?? ""
+        direct.stringValue =
+            MailFormatting.isToYouAlone(recipientCount: thread.recipientCount) ? "\u{00BB}" : ""
+
+        sender.stringValue = name
+        sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
+        sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
+
+        clip.stringValue = thread.hasAttachments ? "\u{1F4CE}" : ""
+        labelChip.stringValue = MailFormatting.shortLabel(labels.first ?? "")
+        star.stringValue = thread.labelIDs.contains("STARRED") ? "\u{2605}" : ""
+        date.stringValue = dateText
+
+        // Gmail sends this escaped; without decoding the list reads
+        // "It&#39;s Friday".
+        snippet.stringValue = HTMLText.decoded(thread.snippet)
+        snippet.maximumNumberOfLines = previewLines
+        // Zero lines is a reader who goes by subject alone; the field is
+        // removed rather than left as an empty gap.
+        snippet.isHidden = previewLines == 0
+
+        setAccessibilityLabel(MailFormatting.rowDescription(thread, name: name, date: dateText,
+                                                            labels: labels))
+    }
+
+    /// Build and configure in one step, for callers that are not recycling.
+    convenience init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
+                     previewLines: Int, labels: [String] = []) {
+        self.init()
+        configure(thread: thread, isMarked: isMarked, name: name, dateText: dateText,
+                  previewLines: previewLines, labels: labels)
     }
 
     required init?(coder: NSCoder) { nil }

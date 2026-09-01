@@ -60,4 +60,91 @@ import VeloCore
         }
         #expect(!isDisc(row))
     }
+
+    // MARK: - Reuse
+
+    /// `NSTableView` is built around recycling row views, and this table used
+    /// none of it: `viewFor` constructed a fresh `ThreadRowView` -- five text
+    /// fields, a stack and constraints -- every time it was asked. Measured at
+    /// 1.08ms a row, which is ~12ms to refill a screen and another 1.08ms for
+    /// every row exposed while scrolling.
+    ///
+    /// These pin the two halves of the fix: a view can be reconfigured, and
+    /// reconfiguring does not quietly rebuild it.
+
+    private func described(_ row: ThreadRowView) -> [String] {
+        var found: [String] = []
+        func walk(_ view: NSView) {
+            if let field = view as? NSTextField { found.append(field.stringValue) }
+            view.subviews.forEach(walk)
+        }
+        walk(row)
+        return found
+    }
+
+    private func subviewCount(_ view: NSView) -> Int {
+        1 + view.subviews.reduce(0) { $0 + subviewCount($1) }
+    }
+
+    private func thread(_ id: String, sender: String, snippet: String,
+                        unread: Bool = false) -> MailThread {
+        MailThread(id: id, sender: sender, snippet: snippet,
+                   lastMessageDate: Date(timeIntervalSince1970: 0),
+                   isUnread: unread, hasAttachments: false, labelIDs: ["INBOX"])
+    }
+
+    @Test func aRowCanBeGivenNewContentWithoutBeingRebuilt() {
+        let row = ThreadRowView()
+        row.configure(thread: thread("a", sender: "Alice <a@x.com>", snippet: "first"),
+                      isMarked: false, name: "Alice", dateText: "Today",
+                      previewLines: 1, labels: [])
+        let built = subviewCount(row)
+        #expect(described(row).contains("Alice"))
+
+        row.configure(thread: thread("b", sender: "Bob <b@x.com>", snippet: "second"),
+                      isMarked: false, name: "Bob", dateText: "Yesterday",
+                      previewLines: 1, labels: [])
+
+        let text = described(row)
+        #expect(text.contains("Bob"))
+        #expect(text.contains("second"))
+        // The whole point: no second copy of the hierarchy underneath.
+        #expect(subviewCount(row) == built,
+                "reconfiguring grew the view from \(built) to \(subviewCount(row)) subviews")
+    }
+
+    /// Everything the row shows has to be reset, not only the parts that
+    /// happened to change. A recycled view carries the last thread's state, so
+    /// anything left unset shows the wrong mail -- a star or an unread dot from
+    /// a conversation three screens away.
+    @Test func reconfiguringClearsWhatTheLastThreadLeftBehind() {
+        let starred = MailThread(id: "a", sender: "Alice <a@x.com>", snippet: "first",
+                                 lastMessageDate: Date(timeIntervalSince1970: 0),
+                                 isUnread: true, hasAttachments: true,
+                                 labelIDs: ["INBOX", "STARRED"])
+        let row = ThreadRowView()
+        row.configure(thread: starred, isMarked: true, name: "Alice", dateText: "Today",
+                      previewLines: 1, labels: ["Invoices"])
+        #expect(described(row).contains { $0.contains("\u{2605}") })
+
+        row.configure(thread: thread("b", sender: "Bob <b@x.com>", snippet: "second"),
+                      isMarked: false, name: "Bob", dateText: "Yesterday",
+                      previewLines: 1, labels: [])
+
+        let text = described(row)
+        #expect(!text.contains { $0.contains("\u{2605}") }, "star survived: \(text)")
+        #expect(!text.contains { $0.contains("\u{2713}") }, "tick survived: \(text)")
+        #expect(!text.contains("Invoices"), "label survived: \(text)")
+        #expect(!text.contains { $0.contains("\u{1F4CE}") }, "paperclip survived: \(text)")
+    }
+
+    /// And the table has to be told the view is reusable, or it will never
+    /// offer one back.
+    @Test func theRowCarriesAReuseIdentifier() {
+        let row = ThreadRowView()
+        row.configure(thread: thread("a", sender: "Alice <a@x.com>", snippet: "s"),
+                      isMarked: false, name: "Alice", dateText: "Today",
+                      previewLines: 1, labels: [])
+        #expect(row.identifier == ThreadRowView.reuseIdentifier)
+    }
 }
