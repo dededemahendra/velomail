@@ -159,21 +159,7 @@ public enum AppIconRenderer {
     /// gradient across the whole mark -- so the ramp runs continuously from the
     /// first chevron through the second rather than restarting on each.
     private static func drawMark(in context: CGContext, design: Design) {
-        let mark = CGMutablePath()
-        let width = 96 * design.strokeScale
-        // At 16pt the survivor is the leading chevron, so what remains is the
-        // front of the mark rather than an arbitrary half of it.
-        let apexes: [CGFloat] = design.chevrons == 1 ? [740] : [470, 740]
-        for apexX in apexes {
-            mark.addPath(stroked(chevronPath(apexX: apexX, apexRadius: apexRadius),
-                                 width: width, context: context))
-        }
-
-        // Centred and sized by its own bounds rather than by fixed coordinates,
-        // so dropping a chevron at 16pt does not leave the survivor sitting off
-        // to one side, and both designs carry the same weight on the tile.
-        var placement = centring(mark.boundingBoxOfPath, longestSide: 560)
-        guard let placed = mark.copy(using: &placement) else { return }
+        guard let placed = markPath(for: design) else { return }
 
         context.saveGState()
         context.addPath(placed)
@@ -189,11 +175,48 @@ public enum AppIconRenderer {
         // straight cut across the top-left arm, square against three rounded
         // ones. The ends clamp to the first and last stop, which is what the
         // extremes of the mark should be anyway.
+        //
+        // Only `drawsBeforeStartLocation` changes anything as the mark is
+        // currently laid out -- nothing reaches past the axis end. The other is
+        // kept because that is a fact about today's geometry, not a property
+        // anyone moving a chevron would think to re-check.
         context.drawLinearGradient(gradient,
                                    start: CGPoint(x: 300, y: 764),
                                    end: CGPoint(x: 790, y: 262),
                                    options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         context.restoreGState()
+    }
+
+    /// The mark's outline, placed on the tile, before any colour is put in it.
+    ///
+    /// Separated from the drawing so a test can measure how much of it the
+    /// gradient actually reaches. That is not a hypothetical: a `CGGradient`
+    /// paints nothing outside its own axis unless told to, and the first
+    /// version of this left a corner of the mark unpainted.
+    public static func markPath(for design: Design) -> CGPath? {
+        // A scratch context purely to borrow `replacePathWithStrokedPath`,
+        // which is a context operation rather than a path one.
+        guard let scratch = CGContext(data: nil, width: 1, height: 1,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+
+        let mark = CGMutablePath()
+        let width = 96 * design.strokeScale
+        // At 16pt the survivor is the leading chevron, so what remains is the
+        // front of the mark rather than an arbitrary half of it.
+        let apexes: [CGFloat] = design.chevrons == 1 ? [740] : [470, 740]
+        for apexX in apexes {
+            mark.addPath(stroked(chevronPath(apexX: apexX, apexRadius: apexRadius),
+                                 width: width, context: scratch))
+        }
+
+        // Centred and sized by its own bounds rather than by fixed coordinates,
+        // so dropping a chevron at 16pt does not leave the survivor sitting off
+        // to one side, and both designs carry the same weight on the tile.
+        var placement = centring(mark.boundingBoxOfPath, longestSide: 560)
+        return mark.copy(using: &placement)
     }
 
     /// Scales `bounds` so its longest side is `longestSide`, then centres it on

@@ -102,18 +102,11 @@ import Foundation
     /// so the corner of the mark that lay before the axis start came out
     /// unpainted -- a hard straight cut across the top-left arm, perpendicular
     /// to the gradient, that read as a design choice rather than a bug.
-    @Test func theMarkIsPaintedSymmetricallyAboutTheCentreLine() {
-        let representation = AppIconRenderer.representations.first { $0.pixels == 512 }!
+    @Test func theMarkIsPaintedSymmetricallyAboutTheCentreLine() throws {
+        let representation = try #require(iconNamed("icon_512x512.png"))
         let image = AppIconRenderer.image(representation)
         let raw = pixels(of: image)
         let side = image.width
-
-        // "Lit" = clearly not the charcoal ground. The mark is the only
-        // saturated thing on the tile.
-        func isLit(_ p: UInt32) -> Bool {
-            let r = p & 0xFF, g = (p >> 8) & 0xFF, b = (p >> 16) & 0xFF
-            return max(r, max(g, b)) > 0x60 && (max(r, max(g, b)) - min(r, min(g, b))) > 0x28
-        }
 
         var top = 0, bottom = 0
         for y in 0..<side {
@@ -124,16 +117,68 @@ import Foundation
 
         #expect(top > 1000 && bottom > 1000, "mark barely drawn: top \(top), bottom \(bottom)")
         let difference = Double(abs(top - bottom)) / Double(max(top, bottom))
-        #expect(difference < 0.03,
+        #expect(difference < 0.01,
                 "mark is lopsided: \(top) lit above the centre line, \(bottom) below")
     }
 
     /// The icon must not be a blank square. Counts distinct colours; a ground
     /// gradient plus a gradient-stroked mark is many, an empty canvas is one.
-    @Test func theIconActuallyHasAMarkOnIt() {
-        let image = AppIconRenderer.image(AppIconRenderer.representations.first { $0.pixels == 512 }!)
+    @Test func theIconActuallyHasAMarkOnIt() throws {
+        let image = AppIconRenderer.image(try #require(iconNamed("icon_512x512.png")))
         let colours = Set(pixels(of: image))
         #expect(colours.count > 500, "only \(colours.count) distinct colours -- is anything drawn?")
+    }
+
+
+    /// Every pixel of the mark must actually receive colour.
+    ///
+    /// Measured against the mark's own outline rather than against a symmetry
+    /// property, so it catches the gradient failing to reach *any* part of the
+    /// artwork rather than only a part that happens to break the symmetry. The
+    /// symmetry test above is blind to a shortfall at the far end of the axis;
+    /// this is not.
+    @Test func theGradientReachesEveryPartOfTheMark() throws {
+        let representation = try #require(iconNamed("icon_512x512.png"))
+        let design = AppIconRenderer.design(forPointSize: representation.pointSize)
+        let path = try #require(AppIconRenderer.markPath(for: design))
+
+        // The mark's own area, drawn flat, at the same scale the icon uses.
+        let side = representation.pixels
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let scratch = try #require(CGContext(data: nil, width: side, height: side,
+                                             bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        scratch.scaleBy(x: CGFloat(side) / 1024, y: CGFloat(side) / 1024)
+        scratch.addPath(path)
+        scratch.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        scratch.fillPath()
+        let outline = try #require(scratch.makeImage())
+
+        let expected = pixels(of: outline).count { $0 & 0xFF > 0x80 }
+        let painted = pixels(of: AppIconRenderer.image(representation)).count(where: isLit)
+
+        #expect(expected > 10_000, "the mark outline is suspiciously small: \(expected)")
+        let shortfall = Double(expected - painted) / Double(expected)
+        // Threshold set from measurement, not taste: correct comes out at
+        // -0.46% (the lit test is marginally more generous than the outline's
+        // alpha cut, so painted slightly exceeds it), and dropping the gradient
+        // extensions gives +1.19%. 0.5% sits between them with room either way.
+        #expect(shortfall < 0.005,
+                "the gradient left \(expected - painted) of \(expected) mark pixels unpainted")
+    }
+
+    /// Clearly not the charcoal ground: the mark is the only saturated thing
+    /// on the tile.
+    private func isLit(_ p: UInt32) -> Bool {
+        let r = p & 0xFF, g = (p >> 8) & 0xFF, b = (p >> 16) & 0xFF
+        return max(r, max(g, b)) > 0x60 && (max(r, max(g, b)) - min(r, min(g, b))) > 0x28
+    }
+
+    /// Named lookup. Selecting by pixel count is ambiguous: `icon_256x256@2x`
+    /// and `icon_512x512` are both 512 pixels, and `first(where:)` silently
+    /// returns the former.
+    private func iconNamed(_ name: String) -> AppIconRenderer.Representation? {
+        AppIconRenderer.representations.first { $0.filename == name }
     }
 
     private func pixels(of image: CGImage) -> [UInt32] {

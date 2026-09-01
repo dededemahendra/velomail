@@ -40,10 +40,12 @@ fi
 # Icon before signing, along with the Info.plist below: a signature covers the
 # bundle's resources, so anything added afterwards is outside it. These used to
 # be written after `codesign` for the plist, which left it unsigned.
-ICONSET="$(mktemp -d)/AppIcon.iconset"
-"$ICON_BIN" "$ICONSET" >/dev/null
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-rm -rf "$(dirname "$ICONSET")"
+ICON_TMP="$(mktemp -d)"
+# On EXIT rather than inline: `set -e` means a failed render or iconutil aborts
+# the script on the spot, and an inline cleanup line would never be reached.
+trap 'rm -rf "$ICON_TMP"' EXIT
+"$ICON_BIN" "$ICON_TMP/AppIcon.iconset" >/dev/null
+iconutil -c icns "$ICON_TMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
