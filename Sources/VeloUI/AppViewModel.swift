@@ -459,7 +459,12 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func setSyncStatus(_ status: SyncStatus) {
-        syncStatus = status
+        // Only on a real change. This is polled once a second for the life of
+        // the process, and almost every tick carries the status the app already
+        // had; assigning anyway repainted the entire view tree on a timer,
+        // which is what dragged the thread list back to its selection a second
+        // after every scroll.
+        if status != syncStatus { syncStatus = status }
         // A push gives up during a sync, so this is the moment the answer
         // changes. Polling for it on a timer would only ever be late.
         refreshFailures()
@@ -1133,8 +1138,13 @@ public final class AppViewModel: ObservableObject {
     // MARK: - Failures
 
     /// Rereads what the queue has given up on.
+    ///
+    /// Assigned only on a change, for the same reason as `setSyncStatus`: this
+    /// runs on the once-a-second status poll, and an empty list replacing an
+    /// empty list is not news the view tree needs repainting for.
     public func refreshFailures() {
-        failures = (try? outbound.failures(maxAttempts: OutboundService.maxAttempts)) ?? []
+        let current = (try? outbound.failures(maxAttempts: OutboundService.maxAttempts)) ?? []
+        if current != failures { failures = current }
     }
 
     /// Puts a failed send's words back in the composer, where they can be
