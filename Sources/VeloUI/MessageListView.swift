@@ -241,8 +241,9 @@ private final class SectionHeaderView: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
-/// One row: a mark, sender, subject, snippet, date, a star and an unread dot.
-private final class ThreadRowView: NSView {
+/// One row: a disc, a mark, sender, subject, snippet, date, a star and an
+/// unread dot.
+final class ThreadRowView: NSView {
     init(thread: MailThread, isMarked: Bool, name: String, dateText: String,
          previewLines: Int, labels: [String] = []) {
         super.init(frame: .zero)
@@ -334,12 +335,21 @@ private final class ThreadRowView: NSView {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 2
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+
+        // The disc sits outside the text block and is pinned to the top of it
+        // rather than centred: on a two-line row a centred disc floats between
+        // the sender and the snippet, belonging to neither.
+        let disc = SenderDiscView(name: name)
+        let row = NSStackView(views: [disc, stack])
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.spacing = 10
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor),
             mark.widthAnchor.constraint(equalToConstant: 10),
         ])
     }
