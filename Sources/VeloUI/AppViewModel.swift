@@ -1134,6 +1134,13 @@ public final class AppViewModel: ObservableObject {
     ///
     /// The engine coalesces a call made while a pass is already in flight, so
     /// pressing this repeatedly is harmless.
+    /// Whether fetching by hand is possible at all.
+    ///
+    /// Demo mode has no account behind it and `syncMailNow` returns
+    /// immediately, so the control is left off the screen rather than offered
+    /// as a button that does nothing when pressed.
+    public var canSyncByHand: Bool { syncNow != nil }
+
     public func syncMailNow() async {
         guard let syncNow else { return }
         clearNotice()

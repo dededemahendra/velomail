@@ -142,7 +142,10 @@ public struct RootView: View {
                     Divider()
                 }
                 MailboxHeader(title: app.inbox.title, count: app.inbox.threads.count,
-                              unread: app.unreadCount(in: app.inbox.scope))
+                              unread: app.unreadCount(in: app.inbox.scope),
+                              isSyncing: app.syncStatus == .syncing,
+                              onSync: app.canSyncByHand
+                                  ? { Task { await app.syncMailNow() } } : nil)
                 Divider()
                 if app.inbox.threads.isEmpty {
                     EmptyListView(scope: app.inbox.scope, status: app.syncStatus,
@@ -220,6 +223,12 @@ struct MailboxHeader: View {
     /// How much of the list has not been read. Shown as a badge rather than
     /// another grey number, because it is the one worth reacting to.
     var unread: Int = 0
+    /// Whether a pass is running, so the control can say so rather than look
+    /// like a button that did nothing.
+    var isSyncing: Bool = false
+    /// Nil when there is nothing to sync -- demo mode has no account behind it,
+    /// and a button that cannot work should not be on screen.
+    var onSync: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -235,12 +244,40 @@ struct MailboxHeader: View {
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer()
+            if let onSync { syncButton(onSync) }
         }
         .padding(.horizontal, 16).padding(.vertical, 9)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(unread > 0
                             ? "\(title), \(unread) unread of \(count)"
                             : "\(title), \(count) messages")
+    }
+
+    /// Fetching by hand.
+    ///
+    /// The poll loop backs off further after every failure, so without this the
+    /// only way to try again was to quit the app -- and "Sync now" existed only
+    /// in the command palette, with no key and nothing to click.
+    private func syncButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            // A spinner rather than a spinning arrow: it says the same thing
+            // without a `repeatForever` that has to be started and stopped, and
+            // it is what every other Mac app puts here.
+            Group {
+                if isSyncing {
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+            .frame(width: 16, height: 16)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(isSyncing)
+        .keyboardShortcut("r", modifiers: .command)
+        .help(isSyncing ? "Syncing…" : "Sync now (\u{2318}R)")
+        .accessibilityLabel(isSyncing ? "Syncing" : "Sync now")
     }
 }
 
