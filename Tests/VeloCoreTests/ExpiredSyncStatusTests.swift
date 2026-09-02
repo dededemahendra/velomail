@@ -70,4 +70,44 @@ private final class RefusingGmail: GmailReading, GmailWriting, @unchecked Sendab
             Issue.record("expected .failed, got \(await engine.status)")
         }
     }
+
+    /// Seen live: "Sync problem: Gmail returned an error RESOURCE_EXHAUSTED."
+    ///
+    /// A rate limit is the most ordinary thing that can happen to a sync loop.
+    /// It resolves itself, the engine already backs off for it, and calling it
+    /// a problem is how a red light comes to mean nothing.
+    @Test func aRateLimitIsReportedAsBackingOffRatherThanAsAProblem() async throws {
+        let engine = try sync(refusing: .server(code: "RESOURCE_EXHAUSTED",
+                                                description: "Quota exceeded"))
+
+        _ = try? await engine.syncNow()
+
+        let status = await engine.status
+        guard case let .offline(failures) = status else {
+            Issue.record("a rate limit came back as \(status), not as backing off")
+            return
+        }
+        #expect(failures == 1)
+    }
+
+    /// And the same expiry the token endpoint reports as `invalid_grant`, when
+    /// it arrives on an API call instead.
+    @Test func anUnauthenticatedApiCallAsksForASignIn() async throws {
+        let engine = try sync(refusing: .server(code: "UNAUTHENTICATED", description: nil))
+
+        _ = try? await engine.syncNow()
+
+        #expect(await engine.status == .expired)
+    }
+
+    /// Gmail having a bad day is not the reader's problem to solve either.
+    @Test func serverTroubleIsAlsoJustBackingOff() async throws {
+        let engine = try sync(refusing: .server(code: "UNAVAILABLE", description: nil))
+
+        _ = try? await engine.syncNow()
+
+        if case .offline = await engine.status {} else {
+            Issue.record("UNAVAILABLE came back as \(await engine.status)")
+        }
+    }
 }

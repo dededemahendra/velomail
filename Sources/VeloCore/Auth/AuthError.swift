@@ -50,7 +50,8 @@ public extension AuthError {
     var needsSignIn: Bool {
         switch self {
         case .missingRefreshToken: return true
-        case let .server(code, _): return code == "401" || code == "invalid_grant"
+        case let .server(code, _):
+            return code == "invalid_grant" || AuthError.kind(of: code) == .signedOut
         default: return false
         }
     }
@@ -62,8 +63,38 @@ public extension AuthError {
     var isTransient: Bool {
         switch self {
         case .network: return true
-        case let .server(code, _): return ["429", "500", "502", "503", "504"].contains(code)
+        case let .server(code, _):
+            let kind = AuthError.kind(of: code)
+            return kind == .slowDown || kind == .serverTrouble
         default: return false
+        }
+    }
+
+    /// What a Google API error actually means, whichever way it is spelled.
+    ///
+    /// Every one of these arrives two ways: a numeric HTTP code and a canonical
+    /// status string. The client keeps the string, because "RESOURCE_EXHAUSTED"
+    /// is worth more to somebody reading a bug report than "429" -- but the
+    /// rules were all written against the numbers, so none of them fired. A
+    /// rate limit, which is the most ordinary thing that can happen to a sync
+    /// loop, was reported as a hard failure; and an expired token caught on an
+    /// API call rather than at the token endpoint was not recognised at all.
+    enum Kind {
+        case signedOut
+        case refused
+        case slowDown
+        case serverTrouble
+        case unknown
+    }
+
+    static func kind(of code: String) -> Kind {
+        switch code.uppercased() {
+        case "401", "UNAUTHENTICATED": return .signedOut
+        case "403", "PERMISSION_DENIED": return .refused
+        case "429", "RESOURCE_EXHAUSTED": return .slowDown
+        case "500", "502", "503", "504",
+             "INTERNAL", "UNAVAILABLE", "DEADLINE_EXCEEDED": return .serverTrouble
+        default: return .unknown
         }
     }
 
@@ -90,16 +121,17 @@ public extension AuthError {
     }
 
     private static func serverMessage(code: String, description: String?) -> String {
-        switch code {
-        case "401", "invalid_grant":
+        if code == "invalid_grant" { return "Sign-in expired. Sign in again to keep syncing." }
+        switch kind(of: code) {
+        case .signedOut:
             return "Sign-in expired. Sign in again to keep syncing."
-        case "403":
+        case .refused:
             return "Gmail refused the request. The account may not have access."
-        case "429":
+        case .slowDown:
             return "Gmail is asking us to slow down. Syncing will resume shortly."
-        case "500", "502", "503", "504":
+        case .serverTrouble:
             return "Gmail is having trouble. Syncing will resume shortly."
-        default:
+        case .unknown:
             // The code earns its place: it is the one thing worth quoting to
             // anybody trying to help.
             return "Gmail returned an error \(code)."
