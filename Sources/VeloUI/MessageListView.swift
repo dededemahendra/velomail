@@ -313,7 +313,9 @@ final class ThreadRowView: NSView {
         mark.textColor = .controlAccentColor
 
         dot.identifier = Self.gutterIdentifiers[1]
-        dot.font = .systemFont(ofSize: 7)
+        // The one signal that is present-or-absent rather than a shade, so it
+        // has to be big enough to catch the eye. At 7pt it read as a speck.
+        dot.font = .systemFont(ofSize: 9)
         dot.textColor = .controlAccentColor
 
         count.font = .systemFont(ofSize: 10, weight: .medium)
@@ -353,9 +355,6 @@ final class ThreadRowView: NSView {
         // rows and must stay visible.
         snippet.identifier = Self.snippetIdentifier
         snippet.font = .systemFont(ofSize: 12)
-        // Secondary, not tertiary: the snippet is the thing you actually read
-        // when deciding whether to open something.
-        snippet.textColor = .secondaryLabelColor
         snippet.lineBreakMode = .byTruncatingTail
 
         let top = NSStackView(views: [mark, dot, sender, count, direct, NSView(), clip, star, date])
@@ -414,9 +413,19 @@ final class ThreadRowView: NSView {
         direct.stringValue =
             MailFormatting.isToYouAlone(recipientCount: thread.recipientCount) ? "\u{00BB}" : ""
 
+        // Read and unread differ across the whole row, not on one short line.
+        // Before this, only the sender changed -- and the snippet, which is the
+        // widest text on a row and the thing the eye lands on, was drawn
+        // identically either way, so a conversation you had read and one you
+        // had not looked nearly the same.
         sender.stringValue = name
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
+        // Secondary when it is still waiting, tertiary once it is not: the
+        // snippet is the thing you read when deciding whether to open
+        // something, and once you have, it should stop asking.
+        snippet.textColor = thread.isUnread ? .secondaryLabelColor : .tertiaryLabelColor
+        date.textColor = thread.isUnread ? .secondaryLabelColor : .tertiaryLabelColor
 
         clip.stringValue = thread.hasAttachments ? "\u{1F4CE}" : ""
         labelChip.stringValue = MailFormatting.shortLabel(labels.first ?? "")

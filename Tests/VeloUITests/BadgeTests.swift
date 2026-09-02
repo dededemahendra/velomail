@@ -88,4 +88,63 @@ private struct Quiet: GmailWriting {
         presenter.setBadge(0)
         #expect(NSApplication.shared.dockTile.badgeLabel == nil)
     }
+
+    // MARK: - Which mailbox it counts
+
+    /// The badge counts the inbox. It was counting `inbox.threads`, which is
+    /// whichever list is on screen -- so opening Sent, or Starred, or a label
+    /// silently rewrote the number on the Dock to that list's unread count.
+    @Test func theBadgeCountsTheInboxWhicheverListIsOpen() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        for i in 0..<6 {
+            try store.upsert(MailThread(id: "in\(i)", sender: "a@b.com", snippet: "s",
+                                        lastMessageDate: Date(timeIntervalSince1970: TimeInterval(100 - i)),
+                                        isUnread: true, hasAttachments: false, labelIDs: ["INBOX"]))
+        }
+        // One sent thread, read, which is the ordinary case for Sent.
+        try store.upsert(MailThread(id: "s1", sender: "me@x.com", snippet: "s",
+                                    lastMessageDate: Date(timeIntervalSince1970: 50),
+                                    isUnread: false, hasAttachments: false, labelIDs: ["SENT"]))
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: Quiet(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+        #expect(app.visibleUnreadCount == 6)
+
+        try app.inbox.show(.sent)
+        #expect(app.inbox.threads.count == 1, "the list really did change")
+
+        #expect(app.visibleUnreadCount == 6, "the badge followed the open list")
+    }
+
+    /// A snoozed conversation is not in the inbox, so it is not waiting. The
+    /// list already hides it; the badge has to agree, or the number on the Dock
+    /// counts mail that is not there.
+    @Test func snoozedMailIsNotCountedWhileItIsAway() throws {
+        let db = try AppDatabase.makeInMemory()
+        let store = MailStore(db)
+        try store.upsert(MailThread(id: "here", sender: "a@b.com", snippet: "s",
+                                    lastMessageDate: Date(timeIntervalSince1970: 100),
+                                    isUnread: true, hasAttachments: false, labelIDs: ["INBOX"]))
+        var away = MailThread(id: "away", sender: "a@b.com", snippet: "s",
+                              lastMessageDate: Date(timeIntervalSince1970: 90),
+                              isUnread: true, hasAttachments: false, labelIDs: ["INBOX"])
+        away.snoozedUntil = Date().addingTimeInterval(86_400)
+        try store.upsert(away)
+
+        let app = AppViewModel(
+            config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
+            store: store,
+            outbound: OutboundService(writer: Quiet(), store: store,
+                                      mutations: MutationStore(db), identity: "me@x.com"),
+            identity: "me@x.com", isSignedIn: true)
+        try app.start()
+
+        #expect(app.inbox.threads.count == 1)
+        #expect(app.visibleUnreadCount == 1, "counted a conversation that is snoozed away")
+    }
 }
