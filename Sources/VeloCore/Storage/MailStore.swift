@@ -122,6 +122,17 @@ public final class MailStore: Sendable {
     }
 
     /// How many threads in `labelID` are unread.
+    /// How many inbox conversations are unread, right now.
+    ///
+    /// The same filter the inbox list uses, so the two always agree -- a
+    /// snoozed conversation is not in the inbox and is not waiting, and a badge
+    /// that counted it would be counting mail the reader cannot see.
+    public func unreadInboxCount(now: Date = Date()) throws -> Int {
+        try database.dbQueue.read { db in
+            try Self.inboxRequest(now: now).filter(sql: "isUnread = 1").fetchCount(db)
+        }
+    }
+
     public func unreadCount(withLabel labelID: String) throws -> Int {
         try database.dbQueue.read { db in
             try MailThread

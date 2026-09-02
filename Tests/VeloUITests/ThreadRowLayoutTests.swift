@@ -280,4 +280,69 @@ import VeloCore
             }
         }
     }
+
+    // MARK: - Read against unread
+
+    /// Told plainly: "a little confused about which email are already opened or
+    /// still unread".
+    ///
+    /// Three things separated the two states -- a 7pt dot, the sender's weight,
+    /// and the sender's colour -- and all three live on one short line. The
+    /// snippet, which is the widest text on the row and the thing the eye
+    /// actually lands on, was drawn identically either way. A row you had read
+    /// and a row you had not looked nearly the same.
+
+    private func row(unread: Bool) -> ThreadRowView {
+        let subject = MailThread(id: "t", sender: "Cloudflare <ops@cloudflare.com>",
+                                 snippet: "the snippet",
+                                 lastMessageDate: Date(timeIntervalSince1970: 0),
+                                 isUnread: unread, hasAttachments: false, labelIDs: ["INBOX"])
+        let view = ThreadRowView(thread: subject, isMarked: false, name: "Cloudflare",
+                                 dateText: "Yesterday", previewLines: 1)
+        view.frame = NSRect(x: 0, y: 0, width: 420, height: 64)
+        view.layoutSubtreeIfNeeded()
+        return view
+    }
+
+    private func brightness(_ field: NSTextField?) -> CGFloat {
+        guard let colour = field?.textColor?.usingColorSpace(.deviceRGB) else { return -1 }
+        return colour.brightnessComponent * colour.alphaComponent
+    }
+
+    @Test func anUnreadRowIsBrighterAcrossTheWholeRowNotJustTheSender() throws {
+        let unread = row(unread: true), read = row(unread: false)
+
+        let unreadSender = brightness(textField("Cloudflare", in: unread))
+        let readSender = brightness(textField("Cloudflare", in: read))
+        #expect(unreadSender > readSender, "the sender does not dim when read")
+
+        // The one that was missing, and the one that matters most: it is the
+        // widest thing on the row.
+        let unreadSnippet = brightness(snippetField(in: unread))
+        let readSnippet = brightness(snippetField(in: read))
+        #expect(unreadSnippet > readSnippet, "the snippet reads the same either way")
+    }
+
+    @Test func theSenderIsHeavierWhenUnread() throws {
+        let heavy = try #require(textField("Cloudflare", in: row(unread: true))).font
+        let light = try #require(textField("Cloudflare", in: row(unread: false))).font
+        #expect(heavy != light)
+    }
+
+    /// The dot is the only signal that is present-or-absent rather than a
+    /// shade, so it has to be big enough to notice.
+    @Test func theUnreadDotIsLargeEnoughToSee() throws {
+        let dot = try #require(allFields(in: row(unread: true)).first {
+            $0.identifier == ThreadRowView.gutterIdentifiers[1]
+        })
+        #expect(!dot.stringValue.isEmpty)
+        #expect((dot.font?.pointSize ?? 0) >= 8)
+    }
+
+    @Test func aReadRowShowsNoDotAtAll() throws {
+        let dot = try #require(allFields(in: row(unread: false)).first {
+            $0.identifier == ThreadRowView.gutterIdentifiers[1]
+        })
+        #expect(dot.stringValue.isEmpty)
+    }
 }
