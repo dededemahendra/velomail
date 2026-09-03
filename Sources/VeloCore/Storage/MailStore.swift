@@ -127,9 +127,21 @@ public final class MailStore: Sendable {
     /// The same filter the inbox list uses, so the two always agree -- a
     /// snoozed conversation is not in the inbox and is not waiting, and a badge
     /// that counted it would be counting mail the reader cannot see.
-    public func unreadInboxCount(now: Date = Date()) throws -> Int {
+    public func unreadInboxCount(now: Date = Date(),
+                                 includingEveryCategory: Bool = true) throws -> Int {
         try database.dbQueue.read { db in
-            try Self.inboxRequest(now: now).filter(sql: "isUnread = 1").fetchCount(db)
+            var request = Self.inboxRequest(now: now).filter(sql: "isUnread = 1")
+            if !includingEveryCategory {
+                // Primary is defined by what it is *not*: Gmail tags the other
+                // four and leaves Primary either tagged PERSONAL or untagged,
+                // so excluding the four is the only spelling that counts an
+                // untagged conversation as waiting.
+                for category in MailLabel.bulkCategories {
+                    request = request.filter(sql: "labelIDs NOT LIKE ?",
+                                             arguments: ["%\"\(category)\"%"])
+                }
+            }
+            return try request.fetchCount(db)
         }
     }
 

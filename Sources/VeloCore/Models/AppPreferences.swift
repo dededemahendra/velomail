@@ -12,6 +12,7 @@ public final class AppPreferences: @unchecked Sendable {
         /// Someone who turned blocking on meant it.
         static let blockImages = "velomail.blockRemoteImages"
         static let notifications = "velomail.showsNotifications"
+        static let countsEveryCategory = "velomail.countsEveryCategory"
         static let recentCommands = "velomail.recentCommands"
         static let recentSearches = "velomail.recentSearches"
         static let undoWindow = "velomail.undoWindow"
@@ -40,6 +41,18 @@ public final class AppPreferences: @unchecked Sendable {
     public var loadsRemoteImages: Bool {
         get { !defaults.bool(forKey: Key.blockImages) }
         set { defaults.set(!newValue, forKey: Key.blockImages) }
+    }
+
+    /// Whether the unread count includes Gmail's Promotions, Social, Updates
+    /// and Forums, or only what Gmail calls Primary.
+    ///
+    /// Off by default, which is the number Gmail itself shows. On one real
+    /// mailbox the difference was 1 against 114 -- the rest being deployment
+    /// notices and uptime reports -- and a badge that sits at 114 forever is
+    /// the red light nobody looks at any more.
+    public var countsEveryCategory: Bool {
+        get { defaults.bool(forKey: Key.countsEveryCategory) }
+        set { defaults.set(newValue, forKey: Key.countsEveryCategory) }
     }
 
     public var showsNotifications: Bool {

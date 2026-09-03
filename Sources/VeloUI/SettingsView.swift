@@ -331,6 +331,16 @@ struct SettingsView: View {
                     .controlSize(.small)
             }
 
+            group("Counting",
+                  footnote: "Gmail files bulk mail into Promotions, Social, Updates and "
+                  + "Forums, and its own unread count ignores them. Counting everything is "
+                  + "honest about the inbox, but on a busy mailbox it is mostly newsletters "
+                  + "\u{2014} and a number that never goes down is a number nobody reads.") {
+                Toggle("Count every category, not just Primary",
+                       isOn: $model.countsEveryCategory)
+                    .controlSize(.small)
+            }
+
             group("Opening",
                   footnote: "Which list is on screen when the app starts.") {
                 Picker("Opening list", selection: $model.opensAt) {
