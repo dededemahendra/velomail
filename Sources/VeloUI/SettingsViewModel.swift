@@ -76,6 +76,9 @@ public final class SettingsViewModel: ObservableObject {
     /// Written straight through rather than on save: these are single values a
     /// person flips, and a toggle that waits for a Done button reads as broken.
     @Published public var loadsImages = true { didSet { preferences.loadsRemoteImages = loadsImages } }
+    @Published public var countsEveryCategory = false {
+        didSet { preferences.countsEveryCategory = countsEveryCategory }
+    }
     @Published public var showsNotifications = true {
         didSet { preferences.showsNotifications = showsNotifications }
     }
@@ -155,6 +158,7 @@ public final class SettingsViewModel: ObservableObject {
                          original: rule)
         }
         loadsImages = preferences.loadsRemoteImages
+        countsEveryCategory = preferences.countsEveryCategory
         showsNotifications = preferences.showsNotifications
         undoWindow = preferences.undoWindow
         snoozeHours = preferences.snoozeHours

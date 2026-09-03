@@ -32,6 +32,12 @@ public struct MailLabel: Codable, FetchableRecord, PersistableRecord,
         "CHAT", "CATEGORY_FORUMS",
     ]
 
+    /// The categories Gmail files bulk mail into. Primary is everything else:
+    /// tagged `CATEGORY_PERSONAL`, or tagged with no category at all.
+    public static let bulkCategories = [
+        "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS",
+    ]
+
     /// True when this is a label worth offering as a place to look.
     public var isBrowsable: Bool { !MailLabel.structural.contains(id) }
 

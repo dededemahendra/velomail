@@ -322,7 +322,9 @@ public final class AppViewModel: ObservableObject {
     public func unreadCount(in scope: MailScope) -> Int {
         guard !isFocused else { return 0 }
         switch scope {
-        case .inbox: return (try? store.unreadInboxCount()) ?? 0
+        case .inbox:
+            return (try? store.unreadInboxCount(
+                includingEveryCategory: preferences.countsEveryCategory)) ?? 0
         case .starred: return (try? store.unreadCount(withLabel: "STARRED")) ?? 0
         case let .label(id, _): return (try? store.unreadCount(withLabel: id)) ?? 0
         // Sent, snoozed and archive are places you put things rather than
@@ -1323,7 +1325,10 @@ public final class AppViewModel: ObservableObject {
     /// Asked of the store rather than counted off `inbox.threads`, which is
     /// whichever list is on screen: opening Sent, or Starred, or a label
     /// silently rewrote the number on the Dock to that list's unread count.
-    public var unreadCount: Int { (try? store.unreadInboxCount()) ?? 0 }
+    public var unreadCount: Int {
+        (try? store.unreadInboxCount(
+            includingEveryCategory: preferences.countsEveryCategory)) ?? 0
+    }
 
     /// What the badge shows. Focus hides the number rather than the mail --
     /// not knowing how much is waiting is the point of it.
