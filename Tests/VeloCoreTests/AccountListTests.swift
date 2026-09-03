@@ -3,11 +3,8 @@ import Foundation
 @testable import VeloCore
 
 @Suite struct AccountListTests {
-    private func makeStore() -> AccountList {
-        let suite = "velo.accounts.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return AccountList(defaults: defaults)
+    private func makeStore(test: String = #function) -> AccountList {
+        AccountList(defaults: scratchDefaults(test: test))
     }
 
     @Test func aFreshInstallHasOneAccountWaitingToBeSignedInto() {
@@ -43,13 +40,11 @@ import Foundation
     }
 
     @Test func theChoiceOfAccountSurvivesRelaunching() {
-        let suite = "velo.accounts.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = scratchDefaults()
         let first = AccountList(defaults: defaults)
         let added = first.add()
 
         #expect(AccountList(defaults: defaults).current == added)
-        defaults.removePersistentDomain(forName: suite)
     }
 
     @Test func switchingToSomethingUnknownIsIgnored() {

@@ -8,11 +8,8 @@ import VeloCore
     /// The presenter refuses to touch `UNUserNotificationCenter` without a
     /// bundle identifier, which a test runner has not got. What is testable
     /// here is the bookkeeping: which failures it considers new.
-    private func presenter() -> NotificationPresenter {
-        let suite = "velo-notify-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return NotificationPresenter(defaults: defaults)
+    private func presenter(test: String = #function) -> NotificationPresenter {
+        NotificationPresenter(defaults: scratchDefaults(test: test))
     }
 
     private func failure(_ id: Int64, subject: String = "Revised invoice") -> MailFailure {

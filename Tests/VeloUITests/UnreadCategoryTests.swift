@@ -52,7 +52,7 @@ private struct Quiet: GmailWriting {
 
     @Test func theSettingIsWhatDecidesIt() throws {
         let store = try store(with: realWorld)
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "velo.badge.\(UUID())")!)
+        let preferences = AppPreferences(defaults: scratchDefaults())
         let app = AppViewModel(
             config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
             store: store,

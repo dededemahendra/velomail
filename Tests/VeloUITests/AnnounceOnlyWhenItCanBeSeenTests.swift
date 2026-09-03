@@ -15,8 +15,8 @@ import Foundation
 /// It is the worst batch to lose: everything that arrived while the app was
 /// closed, every launch.
 @MainActor @Suite struct AnnounceOnlyWhenItCanBeSeenTests {
-    private func presenter() -> NotificationPresenter {
-        NotificationPresenter(defaults: UserDefaults(suiteName: "velo.announce.\(UUID())")!)
+    private func presenter(test: String = #function) -> NotificationPresenter {
+        NotificationPresenter(defaults: scratchDefaults(test: test))
     }
 
     private func result(at date: Date) -> MailAnnouncer.Result {
