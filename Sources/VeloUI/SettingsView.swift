@@ -12,10 +12,15 @@ struct SettingsView: View {
     let currentAccount: String
     let onSwitchAccount: (String) -> Void
     let onAddAccount: () -> Void
+    /// Nil leaves the control off, which is what a single account gets: an app
+    /// with no mailbox has nothing to show.
+    var onRemoveAccount: ((String) -> Void)?
     var onClose: () -> Void = {}
 
     /// The sections, in the order someone would go looking for them: who you
     /// are, then how you write, then what the app does on its own.
+    @State private var removing: Account?
+
     enum Section: String, CaseIterable, Identifiable {
         case accounts, writing, composing, snippets, reading, timing, rules, ai
 
@@ -212,9 +217,32 @@ struct SettingsView: View {
                         if account.id != currentAccount {
                             Button("Open") { onSwitchAccount(account.id) }
                                 .buttonStyle(.borderless).font(.caption)
+                            if let onRemoveAccount, accounts.count > 1 {
+                                Button {
+                                    removing = account
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.tertiary)
+                                .help("Remove this mailbox")
+                                .accessibilityLabel("Remove \(account.displayName)")
+                            }
                         }
                     }
                 }
+            }
+
+            if duplicates.count > 1 {
+                // Signing in again after an expiry is easy to do through "Add
+                // another account", and this is what it leaves behind: several
+                // copies of one mailbox, each syncing separately.
+                Label("\(duplicates.count) of these are the same address. "
+                      + "Removing the spares is safe -- each keeps its own copy.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Button {
@@ -222,6 +250,27 @@ struct SettingsView: View {
             } label: {
                 Label("Add another account", systemImage: "plus")
             }
+        }
+        .alert("Remove this mailbox?", isPresented: Binding(
+            get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) {
+                if let account = removing { onRemoveAccount?(account.id) }
+                removing = nil
+            }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: {
+            Text("\(removing?.displayName ?? "") stops being listed. "
+                 + "Its downloaded mail stays on disk and nothing is deleted from Gmail.")
+        }
+    }
+
+    /// Addresses that appear more than once, which is the state "Add another
+    /// account" leaves behind when it is used to sign in again.
+    private var duplicates: [Account] {
+        let counts = Dictionary(grouping: accounts.compactMap(\.address), by: { $0 })
+        return accounts.filter { account in
+            guard let address = account.address else { return false }
+            return (counts[address]?.count ?? 0) > 1
         }
     }
 

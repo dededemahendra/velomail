@@ -50,6 +50,15 @@ final class AppHost: ObservableObject {
             guard let self else { return }
             Task { await self.switchTo(self.accounts.add()) }
         }
+        // `AccountList.remove` existed from the start and nothing ever called
+        // it: accounts could be added and never taken away. Signing in again
+        // after an expiry is easy to do through "Add another account", and
+        // three copies of one mailbox is what that leaves behind.
+        app.onRemoveAccount = { [weak self] id in
+            guard let self else { return }
+            self.accounts.remove(id)
+            Task { await self.switchTo(self.accounts.current) }
+        }
     }
 
     /// Closes the current mailbox and opens another.
@@ -61,6 +70,7 @@ final class AppHost: ObservableObject {
         guard accountID != accounts.current || sync == nil else { return }
         accounts.switchTo(accountID)
         currentAccountID = accounts.current
+        notifications.accountID = accounts.current
         stop()
         inboxObservation = nil
 
@@ -75,6 +85,7 @@ final class AppHost: ObservableObject {
     }
 
     func start() async {
+        notifications.accountID = accounts.current
         try? app.start()
         observeInbox()
         await observeAuth()

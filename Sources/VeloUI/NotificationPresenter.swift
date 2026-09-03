@@ -16,6 +16,15 @@ public final class NotificationPresenter {
     /// and it should not survive a database rebuild.
     private static let markKey = "VeloMailAnnouncedThrough"
 
+    /// Which mailbox the marks belong to.
+    ///
+    /// The mark was kept under one key for the whole app, which with more than
+    /// one account is a shared clock: whichever mailbox synced last pushed it
+    /// to its own newest message, and everything in every other mailbox was
+    /// then older than it and could never be announced again. A mark is a fact
+    /// about a mailbox.
+    public var accountID: String = Account.primaryID
+
     /// What a banner offers besides being clicked.
     ///
     /// Two, not five: a notification is read in a glance on the way past, and
@@ -73,8 +82,15 @@ public final class NotificationPresenter {
     }
 
     public var announcedThrough: Date? {
-        get { defaults.object(forKey: Self.markKey) as? Date }
-        set { defaults.set(newValue, forKey: Self.markKey) }
+        // The primary mailbox keeps the unsuffixed key it was already stored
+        // under, so the one account most people have does not get a fresh mark
+        // and a silent first sync after this change.
+        get { defaults.object(forKey: markKeyForAccount) as? Date }
+        set { defaults.set(newValue, forKey: markKeyForAccount) }
+    }
+
+    private var markKeyForAccount: String {
+        accountID == Account.primaryID ? Self.markKey : "\(Self.markKey).\(accountID)"
     }
 
     /// Asks once. A refusal -- or an unsigned build that is simply not allowed

@@ -115,6 +115,7 @@ public struct RootView: View {
                              app.isShowingSettings = false
                              app.onAddAccount?()
                          },
+                         onRemoveAccount: { app.onRemoveAccount?($0) },
                          onClose: { app.isShowingSettings = false })
         }
         .overlay(alignment: .top) {
