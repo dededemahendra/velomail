@@ -169,8 +169,7 @@ final class AppHost: ObservableObject {
         let result = MailAnnouncer(blocklist: RuleEngine(rules: RuleLibrary.load().rules)).announce(messages: messages,
                                               identity: app.identity,
                                               since: notifications.announcedThrough)
-        notifications.present(result)
-        notifications.announcedThrough = result.highWaterMark
+        notifications.announce(result)
     }
 
     /// Repaints the list whenever sync lands rows, so the UI never polls.
