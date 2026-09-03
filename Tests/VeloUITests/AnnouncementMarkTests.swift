@@ -22,7 +22,7 @@ import Foundation
     }
 
     @Test func eachMailboxKeepsItsOwnMark() {
-        let defaults = UserDefaults(suiteName: "velo.mark.\(UUID())")!
+        let defaults = scratchDefaults()
         let busy = presenter("busy", defaults)
         let quiet = presenter("quiet", defaults)
 
@@ -33,7 +33,7 @@ import Foundation
     }
 
     @Test func aMarkSurvivesSwitchingAwayAndBack() {
-        let defaults = UserDefaults(suiteName: "velo.mark.\(UUID())")!
+        let defaults = scratchDefaults()
         let moment = Date(timeIntervalSince1970: 1_500_000)
         presenter("a", defaults).announcedThrough = moment
         presenter("b", defaults).announcedThrough = Date(timeIntervalSince1970: 9_000_000)
@@ -45,7 +45,7 @@ import Foundation
     /// deliberately silent on those -- so a fresh mark per account cannot
     /// produce a burst of banners for mail that arrived while you were away.
     @Test func aMailboxWithNoMarkYetStartsWithoutOne() {
-        let defaults = UserDefaults(suiteName: "velo.mark.\(UUID())")!
+        let defaults = scratchDefaults()
         #expect(presenter("new", defaults).announcedThrough == nil)
     }
 }

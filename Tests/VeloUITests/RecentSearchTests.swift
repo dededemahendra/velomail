@@ -5,13 +5,6 @@ import VeloCore
 
 @MainActor
 @Suite struct RecentSearchTests {
-    private func scratchDefaults() -> UserDefaults {
-        let suite = "velo-search-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     private func makeModel(_ defaults: UserDefaults) throws -> SearchViewModel {
         let db = try AppDatabase.makeInMemory()
         return SearchViewModel(search: SearchService(db),

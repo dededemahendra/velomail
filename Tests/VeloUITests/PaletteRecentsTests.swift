@@ -24,13 +24,6 @@ private struct Quiet: GmailWriting {
         return app
     }
 
-    private func scratchDefaults() -> UserDefaults {
-        let suite = "velo-recents-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     @Test func runningACommandRemembersIt() throws {
         let app = try makeApp(scratchDefaults())
         app.run(Command(title: "Analytics", action: .showAnalytics))

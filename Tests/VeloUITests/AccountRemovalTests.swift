@@ -10,8 +10,8 @@ import Foundation
 /// three accounts for one address -- three databases, three partial copies, and
 /// a shared announcement mark that silenced notifications in all of them.
 @Suite struct AccountRemovalTests {
-    private func list() -> AccountList {
-        AccountList(defaults: UserDefaults(suiteName: "velo.accounts.\(UUID())")!)
+    private func list(test: String = #function) -> AccountList {
+        AccountList(defaults: scratchDefaults(test: test))
     }
 
     @Test func removingOneLeavesTheRest() {

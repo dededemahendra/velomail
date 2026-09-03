@@ -3,10 +3,8 @@ import Foundation
 @testable import VeloCore
 
 @Suite struct AppPreferencesTests {
-    private func makePreferences() -> (AppPreferences, UserDefaults) {
-        let suite = "velo.prefs.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
+    private func makePreferences(test: String = #function) -> (AppPreferences, UserDefaults) {
+        let defaults = scratchDefaults(test: test)
         return (AppPreferences(defaults: defaults), defaults)
     }
 

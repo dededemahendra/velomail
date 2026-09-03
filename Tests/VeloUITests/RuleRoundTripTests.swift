@@ -12,13 +12,13 @@ import VeloCore
     }
 
     /// Writes `rules`, opens Settings, presses Done, and returns what survived.
-    private func throughSettings(_ rules: [MailRule]) throws -> [MailRule] {
+    private func throughSettings(_ rules: [MailRule], test: String = #function) throws -> [MailRule] {
         let (store, dir) = scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         try store.saveRules(RuleLibrary(rules: rules))
 
         let model = SettingsViewModel(store: store, preferences: AppPreferences(
-            defaults: UserDefaults(suiteName: "velo-rt-\(UUID().uuidString)")!))
+            defaults: scratchDefaults(test: test)))
         model.save()
         return store.rules().rules
     }
@@ -75,7 +75,7 @@ import VeloCore
                      actions: [.archive])
         ]))
         let model = SettingsViewModel(store: store, preferences: AppPreferences(
-            defaults: UserDefaults(suiteName: "velo-rt-\(UUID().uuidString)")!))
+            defaults: scratchDefaults()))
         model.rules[0].name = "New name"
         model.rules[0].senderContains = "new@x.com"
         model.rules[0].isEnabled = false
@@ -96,7 +96,7 @@ import VeloCore
                      actions: [.archive, .star])
         ]))
         let model = SettingsViewModel(store: store, preferences: AppPreferences(
-            defaults: UserDefaults(suiteName: "velo-rt-\(UUID().uuidString)")!))
+            defaults: scratchDefaults()))
         model.rules[0].archives = false
         model.save()
 
@@ -109,7 +109,7 @@ import VeloCore
         let (store, dir) = scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         let model = SettingsViewModel(store: store, preferences: AppPreferences(
-            defaults: UserDefaults(suiteName: "velo-rt-\(UUID().uuidString)")!))
+            defaults: scratchDefaults()))
         model.addRule()
         model.rules[0].senderContains = "noise@x.com"
         model.save()
@@ -124,7 +124,7 @@ import VeloCore
         let (store, dir) = scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         let model = SettingsViewModel(store: store, preferences: AppPreferences(
-            defaults: UserDefaults(suiteName: "velo-rt-\(UUID().uuidString)")!))
+            defaults: scratchDefaults()))
         model.addRule()
         model.rules[0].senderContains = "   "
         model.save()

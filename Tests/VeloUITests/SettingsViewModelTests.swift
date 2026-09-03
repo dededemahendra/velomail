@@ -5,12 +5,10 @@ import VeloCore
 
 @MainActor
 @Suite struct SettingsViewModelTests {
-    private func makeModel() -> (SettingsViewModel, URL) {
+    private func makeModel(test: String = #function) -> (SettingsViewModel, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("velo-settings-vm-\(UUID().uuidString)", isDirectory: true)
-        let suite = "velo.vm.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = scratchDefaults(test: test)
         return (SettingsViewModel(store: SettingsStore(directory: directory),
                                   preferences: AppPreferences(defaults: defaults)), directory)
     }
@@ -156,8 +154,7 @@ import VeloCore
     @Test func aToggleTakesEffectWithoutWaitingForDone() {
         // A switch that does nothing until a button is pressed elsewhere reads
         // as a broken switch.
-        let suite = "velo.vm.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = scratchDefaults()
         let preferences = AppPreferences(defaults: defaults)
         let model = SettingsViewModel(store: SettingsStore(directory: FileManager.default
             .temporaryDirectory.appendingPathComponent(UUID().uuidString)),
@@ -166,7 +163,6 @@ import VeloCore
         model.loadsImages = false
 
         #expect(!preferences.loadsRemoteImages)
-        defaults.removePersistentDomain(forName: suite)
     }
 
     @Test func aNumberOutsideWhatTheAppAcceptsSnapsBack() {

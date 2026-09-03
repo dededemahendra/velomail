@@ -10,14 +10,11 @@ private struct Quiet: GmailWriting {
 
 @MainActor
 @Suite struct SendConfirmationTests {
-    private func makeApp() throws -> (AppViewModel, MutationStore, AppPreferences) {
+    private func makeApp(test: String = #function) throws -> (AppViewModel, MutationStore, AppPreferences) {
         let db = try AppDatabase.makeInMemory()
         let store = MailStore(db)
         let mutations = MutationStore(db)
-        let suite = "velo.send.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let preferences = AppPreferences(defaults: defaults)
+        let preferences = AppPreferences(defaults: scratchDefaults(test: test))
         let app = AppViewModel(
             config: AppConfig.resolve(environment: ["VELOMAIL_CLIENT_ID": "c"], configFile: nil),
             store: store,
