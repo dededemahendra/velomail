@@ -63,11 +63,51 @@ struct CommandPaletteView: View {
                 .focused($isFocused)
                 .onSubmit(runHighlighted)
                 .onChange(of: query) { _, _ in highlighted = 0 }
+                // The arrows belong to the list, not to the caret. Focus has
+                // to live in the field -- it is the thing being typed into --
+                // so the list can only be driven from here. Same form the
+                // composer's recipient suggestions use, which is known to
+                // reach the key before the caret does.
+                .onKeyPress(phases: .down, action: handleKey)
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
     }
 
     private var list: some View {
+        ScrollViewReader { proxy in
+            listBody
+                // Follows the highlight, so holding Down does not walk the
+                // selection off the bottom of a list of fifty commands.
+                .onChange(of: highlighted) { _, index in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        proxy.scrollTo(index, anchor: .center)
+                    }
+                }
+        }
+    }
+
+    /// Arrow keys move the highlight; everything else is the field's.
+    ///
+    /// Control-N and Control-P as well, which cost nothing and are what a
+    /// keyboard-first app's users reach for without thinking.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !results.isEmpty else { return .ignored }
+        switch (press.key, press.modifiers.contains(.control)) {
+        case (.downArrow, _): return move(1)
+        case (.upArrow, _): return move(-1)
+        case (KeyEquivalent("n"), true): return move(1)
+        case (KeyEquivalent("p"), true): return move(-1)
+        default: return .ignored
+        }
+    }
+
+    /// Moves the highlight, and says the key was ours so the caret stays put.
+    private func move(_ offset: Int) -> KeyPress.Result {
+        highlighted = WrappingIndex.moved(from: highlighted, by: offset, count: results.count)
+        return .handled
+    }
+
+    private var listBody: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
                 let headings = headings
@@ -84,13 +124,14 @@ struct CommandPaletteView: View {
                     }
                     row(command, isHighlighted: index == highlighted)
                         .contentShape(Rectangle())
+                        .id(index)
                         .onTapGesture { onRun(command) }
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 8)
         }
-        // The list is driven from the keyboard; a scroller is one more thing
-        // drawn over the glass for no one.
+        // Driven from the keyboard, so a scroller is one more thing drawn over
+        // the glass for no one.
         .scrollIndicators(.hidden)
         .frame(maxHeight: 320)
     }

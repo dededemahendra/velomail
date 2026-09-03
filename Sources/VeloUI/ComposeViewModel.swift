@@ -132,9 +132,8 @@ public final class ComposeViewModel: ObservableObject {
     /// Moves the highlight, wrapping at both ends so a held arrow key never
     /// appears to stall.
     public func moveHighlight(by offset: Int) {
-        let count = suggestions.count
-        guard count > 0 else { highlighted = 0; return }
-        highlighted = ((highlighted + offset) % count + count) % count
+        highlighted = WrappingIndex.moved(from: highlighted, by: offset,
+                                          count: suggestions.count)
     }
 
     /// Takes the highlighted contact, reporting whether there was one.
