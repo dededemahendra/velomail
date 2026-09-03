@@ -213,6 +213,8 @@ public final class AppViewModel: ObservableObject {
     @Published public var currentAccount: String = Account.primaryID
     public var onSwitchAccount: ((String) -> Void)?
     public var onAddAccount: (() -> Void)?
+    /// Set by `AppHost`, which owns the list.
+    public var onRemoveAccount: ((String) -> Void)?
 
     /// True while the settings window is up. A window rather than a route: it
     /// is about the app rather than about the mail, and closing it should put
