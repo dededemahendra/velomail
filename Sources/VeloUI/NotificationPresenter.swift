@@ -35,9 +35,21 @@ public final class NotificationPresenter {
         static let markRead = "velomail.markRead"
     }
 
+    /// How far the notification centre has got with the question.
+    private enum Authorization { case unasked, asking, granted, refused }
+
     private let defaults: UserDefaults
-    private var isAuthorized = false
-    private var hasAsked = false
+    private var authorization: Authorization = .unasked
+    private var isAuthorized: Bool { authorization == .granted }
+
+    /// Whether the centre has answered yet -- granted, refused, or not there at
+    /// all. Only "still asking" is unsettled.
+    public var isAuthorizationSettled: Bool {
+        switch authorization {
+        case .unasked, .asking: false
+        case .granted, .refused: true
+        }
+    }
     /// Kept alive here: `UNUserNotificationCenter` holds its delegate weakly,
     /// and a delegate that is collected takes every click with it.
     private var relay: Relay?
@@ -97,10 +109,32 @@ public final class NotificationPresenter {
     /// to post -- is not an error: the app carries on without banners rather
     /// than apologising every sync tick.
     public func requestAuthorizationIfNeeded() async {
-        guard !hasAsked else { return }
-        hasAsked = true
-        guard let center = Self.center else { return }
-        isAuthorized = (try? await center.requestAuthorization(options: [.alert, .badge])) ?? false
+        guard authorization == .unasked else { return }
+        authorization = .asking
+        // No bundle identifier means no centre to ask, which is an answer: this
+        // process is never going to post anything.
+        guard let center = Self.center else { authorization = .refused; return }
+        let granted = (try? await center.requestAuthorization(options: [.alert, .badge])) ?? false
+        authorization = granted ? .granted : .refused
+    }
+
+    /// Says what is new and records that it was said.
+    ///
+    /// The two halves are here together because they must not come apart. They
+    /// did: the inbox observation delivers its first value immediately, which
+    /// on launch is while `requestAuthorizationIfNeeded` is still suspended on
+    /// its await, and the announce that ran in that window showed nothing --
+    /// `present` bails when it is not yet authorised -- and advanced the mark
+    /// anyway. Every launch silently ate the batch of mail that had arrived
+    /// while the app was closed, which is the batch worth having.
+    ///
+    /// So nothing is consumed until the centre has answered. A refusal counts
+    /// as an answer: if banners are never coming, the mark should keep up
+    /// rather than bank a backlog to dump the day permission is granted.
+    public func announce(_ result: MailAnnouncer.Result) {
+        guard isAuthorizationSettled else { return }
+        present(result)
+        announcedThrough = result.highWaterMark
     }
 
     public func present(_ result: MailAnnouncer.Result) {
