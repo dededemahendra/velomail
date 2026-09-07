@@ -199,6 +199,24 @@ struct MessageListView: NSViewRepresentable {
 
         // AppKit can ask about a row that a reload has already taken away, so
         // both of these tolerate an index that is no longer there.
+        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+            let ground = tableView.makeView(withIdentifier: ThreadRowBackground.reuseIdentifier,
+                                            owner: self) as? ThreadRowBackground
+                ?? {
+                    let made = ThreadRowBackground()
+                    made.identifier = ThreadRowBackground.reuseIdentifier
+                    return made
+                }()
+            // A recycled ground still carries the last row's answer, and a
+            // header is never unread.
+            guard rows.indices.contains(row), case let .thread(thread, _) = rows[row] else {
+                ground.isUnread = false
+                return ground
+            }
+            ground.isUnread = thread.isUnread
+            return ground
+        }
+
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             guard rows.indices.contains(row), case .header = rows[row] else {
                 return parent.rowHeight
@@ -399,6 +417,10 @@ final class ThreadRowView: NSView {
         ])
     }
 
+    /// What the snippet is currently drawn in, so a test can check that read
+    /// and unread do not come out the same.
+    var snippetFont: NSFont { snippet.font ?? .systemFont(ofSize: 12) }
+
     /// Points this row at a thread.
     ///
     /// Every field is assigned unconditionally, including the ones that are
@@ -421,6 +443,11 @@ final class ThreadRowView: NSView {
         sender.stringValue = name
         sender.font = NSFont.systemFont(ofSize: 13, weight: thread.isUnread ? .semibold : .regular)
         sender.textColor = thread.isUnread ? .labelColor : .secondaryLabelColor
+        // The snippet carries weight now as well as colour. Colour alone was
+        // doing all the work on the longest line of the row, and two greys one
+        // step apart is not a difference you see without looking for it.
+        snippet.font = NSFont.systemFont(ofSize: 12,
+                                         weight: thread.isUnread ? .medium : .regular)
         // Secondary when it is still waiting, tertiary once it is not: the
         // snippet is the thing you read when deciding whether to open
         // something, and once you have, it should stop asking.
@@ -650,5 +677,45 @@ enum MailFormatting {
             formatter.dateStyle = dateStyle
         }
         return formatter.string(from: date)
+    }
+}
+
+/// The ground a thread row sits on.
+///
+/// Gmail's strongest read/unread cue is not the sender's weight, it is the row:
+/// unread mail sits on its own background and read mail recedes into the list.
+/// This list had no such thing -- every row shared one ground, and read and
+/// unread were separated by a dot and half a font weight.
+///
+/// It is the *read* row that is painted, not the unread one. Lifting unread
+/// rows was tried first and reads worse: it puts a band on most of the list in
+/// a full inbox, and it dulls the window material exactly where the new mail
+/// is. Sinking read mail leaves the glass clean where it matters and matches
+/// what Gmail does, where read rows take a tint and unread rows keep the plain
+/// background.
+///
+/// The scrim is black in both appearances -- receding means darker either way
+/// -- but nothing like the same amount of it. 22% on the dark window is a
+/// legible step; 22% on a light one would be grey furniture. Hence a dynamic
+/// colour rather than one number.
+final class ThreadRowBackground: NSTableRowView {
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("velo.threadRow.ground")
+
+    static let readScrim = NSColor(name: "velo.readRow") { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return NSColor.black.withAlphaComponent(isDark ? 0.22 : 0.05)
+    }
+
+    var isUnread = false {
+        didSet { if isUnread != oldValue { needsDisplay = true } }
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        // Selection already answers "which row is this", and a scrim underneath
+        // it would only muddy the highlight.
+        guard !isUnread, !isSelected else { return }
+        Self.readScrim.setFill()
+        bounds.fill()
     }
 }
