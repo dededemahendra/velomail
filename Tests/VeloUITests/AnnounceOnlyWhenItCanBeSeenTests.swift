@@ -51,6 +51,25 @@ import Foundation
         #expect(presenter.announcedThrough == later)
     }
 
+    /// The same rule has to hold for the sibling path, and did not.
+    ///
+    /// `present(failures:)` marks a failure as told-about through
+    /// `newFailures(among:)` *before* the guard that decides whether anything is
+    /// actually posted. Failures left over from a previous session are loaded
+    /// synchronously during `start()`, so the first unsettled tick consumed
+    /// them and no banner ever followed -- for the one thing this file's own
+    /// comment calls "the one thing a mail client must not be quiet about".
+    @Test func aFailedSendIsNotMarkedAsToldBeforeTheCentreHasAnswered() async {
+        let presenter = presenter()
+        let failure = MailFailure(id: 1, kind: .send, subject: "Invoice", attempts: 5, draft: nil)
+
+        presenter.present(failures: [failure])
+        await presenter.requestAuthorizationIfNeeded()
+
+        #expect(presenter.newFailures(among: [failure]).count == 1,
+                "the failure was consumed while the app still could not post")
+    }
+
     @Test func anUnaskedPresenterIsNotSettledAndAnAskedOneIs() async {
         let presenter = presenter()
         #expect(!presenter.isAuthorizationSettled)

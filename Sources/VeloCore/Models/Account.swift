@@ -62,7 +62,15 @@ public final class AccountList {
 
     public var current: String {
         let id = defaults.string(forKey: Self.currentKey) ?? Account.primaryID
-        return accounts.contains { $0.id == id } ? id : Account.primaryID
+        let all = accounts
+        if all.contains(where: { $0.id == id }) { return id }
+        // Falling back to the *literal* primary id was wrong, because `primary`
+        // is not merely a name: `databaseName` and `keychainAccount` special-
+        // case it to the original on-disk database and Keychain entry. Once the
+        // primary had itself been removed, that fallback opened the mail and
+        // credentials of an account someone had deliberately deleted. Fall back
+        // to one that is actually here.
+        return all.first?.id ?? Account.primaryID
     }
 
     /// Adds an account and switches to it, which is why one is added.
@@ -94,7 +102,10 @@ public final class AccountList {
         let remaining = accounts.filter { $0.id != id }
         guard !remaining.isEmpty else { return }
         save(remaining)
-        if current == id { switchTo(remaining[0].id) }
+        // Read the stored key rather than `current`, which has already fallen
+        // through to a survivor by this point and so never compared equal --
+        // leaving the stored id dangling and the repoint below dead.
+        if defaults.string(forKey: Self.currentKey) == id { switchTo(remaining[0].id) }
     }
 
     private func save(_ accounts: [Account]) {

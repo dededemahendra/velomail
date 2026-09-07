@@ -172,6 +172,12 @@ public final class NotificationPresenter {
     /// a fresh banner on every sync tick would be a punishment rather than a
     /// warning.
     public func present(failures: [MailFailure]) {
+        // Same rule as `announce`, and for the same reason: `newFailures` marks
+        // a failure as told-about, so calling it before the centre has answered
+        // spends the failure on a banner that `guard isAuthorized` then throws
+        // away. Failures left from a previous session are loaded during
+        // `start()`, so that is exactly when it happened.
+        guard isAuthorizationSettled else { return }
         let fresh = newFailures(among: failures)
         guard isAuthorized, let center = Self.center else { return }
         for failure in fresh {
