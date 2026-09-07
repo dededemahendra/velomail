@@ -48,6 +48,26 @@ import Foundation
         #expect(accounts.accounts.contains { $0.id == accounts.current })
     }
 
+    /// `current` falls back to the *literal* primary id when the stored one is
+    /// gone, without checking that an account by that name still exists.
+    ///
+    /// `primary` is not just a name: `Account.databaseName` and
+    /// `keychainAccount` special-case it to the original on-disk database and
+    /// Keychain entry. So a dangling `current` does not fail loudly -- it opens
+    /// the mail and credentials of an account that was deliberately removed,
+    /// which is the opposite of what the confirmation promised.
+    @Test func currentAlwaysNamesAnAccountThatStillExists() {
+        let accounts = list()
+        let a = accounts.add(), b = accounts.add()
+
+        accounts.remove(Account.primaryID)
+        accounts.remove(b)
+
+        #expect(accounts.accounts.map(\.id) == [a])
+        #expect(accounts.accounts.contains { $0.id == accounts.current },
+                "current is \(accounts.current), which is not in the list")
+    }
+
     /// The state that prompted this: three ids, one address.
     @Test func severalAccountsCanShareAnAddressAndBeTrimmedBackToOne() {
         let accounts = list()

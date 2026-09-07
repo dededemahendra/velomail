@@ -57,6 +57,13 @@ final class AppHost: ObservableObject {
         app.onRemoveAccount = { [weak self] id in
             guard let self else { return }
             self.accounts.remove(id)
+            // The list on screen has to change even when the open mailbox does
+            // not, and usually it does not: Settings only offers to remove an
+            // account you are not in. Leaving this to `switchTo` did not work.
+            // It is being asked to switch to the account it is already on, so
+            // its "nothing to do" guard swallowed the call and the removed row
+            // stayed on screen, with live buttons, until the next relaunch.
+            self.app.accounts = self.accounts.accounts
             Task { await self.switchTo(self.accounts.current) }
         }
     }
@@ -67,7 +74,11 @@ final class AppHost: ObservableObject {
     /// database, no tokens and no sync cursor, so the only thing they could
     /// share is a bug.
     func switchTo(_ accountID: String) async {
-        guard accountID != accounts.current || sync == nil else { return }
+        // Against what is *wired*, not what the list says is current. Removing
+        // the open account repoints the list to a survivor before this runs, so
+        // comparing with `accounts.current` would report "already there" while
+        // the running stack still held the account that had just gone.
+        guard accountID != currentAccountID || sync == nil else { return }
         accounts.switchTo(accountID)
         currentAccountID = accounts.current
         notifications.accountID = accounts.current

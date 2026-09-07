@@ -217,7 +217,7 @@ struct SettingsView: View {
                         if account.id != currentAccount {
                             Button("Open") { onSwitchAccount(account.id) }
                                 .buttonStyle(.borderless).font(.caption)
-                            if let onRemoveAccount, accounts.count > 1 {
+                            if onRemoveAccount != nil, accounts.count > 1 {
                                 Button {
                                     removing = account
                                 } label: {
